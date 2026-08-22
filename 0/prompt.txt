@@ -1,0 +1,5 @@
+commit and push
+
+---
+
+make sure there are no placeholders, no artificial things, mcp and tools should be working, if not then start doing it
