@@ -1,0 +1,156 @@
+<task-notification>
+<task-id>ada6810ec48628cec</task-id>
+<tool-use-id>toolu_01BpEB26HxKs8BWZSwZCPDoW</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-chiragnvijay-Desktop-Projects-kicad/5b79a1dc-9147-4c81-a5d1-6afa12bdb9e6/tasks/ada6810ec48628cec.output</output-file>
+<status>completed</status>
+<summary>Agent "Build SPI/UART/GPIO/power fixtures" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Done. Everything is built and verified.
+
+## What I added — `scripts/make_fixtures.py` (only file modified)
+
+Strictly additive: new `Peripheral` / `ProtocolProject` dataclasses, new `build_protocol_schematic()`, new symbol pin tables, `PROTOCOL_PROJECTS`, `ALL_PROJECTS`. The existing `Project` / `build_schematic` / `build_board` path and every existing symbol table are untouched — `write_project` dispatches on `isinstance(project, ProtocolProject)`, and `main()` now iterates `ALL_PROJECTS` so `--project` accepts the new names.
+
+### Symbol 1 — `MCU:ESP32-DEVKITC-32` (value `ESP32-DEVKITC-32`, ref `U1`)
+
+`lib_id` contains "esp32" so `_is_controller` fires on the lib hint, not just the pin heuristic.
+
+| # | name | etype | why |
+|---|---|---|---|
+| 1 | 3V3 | power_in | listed first so `_supply_net` returns the +3V3 rail, not GND |
+| 2 | GND | power_in | |
+| 5 | GPIO5 | bidirectional | classic ESP32 VSPI CS |
+| 18 | GPIO18 | bidirectional | VSPI SCK |
+| 19 | GPIO19 | bidirectional | VSPI MISO |
+| 21 | GPIO21 | bidirectional | I2C SDA default |
+| 22 | GPIO22 | bidirectional | I2C SCL default |
+| 23 | GPIO23 | bidirectional | VSPI MOSI |
+| 25 | GPIO25 | bidirectional | spare GPIO |
+| 30 | SCK | output | controller drives clock |
+| 31 | MOSI | output | controller drives data out |
+| 32 | MISO | input | controller listens |
+| 33 | CS | output | controller drives select |
+| 34 | TX | output | |
+| 35 | RX | input | |
+| 36 | EN | input | tied to +3V3, mirrors the existing fixture idiom |
+
+Two deliberate choices:
+- **Pin numbers mirror the GPIO number** (`GPIO18` is pin `"18"`). `Component.pin()` matches name *or* number, so with 1..16 numbering `pin("5")` would have returned `GPIO19`. Alias pins sit on 30–36, outside `{5,18,19,21,22,23,25}`, so name- and number-resolution can never disagree.
+- **Both matching paths coexist on the same symbol**: alias-matching finds literal `SCK`/`MOSI`/`MISO`/`CS`/`TX`/`RX`, and the explicit-answer path (or a `default_controller_pin="GPIO18"`) finds the plain GPIOs. Verified: `_answered_pin(u1,"GPIO25")`, `("25")`, `("18:GPIO18")` all resolve; the clarification option list `[p.name for p in pins if CONTROLLER_PIN_HINT.match(p.name)]` yields exactly the 7 GPIOs.
+
+### Symbol 2 — `Display:ILI9341` (value `ILI9341`, SPI peripheral)
+`1 VCC power_in`, `2 GND power_in`, `3 SCK input`, `4 MOSI input`, `5 MISO output`, `6 CS input`. MISO is a real `output`, which is the whole point: it makes "reject only when BOTH endpoints are outputs" distinguishable from the I2C "reject any output" rule.
+
+### Symbol 3 — `RF:HC-05` (value `HC-05`, UART peripheral)
+`1 VCC power_in`, `2 GND power_in`, `3 TX output`, `4 RX input`. The crossover `U1.TX(output) -&gt; U2.RX(input)` and `U1.RX(input) -&gt; U2.TX(output)` are both electrically valid; `TX-&gt;TX` would be two outputs.
+
+### Symbol 4 — `Relay:RELAY_2CH` (value `RELAY-2CH`, GPIO peripheral)
+`1 VCC power_in`, `2 GND power_in`, `3 IN1 input`, `4 IN2 input`, `5 FAULT output`. No aliasable signal names at all, so GPIO must ask for both pins. `IN1`/`IN2` do not match `^(GPIO|IO|P[A-D])\d+$`, so it stays a peripheral. Answer forms `"3:IN1"`, `"IN1"`, `"3"` all resolve to `IN1`.
+
+### Symbol 5 — `Device:Fan` (value `FAN_5015`, power-only)
+`1 VCC power_in`, `2 GND power_in`. Nothing else.
+
+**Both-outputs rejection pair the next agent needs:** `U1.TX` (output) ↔ `U2.FAULT` (output) in `esp32_gpio_peripheral`, or `U1.TX` ↔ `U2.MISO` (output) in `esp32_spi_display`. Valid-direction pairs: `U1.SCK/MOSI/CS (output) -&gt; U2.SCK/MOSI/CS (input)`, `U2.MISO (output) -&gt; U1.MISO (input)`.
+
+## New projects (all `U1` = MCU, `U2` = peripheral, `.kicad_sch` + `.kicad_pro`, no `.kicad_pcb`)
+
+| project | components | nets |
+|---|---|---|
+| `esp32_spi_display` | U1, U2 (ILI9341), #PWR01/02, #FLG01/02 | `+3V3`, `GND` |
+| `esp32_uart_module` | U1, U2 (HC-05), + power | `+3V3`, `GND` |
+| `esp32_gpio_peripheral` | U1, U2 (RELAY-2CH), + power | `+3V3`, `GND` |
+| `esp32_power_only` | U1, U2 (FAN_5015), + power | `+3V3`, `GND` |
+
+The peripheral is entirely unwired in all four — that is the planner's work. **The MCU must stay in `esp32_power_only`:** the reader skips power-symbol pins when building `nets`, so `+3V3`/`GND` only become resolvable by `_resolve_rail` because the MCU's `3V3`/`GND` pin labels put them there. Trim U1 and every POWER plan fails with `incompatible_voltage`. Confirmed for all four: `_is_controller(U1)=True`, `_is_controller(U2)=False`, `_supply_net(U1)="+3V3"` (== rail, so no `incompatible_logic_voltage`), `VCC`/`GND` resolve on every peripheral.
+
+**No `.kicad_pcb` on the new projects** — one dedicated board fixture (`esp32_i2c_board`) is the pattern, and `build_board` is hardcoded to the ESP32/TMP102/USB footprints.
+
+## ⚠️ Collision the next agent must know about
+
+`SCL_NAMES = ("SCL","SCK","I2C_SCL","CLK")` in `generator.py`, and resolution order puts `_pin_by_names` **before** the `GPIO22` default. Verified: on the new MCU, `_pin_by_names(u1, SCL_NAMES) -&gt; "SCK"` (pin 30, an `output`). So an **I2C** plan against any of the four new fixtures resolves SCL to an output pin and gets rejected by the I2C `shared_outputs_forbidden` rule, never reaching the GPIO22 default. Do not run I2C against the new fixtures. I kept the name `SCK` because the task requires the alias path to be testable; renaming to `SCLK` would break it. The five I2C fixtures use the old `MCU:ESP32-WROOM-32` symbol and are completely unaffected.
+
+## Two pre-existing generator hazards (not caused by my change)
+
+1. **`make_fixtures.py` has never been deterministic.** `sheet_uuid`, `symbol_instance` and `global_label` each call `uuid.uuid4()`. Any regen rewrites all five existing `.kicad_sch` with fresh UUIDs. I did **not** seed the UUIDs — deterministic UUIDs would differ from the committed bytes, which the hard constraint forbids.
+2. **A bare full regen deletes 4 committed `.kicad_pcb` files.** `esp32_i2c_demo`, `esp32_i2c_connected`, `esp32_i2c_existing_pullups`, `esp32_i2c_unnamed_pins` all have a committed `.kicad_pcb` that came from the board-sync commit `51e5bed`, not from `build_board`. `write_project`'s `shutil.rmtree` removes them and only `esp32_i2c_board` (`board=True`) is rewritten. I did **not** change `rmtree` semantics — out of my mandate. **Safe invocation: `--project &lt;name&gt;` or `--out &lt;scratch-dir&gt;`.**
+
+Because of these, verification step 1 as written cannot show a clean tree for reasons that predate this work. The strongest evidence is the uuid-masked scratch-dir diff below.
+
+## Verification output
+
+**Step 1a — strongest form: full regen into a scratch dir, diffed uuid-masked against committed (non-destructive)**
+```
+OK   esp32_i2c_demo.kicad_sch identical (uuid-masked)
+OK   esp32_i2c_demo.kicad_pro identical (uuid-masked)
+OK   esp32_i2c_connected.kicad_sch identical (uuid-masked)
+OK   esp32_i2c_connected.kicad_pro identical (uuid-masked)
+OK   esp32_i2c_existing_pullups.kicad_sch identical (uuid-masked)
+OK   esp32_i2c_existing_pullups.kicad_pro identical (uuid-masked)
+OK   esp32_i2c_unnamed_pins.kicad_sch identical (uuid-masked)
+OK   esp32_i2c_unnamed_pins.kicad_pro identical (uuid-masked)
+OK   esp32_i2c_board.kicad_sch identical (uuid-masked)
+OK   esp32_i2c_board.kicad_pro identical (uuid-masked)
+OK   esp32_i2c_board.kicad_pcb identical
+```
+All 11 existing files regenerate byte-identically modulo the pre-existing random UUIDs. My changes are structurally inert for existing fixtures.
+
+**Step 1b — the literal command `python3 scripts/make_fixtures.py &amp;&amp; git status --short fixtures/`**
+```
+wrote .../esp32_i2c_demo            wrote .../esp32_spi_display
+wrote .../esp32_i2c_existing_pullups  wrote .../esp32_uart_module
+wrote .../esp32_i2c_unnamed_pins      wrote .../esp32_gpio_peripheral
+wrote .../esp32_i2c_connected         wrote .../esp32_power_only
+wrote .../esp32_i2c_board
+ M fixtures/projects/esp32_i2c_board/esp32_i2c_board.kicad_sch
+ D fixtures/projects/esp32_i2c_connected/esp32_i2c_connected.kicad_pcb
+ M fixtures/projects/esp32_i2c_connected/esp32_i2c_connected.kicad_sch
+ D fixtures/projects/esp32_i2c_demo/esp32_i2c_demo.kicad_pcb
+ M fixtures/projects/esp32_i2c_demo/esp32_i2c_demo.kicad_sch
+ D fixtures/projects/esp32_i2c_existing_pullups/esp32_i2c_existing_pullups.kicad_pcb
+ M fixtures/projects/esp32_i2c_existing_pullups/esp32_i2c_existing_pullups.kicad_sch
+ D fixtures/projects/esp32_i2c_unnamed_pins/esp32_i2c_unnamed_pins.kicad_pcb
+ M fixtures/projects/esp32_i2c_unnamed_pins/esp32_i2c_unnamed_pins.kicad_sch
+?? fixtures/projects/esp32_gpio_peripheral/  ?? fixtures/projects/esp32_power_only/
+?? fixtures/projects/esp32_spi_display/      ?? fixtures/projects/esp32_uart_module/
+```
+Every `M` confirmed UUID-only against `HEAD`; every `D` is hazard #2. I then ran `git checkout -- fixtures/`, after which `git status --short fixtures/` shows **only the four new untracked dirs**. The tree is in that state now — existing fixtures at committed bytes.
+
+**Step 2 — parse (all 9 projects)**
+```
+esp32_gpio_peripheral      -&gt; ['#FLG01','#FLG02','#PWR01','#PWR02','U1','U2'] | nets: ['+3V3','GND']
+esp32_i2c_board            -&gt; [...,'J1','U1','U2'] | nets: ['+3V3','GND','USB_D+','USB_D-','VBUS']
+esp32_i2c_connected        -&gt; [...,'J1','R1','R2','U1','U2'] | nets: ['+3V3','GND','I2C_SCL','I2C_SDA','USB_D+','USB_D-','VBUS']
+esp32_i2c_demo             -&gt; [...,'J1','U1','U2'] | nets: ['+3V3','GND','USB_D+','USB_D-','VBUS']
+esp32_i2c_existing_pullups -&gt; [...,'J1','R1','R2','U1','U2'] | nets: ['+3V3','GND','I2C_SCL','I2C_SDA','USB_D+','USB_D-','VBUS']
+esp32_i2c_unnamed_pins     -&gt; [...,'J1','U1','U2'] | nets: ['+3V3','GND','USB_D+','USB_D-','VBUS']
+esp32_power_only           -&gt; ['#FLG01','#FLG02','#PWR01','#PWR02','U1','U2'] | nets: ['+3V3','GND']
+esp32_spi_display          -&gt; ['#FLG01','#FLG02','#PWR01','#PWR02','U1','U2'] | nets: ['+3V3','GND']
+esp32_uart_module          -&gt; ['#FLG01','#FLG02','#PWR01','#PWR02','U1','U2'] | nets: ['+3V3','GND']
+```
+
+**Step 3 — ERC via real `kicad-cli` 10.0.5**
+```
+esp32_gpio_peripheral      ran: True errors: 24 warnings: 6
+esp32_i2c_board            ran: True errors: 10 warnings: 8
+esp32_i2c_connected        ran: True errors: 1  warnings: 10
+esp32_i2c_demo             ran: True errors: 10 warnings: 8
+esp32_i2c_existing_pullups ran: True errors: 10 warnings: 12
+esp32_i2c_unnamed_pins     ran: True errors: 10 warnings: 8
+esp32_power_only           ran: True errors: 19 warnings: 6
+esp32_spi_display          ran: True errors: 26 warnings: 6
+esp32_uart_module          ran: True errors: 22 warnings: 6
+```
+`ran: True` everywhere. All new-fixture errors are the deliberately-incomplete kind and the same classes `esp32_i2c_demo` already produces — e.g. `esp32_spi_display`: `pin_not_connected 19, pin_not_driven 5, power_pin_not_driven 2`, warnings all `lib_symbol_issues`. Nothing structural. As a second KiCAD-readability proof, `kicad-cli sch export svg` succeeded on all four (pin numbers 5/18/…/36 and names SCK/MOSI/MISO/CS present in the rendered output).
+
+**Step 4 — tests**
+```
+96 passed in 34.12s
+```
+Note the baseline is **96, not 88** — other agents' test files were already in the tree before I started. I added and changed no tests.
+
+## Not done / left alone
+- Did not commit (nothing asked me to). Four untracked fixture dirs plus the modified `scripts/make_fixtures.py` are on disk.
+- Did not fix the two generator hazards above, since either fix would rewrite committed fixture bytes or change shared behavior outside my mandate.
+- No existing symbol or fixture needed changing, so nothing to escalate on that front.</result>
+<usage><subagent_tokens>92681</subagent_tokens><tool_uses>33</tool_uses><duration_ms>749808</duration_ms></usage>
+</task-notification>

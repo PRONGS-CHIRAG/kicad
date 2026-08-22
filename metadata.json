@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.10.2",
+  "checkpoint_id": "01M0NNVZE9AHEVX4FBQACE1RM1",
+  "strategy": "manual-commit",
+  "branch": "feat/protocols-spi-uart-gpio-power",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "fixtures/projects/esp32_gpio_peripheral/esp32_gpio_peripheral.kicad_pro",
+    "fixtures/projects/esp32_gpio_peripheral/esp32_gpio_peripheral.kicad_sch",
+    "fixtures/projects/esp32_power_only/esp32_power_only.kicad_pro",
+    "fixtures/projects/esp32_power_only/esp32_power_only.kicad_sch",
+    "fixtures/projects/esp32_spi_display/esp32_spi_display.kicad_pro",
+    "fixtures/projects/esp32_spi_display/esp32_spi_display.kicad_sch",
+    "fixtures/projects/esp32_uart_module/esp32_uart_module.kicad_pro",
+    "fixtures/projects/esp32_uart_module/esp32_uart_module.kicad_sch",
+    "scripts/make_fixtures.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 24,
+    "cache_creation_tokens": 20445,
+    "cache_read_tokens": 2766953,
+    "output_tokens": 13178,
+    "api_call_count": 12
+  }
+}
