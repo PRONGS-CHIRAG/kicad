@@ -155,7 +155,22 @@ export default function Home() {
       return;
     }
     if (!clarification.answer_key) return;
-    const next = { ...answers, [clarification.answer_key]: option };
+    /**
+     * A per-signal key ("controller_pin:SCK") belongs inside one of the two
+     * dicts, not at the top level — PlanAnswers ignores unknown fields, so
+     * writing it flat would drop the answer and re-ask the same question
+     * forever.
+     */
+    const key = clarification.answer_key;
+    const separator = key.indexOf(":");
+    let next: PlanAnswers;
+    if (separator === -1) {
+      next = { ...answers, [key]: option };
+    } else {
+      const field = key.slice(0, separator) === "controller_pin" ? "controller_pins" : "peripheral_pins";
+      const signal = key.slice(separator + 1);
+      next = { ...answers, [field]: { ...(answers[field] ?? {}), [signal]: option } };
+    }
     setAnswers(next);
     generatePlan(selected, next);
   };

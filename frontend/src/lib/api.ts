@@ -71,13 +71,22 @@ export type AnswerKey =
   | "controller_scl"
   | "pullup_value";
 
-export type PlanAnswers = Partial<Record<AnswerKey, string>>;
+/**
+ * Clarifications for protocols beyond I2C name their signal in the key, e.g.
+ * "controller_pin:SCK". I2C keeps the flat legacy keys above.
+ */
+export type SignalAnswerKey = `controller_pin:${string}` | `peripheral_pin:${string}`;
+
+export type PlanAnswers = Partial<Record<AnswerKey, string>> & {
+  controller_pins?: Record<string, string>;
+  peripheral_pins?: Record<string, string>;
+};
 
 export type Clarification = {
   question: string;
   reason: string;
   options: string[];
-  answer_key: AnswerKey | "selection" | null;
+  answer_key: AnswerKey | SignalAnswerKey | "selection" | null;
 };
 
 export type PlanResponse = {
