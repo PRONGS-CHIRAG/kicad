@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.10.2",
+  "checkpoint_id": "01M0NT4XD39W7GWRP5P21AWV81",
+  "strategy": "manual-commit",
+  "branch": "feat/protocols-spi-uart-gpio-power",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "backend/app/execution/local.py",
+    "backend/app/kicad/board.py",
+    "backend/app/mcp_server.py",
+    "backend/app/planning/generator.py",
+    "backend/tests/test_llm.py",
+    "backend/tests/test_mcp_server.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 20,
+    "cache_creation_tokens": 29008,
+    "cache_read_tokens": 3949071,
+    "output_tokens": 9150,
+    "api_call_count": 10
+  }
+}

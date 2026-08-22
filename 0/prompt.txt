@@ -1,0 +1,1 @@
+i do not want you to ask user for questions, the agent should ask what agent wants to do and not ask any further questions and take the right decisions based on the context and connections and looking at risk/violations and making sure there are no violations and i want you to ground your decisions in evidence and make it completely autonomous
