@@ -60,10 +60,8 @@ class _Stub:
         self.body: str | dict = VALID_PLAN
 
     def payload(self) -> bytes:
-        if isinstance(self.body, str):  # malformed-content case
-            content = self.body
-        else:
-            content = json.dumps(self.body)
+        # A str body is the malformed-content case: sent through verbatim.
+        content = self.body if isinstance(self.body, str) else json.dumps(self.body)
         return json.dumps({"choices": [{"message": {"content": content}}]}).encode()
 
 

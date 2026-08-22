@@ -147,6 +147,29 @@ Say the honest part out loud, because a judge will ask:
 > requests get caught at planning time, before anything is written. So we swapped in an executor that
 > deliberately wires the bus to ground. It got caught, and the project came back byte-identical."
 
+## Optional beat — it really runs over MCP (30s)
+
+Only if someone asks how the KiCAD edits actually happen. The default executor
+writes the files directly; this one does every edit as an MCP tool call over JSON-RPC
+to `backend/app/mcp_server.py`.
+
+```bash
+cd backend && KICAD_MITOS_EXECUTOR=mitos \
+  KICAD_MITOS_MITOS_COMMAND="python3 -m app.mcp_server" \
+  python3 -m app.benchmark --out ../reports
+# 10/10 passed — every edit over the wire
+```
+
+Both executors call the same primitives, so the outcome is identical: same 9/9 checks,
+same ERC 10 -> 1, same change list. Worth saying out loud that a tool failure mid-batch
+still rolls the whole project back, hash-verified — the transaction holds across a
+subprocess boundary.
+
+Be precise if asked about Mitos itself: this proves *our adapter and server* work
+end to end. The third-party Mitos server was never reachable and there is no public
+one, so its tool names stay configurable and `docs/mitos.md` records which server the
+capability matrix was generated from. Don't claim more than that.
+
 ## Beat 6 — The scoreboard (30s)
 
 ```bash

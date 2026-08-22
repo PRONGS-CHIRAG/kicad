@@ -202,7 +202,9 @@ def board_outline(doc: list) -> tuple[float, float, float, float]:
     return (min(xs), min(ys), max(xs), max(ys))
 
 
-def free_position(doc: list, half_w: float, half_h: float, reserved: list[tuple]) -> tuple[float, float] | None:
+def free_position(
+    doc: list, half_w: float, half_h: float, reserved: list[tuple]
+) -> tuple[float, float] | None:
     """First grid slot inside the outline that clears every placed footprint."""
     min_x, min_y, max_x, max_y = board_outline(doc)
     occupied = [e for e in (_footprint_extent(fp) for fp in sexpr.find_all(doc, "footprint")) if e]

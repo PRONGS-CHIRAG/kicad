@@ -14,6 +14,7 @@ from ..kicad.reader import ProjectState, read_project
 from ..models import ActionPlan, ConnectPins, ConnectPinToNet, EnsurePullup, ExecutionResult, ExecutionStep
 from .base import Executor
 
+
 class LocalExecutor(Executor):
     name = "local"
 

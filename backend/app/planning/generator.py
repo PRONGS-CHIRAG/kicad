@@ -335,7 +335,8 @@ def generate_plan(
         if controller_supply and controller_supply != rail:
             return Clarification(
                 question=(
-                    f"{controller_ref} is powered from {controller_supply}, so a {voltage} bus would need level "
+                    f"{controller_ref} is powered from {controller_supply}, so a {voltage} bus "
+                    f"would need level "
                     f"shifting, which this MVP does not add. Connect the bus at {controller_supply} "
                     "logic instead?"
                 ),
@@ -370,12 +371,15 @@ def generate_plan(
             or parsed.signal_pins.get(signal.name)
             or _pin_by_names(controller, signal.controller_names)
         )
-        if pin_name is None and signal.default_controller_pin:
-            if controller.pin(signal.default_controller_pin):
-                pin_name = signal.default_controller_pin
-                assumptions.append(
-                    f"{pin_name} used for {signal.name} (default ESP32 {protocol.value} pin)"
-                )
+        if (
+            pin_name is None
+            and signal.default_controller_pin
+            and controller.pin(signal.default_controller_pin)
+        ):
+            pin_name = signal.default_controller_pin
+            assumptions.append(
+                f"{pin_name} used for {signal.name} (default ESP32 {protocol.value} pin)"
+            )
         if pin_name is None or controller.pin(pin_name) is None:
             return Clarification(
                 question=f"Which {controller_ref} pin should be used for {signal.name}?",

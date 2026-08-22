@@ -129,19 +129,17 @@ def test_a_bad_pin_is_a_tool_error_not_a_dead_server(demo: Path) -> None:
 
 
 def test_a_missing_project_is_refused(tmp_path: Path) -> None:
-    with McpStdioClient(COMMAND) as client:
-        with pytest.raises(RuntimeError):
-            client.call_tool("kicad_read_schematic", {"project": str(tmp_path / "nope")})
+    with McpStdioClient(COMMAND) as client, pytest.raises(RuntimeError):
+        client.call_tool("kicad_read_schematic", {"project": str(tmp_path / "nope")})
 
 
 def test_only_a_resistor_can_be_placed(demo: Path) -> None:
     """Refusing beats guessing a footprint for a part no action type asks for."""
-    with McpStdioClient(COMMAND) as client:
-        with pytest.raises(RuntimeError, match="Device:R"):
-            client.call_tool(
-                "kicad_add_component",
-                {"project": str(demo), "symbol": "Device:C", "value": "100n", "connect": ["A", "B"]},
-            )
+    with McpStdioClient(COMMAND) as client, pytest.raises(RuntimeError, match="Device:R"):
+        client.call_tool(
+            "kicad_add_component",
+            {"project": str(demo), "symbol": "Device:C", "value": "100n", "connect": ["A", "B"]},
+        )
 
 
 # --------------------------------------------------- the whole plan over MCP
