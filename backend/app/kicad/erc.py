@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import subprocess
 import tempfile
@@ -10,7 +11,10 @@ from pathlib import Path
 
 from ..models import ErcReport, Violation, ViolationDiff
 
+logger = logging.getLogger(__name__)
+
 SEVERITY_MAP = {"error": "error", "warning": "warning", "info": "info", "exclusion": "info", "ignore": "info"}
+DEFAULT_BOARD_LAYERS = "F.Cu,B.Cu,F.SilkS,B.SilkS,Edge.Cuts"
 
 
 class KicadCli:
@@ -40,6 +44,53 @@ class KicadCli:
         )
         output = (result.stdout + result.stderr).lower()
         return f"usage: {args[-1]}" in output
+
+    def export_schematic_svg(self, schematic: Path) -> str | None:
+        """Render the schematic exactly as KiCAD sees it on disk."""
+        if not self.available:
+            return None
+        with tempfile.TemporaryDirectory() as tmp:
+            proc = subprocess.run(
+                [self.executable, "sch", "export", "svg", "--no-background-color", "-o", tmp, str(schematic)],
+                capture_output=True,
+                text=True,
+                timeout=300,
+                check=False,
+            )
+            pages = sorted(Path(tmp).glob("*.svg"))
+            if not pages:
+                logger.warning("schematic svg export failed: %s", (proc.stdout + proc.stderr)[-500:])
+                return None
+            return pages[0].read_text()
+
+    def export_board_svg(self, board: Path, layers: str = DEFAULT_BOARD_LAYERS) -> str | None:
+        if not self.available:
+            return None
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "board.svg"
+            proc = subprocess.run(
+                [
+                    self.executable,
+                    "pcb",
+                    "export",
+                    "svg",
+                    "--layers",
+                    layers,
+                    "--page-size-mode",
+                    "2",
+                    "-o",
+                    str(out),
+                    str(board),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=300,
+                check=False,
+            )
+            if not out.exists():
+                logger.warning("board svg export failed: %s", (proc.stdout + proc.stderr)[-500:])
+                return None
+            return out.read_text()
 
     def run_erc(self, schematic: Path) -> ErcReport:
         return self._run_check(["sch", "erc"], schematic)

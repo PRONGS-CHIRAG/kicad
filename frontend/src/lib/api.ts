@@ -29,6 +29,8 @@ export type SessionResponse = {
   components: ComponentSummary[];
   nets: Record<string, string[]>;
   baseline_erc: ErcReport;
+  revision: number;
+  has_pcb: boolean;
 };
 
 export type Action =
@@ -122,6 +124,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ selected_components: selected, instruction, answers }),
     }),
+  /** SVG of the working copy on disk; `revision` busts the cache after each applied change. */
+  renderUrl: (sessionId: string, view: "schematic" | "pcb", revision: number) =>
+    `${API_BASE}/api/sessions/${sessionId}/render?view=${view}&revision=${revision}`,
   execute: (sessionId: string) =>
     request<RunReport>(`/api/sessions/${sessionId}/execute`, {
       method: "POST",

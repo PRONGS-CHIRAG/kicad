@@ -19,6 +19,10 @@ read project -> plan (rules or LLM) -> preview + approve -> checkpoint
 - ERC is compared violation-by-violation against a baseline, not by counting, so pre-existing
   violations are never blamed on the change and a "swapped" violation is still detected.
 - Every run is transactional: the whole project is checkpointed and fully restored if any check fails.
+- The UI shows the live schematic (and the board, for projects with a `.kicad_pcb`) rendered by
+  `kicad-cli` from the session's working copy: `GET /api/sessions/{id}/render?view=schematic|pcb`.
+  It renders what is on disk, so a proposed plan changes nothing until you approve it, and a rejected
+  run is rolled back before the next render.
 
 ## Layout
 

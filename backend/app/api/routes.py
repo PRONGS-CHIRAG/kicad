@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from ..config import settings
@@ -25,6 +25,8 @@ class SessionResponse(BaseModel):
     components: list[dict]
     nets: dict[str, list[str]]
     baseline_erc: ErcReport
+    revision: int = 0
+    has_pcb: bool = False
 
 
 class PlanRequest(BaseModel):
@@ -54,6 +56,8 @@ def _session_response(session: Session) -> SessionResponse:
         components=session.state.component_summaries(),
         nets={name: sorted(pins) for name, pins in sorted(session.state.nets.items())},
         baseline_erc=session.baseline_erc,
+        revision=session.revision,
+        has_pcb=session.board_path is not None,
     )
 
 
@@ -106,6 +110,24 @@ def create_plan(session_id: str, request: PlanRequest) -> PlanResponse:
     if isinstance(result, Clarification):
         return PlanResponse(clarification=result, source=source)
     return PlanResponse(plan=result, problems=problems, source=source, executable=not problems)
+
+
+@router.get("/sessions/{session_id}/render")
+def render_session(session_id: str, view: str = "schematic") -> Response:
+    """SVG of the working copy as it exists on disk right now."""
+    try:
+        session = store.get(session_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=f"unknown session {session_id}") from exc
+    if view not in {"schematic", "pcb"}:
+        raise HTTPException(status_code=400, detail=f"unknown view {view}")
+    svg = store.render(session, view)
+    if svg is None:
+        detail = (
+            "this project has no board file" if view == "pcb" else "kicad-cli could not render the schematic"
+        )
+        raise HTTPException(status_code=404, detail=detail)
+    return Response(content=svg, media_type="image/svg+xml", headers={"Cache-Control": "no-store"})
 
 
 @router.post("/sessions/{session_id}/execute", response_model=RunReport)

@@ -43,6 +43,35 @@ def test_full_flow(client: TestClient) -> None:
     assert stored["decision"] == "accepted"
 
 
+def test_render_follows_the_working_copy(client: TestClient) -> None:
+    """The view is rendered from disk, so approved changes show up and unknown views 404."""
+    session = client.post("/api/sessions", json={"project": "esp32_i2c_demo"}).json()
+    assert session["has_pcb"] is False
+    session_id = session["session_id"]
+
+    before = client.get(f"/api/sessions/{session_id}/render")
+    assert before.status_code == 200
+    assert before.headers["content-type"].startswith("image/svg+xml")
+    assert "I2C_SDA" not in before.text
+
+    client.post(
+        f"/api/sessions/{session_id}/plan",
+        json={
+            "selected_components": ["U1", "U2"],
+            "instruction": "Connect U1 and U2 using I2C with 3.3V logic.",
+        },
+    )
+    assert client.get(f"/api/sessions/{session_id}/render").text == before.text, "plans alone change nothing"
+
+    client.post(f"/api/sessions/{session_id}/execute", json={"approved": True})
+    after = client.get(f"/api/sessions/{session_id}/render")
+    assert after.status_code == 200
+    assert after.text != before.text
+
+    assert client.get(f"/api/sessions/{session_id}/render", params={"view": "pcb"}).status_code == 404
+    assert client.get(f"/api/sessions/{session_id}/render", params={"view": "3d"}).status_code == 400
+
+
 def test_execution_requires_approval(client: TestClient) -> None:
     session = client.post("/api/sessions", json={"project": "esp32_i2c_demo"}).json()
     response = client.post(f"/api/sessions/{session['session_id']}/execute", json={"approved": False})

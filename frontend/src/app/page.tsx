@@ -27,6 +27,8 @@ export default function Home() {
   const [planMeta, setPlanMeta] = useState<PlanResponse | null>(null);
   const [clarification, setClarification] = useState<Clarification | null>(null);
   const [answers, setAnswers] = useState<PlanAnswers>({});
+  const [view, setView] = useState<"schematic" | "pcb">("schematic");
+  const [revision, setRevision] = useState(0);
   const [report, setReport] = useState<RunReport | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +60,8 @@ export default function Home() {
       setClarification(null);
       setAnswers({});
       setReport(null);
+      setView("schematic");
+      setRevision(created.revision);
     });
 
   const generatePlan = (nextSelected = selected, nextAnswers = answers) =>
@@ -96,6 +100,7 @@ export default function Home() {
     run(async () => {
       if (!session) return;
       setReport(await api.execute(session.session_id));
+      setRevision((current) => current + 1);
     });
 
   return (
@@ -124,6 +129,16 @@ export default function Home() {
             {projects.length === 0 && <li className="py-2 text-sm text-neutral-500">No projects found.</li>}
           </ul>
         </Card>
+      )}
+
+      {session && (
+        <ProjectView
+          session={session}
+          view={view}
+          revision={revision}
+          pendingActions={plan && !report ? plan.actions.length : 0}
+          onView={setView}
+        />
       )}
 
       {session && !report && (
@@ -268,6 +283,64 @@ export default function Home() {
         </Card>
       )}
     </main>
+  );
+}
+
+/**
+ * Renders the session's working copy through kicad-cli, so it only ever shows changes that were
+ * executed and kept — a rejected run is rolled back and the next render snaps back to the original.
+ */
+function ProjectView({
+  session,
+  view,
+  revision,
+  pendingActions,
+  onView,
+}: {
+  session: SessionResponse;
+  view: "schematic" | "pcb";
+  revision: number;
+  pendingActions: number;
+  onView: (view: "schematic" | "pcb") => void;
+}) {
+  const [failed, setFailed] = useState(false);
+  const source = api.renderUrl(session.session_id, view, revision);
+
+  useEffect(() => setFailed(false), [source]);
+
+  return (
+    <Card title="Live project view">
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        {(["schematic", "pcb"] as const).map((option) => (
+          <button
+            key={option}
+            className={option === view ? "btn" : "btn-secondary"}
+            disabled={option === "pcb" && !session.has_pcb}
+            onClick={() => onView(option)}
+          >
+            {option === "pcb" ? "PCB" : "Schematic"}
+          </button>
+        ))}
+        <span className="text-xs text-neutral-500">
+          {pendingActions > 0
+            ? `${pendingActions} proposed action(s) not applied yet — the view updates once you approve them`
+            : "showing the project exactly as it is on disk"}
+        </span>
+      </div>
+      {failed ? (
+        <p className="rounded border border-dashed p-6 text-center text-sm text-neutral-500">
+          {view === "pcb" ? "This project has no board file." : "kicad-cli could not render this schematic."}
+        </p>
+      ) : (
+        /* eslint-disable-next-line @next/next/no-img-element */
+        <img
+          src={source}
+          alt={`${session.project} ${view}`}
+          className="max-h-[28rem] w-full rounded border bg-white object-contain"
+          onError={() => setFailed(true)}
+        />
+      )}
+    </Card>
   );
 }
 

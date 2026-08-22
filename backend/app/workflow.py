@@ -50,6 +50,13 @@ class Session:
     clarification: Clarification | None = None
     report: RunReport | None = None
     history: list[str] = field(default_factory=list)
+    revision: int = 0
+    """Bumped whenever the on-disk project changes, so renders are never served stale."""
+
+    @property
+    def board_path(self) -> Path | None:
+        boards = sorted(self.project_dir.glob("*.kicad_pcb"))
+        return boards[0] if boards else None
 
 
 class SessionStore:
@@ -98,6 +105,13 @@ class SessionStore:
     def refresh(self, session: Session) -> ProjectState:
         session.state = read_project(session.project_dir)
         return session.state
+
+    def render(self, session: Session, view: str) -> str | None:
+        """Render the session's working copy — never the plan — so the view shows only applied changes."""
+        if view == "pcb":
+            board = session.board_path
+            return self.cli.export_board_svg(board) if board else None
+        return self.cli.export_schematic_svg(session.state.schematic_path)
 
     def plan(
         self,
@@ -173,6 +187,7 @@ class SessionStore:
         )
         session.report = report
         session.history.append(f"{decision.value}: {reason}")
+        session.revision += 1
         if decision == Decision.ACCEPTED:
             session.baseline_erc = erc_after or session.baseline_erc
         self.refresh(session)
