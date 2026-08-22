@@ -1,0 +1,5 @@
+run it
+
+---
+
+it should not ask any beforr planning questions, it should think on its own and use a realm devin agent, use the devin api to call the agent, it should not be fully deterministic but a mixture of agent output and deterministic rules. tell me where to paste the API KEY and tell me what env variables to add
