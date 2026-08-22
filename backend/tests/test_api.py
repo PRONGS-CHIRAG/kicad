@@ -1,15 +1,6 @@
 from __future__ import annotations
 
-import pytest
 from fastapi.testclient import TestClient
-
-from app.main import app
-
-
-@pytest.fixture()
-def client(store, monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    monkeypatch.setattr("app.api.routes.store", store)
-    return TestClient(app)
 
 
 def test_health_and_projects(client: TestClient) -> None:
@@ -19,7 +10,7 @@ def test_health_and_projects(client: TestClient) -> None:
     assert "esp32_i2c_demo" in names
 
 
-def test_full_flow(client: TestClient) -> None:
+def test_full_flow(client: TestClient, requires_kicad: None) -> None:
     session = client.post("/api/sessions", json={"project": "esp32_i2c_demo"}).json()
     assert {c["reference"] for c in session["components"]} >= {"U1", "U2", "J1"}
 
@@ -43,10 +34,11 @@ def test_full_flow(client: TestClient) -> None:
     assert stored["decision"] == "accepted"
 
 
-def test_render_follows_the_working_copy(client: TestClient) -> None:
+def test_render_follows_the_working_copy(client: TestClient, requires_kicad: None) -> None:
     """The view is rendered from disk, so approved changes show up and unknown views 404."""
     session = client.post("/api/sessions", json={"project": "esp32_i2c_demo"}).json()
-    assert session["has_pcb"] is False
+    # Every fixture ships a board now, so the PCB view is offerable everywhere.
+    assert session["has_pcb"] is True
     session_id = session["session_id"]
 
     before = client.get(f"/api/sessions/{session_id}/render")
@@ -68,11 +60,36 @@ def test_render_follows_the_working_copy(client: TestClient) -> None:
     assert after.status_code == 200
     assert after.text != before.text
 
-    assert client.get(f"/api/sessions/{session_id}/render", params={"view": "pcb"}).status_code == 404
+    assert client.get(f"/api/sessions/{session_id}/render", params={"view": "pcb"}).status_code == 200
     assert client.get(f"/api/sessions/{session_id}/render", params={"view": "3d"}).status_code == 400
 
 
-def test_pcb_fixture_renders_board(client: TestClient) -> None:
+def test_pcb_render_404s_when_the_project_has_no_board(
+    client: TestClient, schematic_only: str, requires_kicad: None
+) -> None:
+    """The UI disables the PCB view off `has_pcb`; the route has to agree with it."""
+    session = client.post("/api/sessions", json={"project": schematic_only}).json()
+    assert session["has_pcb"] is False
+    session_id = session["session_id"]
+    assert client.get(f"/api/sessions/{session_id}/render").status_code == 200
+    assert client.get(f"/api/sessions/{session_id}/render", params={"view": "pcb"}).status_code == 404
+
+
+def test_render_of_an_unchanged_project_is_byte_stable(client: TestClient, requires_kicad: None) -> None:
+    """kicad-cli stamps the export time into the SVG; the render strips it.
+
+    Without that, two renders of the same file differ whenever they straddle a
+    second, and "did this change?" comparisons become a coin flip.
+    """
+    session = client.post("/api/sessions", json={"project": "esp32_i2c_demo"}).json()
+    renders = {
+        client.get(f"/api/sessions/{session['session_id']}/render").text for _ in range(6)
+    }
+    assert len(renders) == 1, "an unchanged project must render identically every time"
+    assert "date 20" not in next(iter(renders))
+
+
+def test_pcb_fixture_renders_board(client: TestClient, requires_kicad: None) -> None:
     session = client.post("/api/sessions", json={"project": "esp32_i2c_board"})
     assert session.status_code == 200
     session_data = session.json()

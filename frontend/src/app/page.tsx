@@ -4,22 +4,32 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ActionPlan,
   Clarification,
+  HealthResponse,
   PlanAnswers,
   PlanResponse,
+  ProjectSummary,
   RunReport,
   SessionResponse,
   api,
-  describeAction,
 } from "@/lib/api";
+import type { Stage } from "@/lib/stages";
+import { Composer, Mode } from "@/components/composer";
+import { PlanReview } from "@/components/plan-review";
+import { ProjectPicker } from "@/components/project-picker";
+import { SheetPane } from "@/components/sheet-pane";
+import { StageRail } from "@/components/stage-rail";
+import { TopRail } from "@/components/top-rail";
+import { Notice, Panel } from "@/components/ui";
+import { Verdict } from "@/components/verdict";
 
 const DEFAULT_INSTRUCTION = `Connect these components using I2C with 3.3 V logic.
 Add the required pull-up resistors.
 Do not modify the USB circuit.`;
 
-type Stage = "project" | "select" | "preview" | "report";
-
 export default function Home() {
-  const [projects, setProjects] = useState<{ name: string; path: string }[]>([]);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [health, setHealth] = useState<HealthResponse | null>(null);
+  const [mode, setMode] = useState<Mode>("nl");
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [instruction, setInstruction] = useState(DEFAULT_INSTRUCTION);
@@ -33,19 +43,29 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  /** Derived, never stored: one source of truth for where the flow is. */
   const stage: Stage = report ? "report" : plan ? "preview" : session ? "select" : "project";
 
-  useEffect(() => {
-    api.projects().then((r) => setProjects(r.projects)).catch((e) => setError(e.message));
-  }, []);
+  const refreshProjects = useCallback(
+    () => api.projects().then((r) => setProjects(r.projects)).catch((e: Error) => setError(e.message)),
+    [],
+  );
 
+  useEffect(() => {
+    refreshProjects();
+    api.health().then(setHealth).catch(() => setHealth(null));
+  }, [refreshProjects]);
+
+  /** Resolves to whether the call succeeded, so callers can clear their inputs. */
   const run = useCallback(async (fn: () => Promise<void>) => {
     setBusy(true);
     setError(null);
     try {
       await fn();
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
+      return false;
     } finally {
       setBusy(false);
     }
@@ -61,17 +81,61 @@ export default function Home() {
       setAnswers({});
       setReport(null);
       setView("schematic");
+      setMode("nl");
       setRevision(created.revision);
     });
 
-  const generatePlan = (nextSelected = selected, nextAnswers = answers) =>
+  const closeProject = () => {
+    setSession(null);
+    setSelected([]);
+    setPlan(null);
+    setPlanMeta(null);
+    setClarification(null);
+    setAnswers({});
+    setReport(null);
+    setError(null);
+    refreshProjects();
+  };
+
+  const generatePlan = (
+    nextSelected = selected,
+    nextAnswers = answers,
+    nextInstruction = mode === "form" ? "" : instruction,
+  ) =>
     run(async () => {
       if (!session) return;
-      const response = await api.plan(session.session_id, nextSelected, instruction, nextAnswers);
+      const response = await api.plan(session.session_id, nextSelected, nextInstruction, nextAnswers);
       setPlanMeta(response);
       setPlan(response.plan);
       setClarification(response.clarification);
     });
+
+  /**
+   * Any hand edit to the selection or the instruction invalidates answers
+   * gathered for the previous one — otherwise stale answers leak into the next
+   * plan and it stops matching what's on screen.
+   */
+  const toggleComponent = (reference: string) => {
+    setSelected((current) =>
+      current.includes(reference) ? current.filter((r) => r !== reference) : [...current, reference],
+    );
+    setAnswers({});
+  };
+
+  const clearSelection = () => {
+    setSelected([]);
+    setAnswers({});
+  };
+
+  const changeInstruction = (next: string) => {
+    setInstruction(next);
+    setAnswers({});
+  };
+
+  const changeMode = (next: Mode) => {
+    setMode(next);
+    setAnswers({});
+  };
 
   /** Apply a clicked clarification option and immediately re-plan with it. */
   const answerClarification = (option: string) => {
@@ -103,288 +167,152 @@ export default function Home() {
       setRevision((current) => current + 1);
     });
 
+  const errorNotice = error && (
+    <Notice tone="brick" title="Request failed">
+      {error}
+    </Notice>
+  );
+
   return (
-    <main className="mx-auto max-w-5xl p-8 space-y-8">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-semibold">KiCAD Mitos</h1>
-        <p className="text-sm text-neutral-500">
-          Natural-language batch edits, reviewed before execution and verified with KiCAD&apos;s own ERC.
-        </p>
-        <Steps stage={stage} />
-      </header>
+    <>
+      <TopRail health={health} />
 
-      {error && <p className="rounded border border-red-300 bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      <main className="mx-auto max-w-bench px-4 pb-20 pt-6 sm:px-6">
+        {!session ? (
+          <div className="mx-auto max-w-2xl">
+            <h1 className="max-w-[26ch] text-[1.75rem] font-extrabold leading-[1.1] tracking-[-0.035em] text-ink sm:text-[2.25rem]">
+              Describe the change.
+              <br />
+              <span className="text-wire">KiCAD decides if it stays.</span>
+            </h1>
+            <p className="mt-3 max-w-[52ch] text-[0.9375rem] leading-relaxed text-muted">
+              Mitos plans the edit, applies it to a checkpointed copy of your project, then runs KiCAD&apos;s own
+              electrical rules check. If the board comes back worse than it started, the change is reverted.
+            </p>
 
-      {!session && (
-        <Card title="1. Open a project">
-          <ul className="divide-y">
-            {projects.map((project) => (
-              <li key={project.name} className="flex items-center justify-between py-2">
-                <span className="font-mono text-sm">{project.name}</span>
-                <button className="btn" disabled={busy} onClick={() => openProject(project.name)}>
-                  Open
-                </button>
-              </li>
-            ))}
-            {projects.length === 0 && <li className="py-2 text-sm text-neutral-500">No projects found.</li>}
-          </ul>
-        </Card>
-      )}
+            <div className="mt-8">
+              <StageRail stage={stage} />
+            </div>
 
-      {session && (
-        <ProjectView
-          session={session}
-          view={view}
-          revision={revision}
-          pendingActions={plan && !report ? plan.actions.length : 0}
-          onView={setView}
-        />
-      )}
+            {errorNotice && <div className="mt-6">{errorNotice}</div>}
 
-      {session && !report && (
-        <Card title="2. Select components and describe the change">
-          <p className="mb-3 text-xs text-neutral-500">
-            {session.project} · baseline ERC: {session.baseline_erc.errors} errors, {session.baseline_erc.warnings}{" "}
-            warnings (pre-existing violations are never blamed on your change)
-          </p>
-          <div className="grid gap-4 md:grid-cols-2">
-            <ul className="space-y-1">
-              {session.components.map((component) => (
-                <li key={component.reference}>
-                  <label className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={selected.includes(component.reference)}
-                      onChange={(event) =>
-                        setSelected((current) =>
-                          event.target.checked
-                            ? [...current, component.reference]
-                            : current.filter((r) => r !== component.reference),
-                        )
-                      }
-                      onClick={() => setAnswers({})}
-                    />
-                    <span className="font-mono">{component.reference}</span>
-                    <span className="text-neutral-500">{component.value}</span>
-                  </label>
-                </li>
-              ))}
-            </ul>
-            <div className="space-y-2">
-              <textarea
-                className="h-40 w-full rounded border p-2 font-mono text-sm"
-                value={instruction}
-                onChange={(event) => {
-                  setInstruction(event.target.value);
-                  setAnswers({});
-                }}
+            <div className="mt-6">
+              <ProjectPicker
+                projects={projects}
+                busy={busy}
+                reachable={health !== null}
+                onOpen={openProject}
+                onUpload={(name, file) =>
+                  run(async () => {
+                    await api.uploadProject(name, file);
+                    await refreshProjects();
+                  })
+                }
               />
-              <button
-                className="btn"
-                disabled={busy || selected.length < 2}
-                onClick={() => generatePlan()}
-              >
-                {busy ? "Working…" : "Generate plan"}
-              </button>
             </div>
           </div>
-        </Card>
-      )}
-
-      {clarification && !plan && (
-        <Card title="Clarification needed">
-          <p className="text-sm">{clarification.question}</p>
-          <p className="mt-1 text-xs text-neutral-500">reason: {clarification.reason}</p>
-          {clarification.options.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {clarification.options.map((option) => (
-                <button
-                  key={option}
-                  className="btn-secondary"
-                  disabled={busy}
-                  onClick={() => answerClarification(option)}
-                >
-                  {option}
-                </button>
-              ))}
+        ) : (
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,7fr)_minmax(0,6fr)] lg:items-start">
+            <div className="min-w-0 lg:sticky lg:top-[4.5rem] lg:max-h-[calc(100vh-5.5rem)] lg:overflow-y-auto">
+              <SheetPane
+                session={session}
+                view={view}
+                revision={revision}
+                pendingActions={plan && !report ? plan.actions.length : 0}
+                boardOutOfSync={report?.decision === "accepted" && session.has_pcb}
+                onView={setView}
+                onClose={closeProject}
+              />
             </div>
-          )}
-          {clarification.answer_key === "selection" && (
-            <p className="mt-2 text-xs text-neutral-500">
-              Pick the components to connect — planning restarts once two are selected.
-            </p>
-          )}
-        </Card>
-      )}
 
-      {plan && !report && (
-        <Card title="3. Review the proposed actions">
-          <dl className="mb-3 grid grid-cols-2 gap-1 text-xs text-neutral-600 md:grid-cols-4">
-            <Meta label="protocol" value={plan.protocol} />
-            <Meta label="logic" value={plan.logic_voltage} />
-            <Meta label="source" value={planMeta?.source ?? "rules"} />
-            <Meta label="protected" value={plan.protected_objects.join(", ") || "none"} />
-          </dl>
-          <ol className="list-decimal space-y-1 pl-5 text-sm">
-            {plan.actions.map((action) => (
-              <li key={action.id}>
-                {describeAction(action)}
-                {action.purpose && <span className="text-neutral-500"> — {action.purpose}</span>}
-              </li>
-            ))}
-          </ol>
-          <Bullets title="Assumptions" items={plan.assumptions} />
-          <Bullets title="Warnings" items={plan.warnings} />
-          <Bullets title="Blocking problems" items={planMeta?.problems ?? []} />
-          <div className="mt-4 flex gap-2">
-            <button className="btn" disabled={busy || !planMeta?.executable} onClick={approve}>
-              {busy ? "Executing…" : "Approve and execute"}
-            </button>
-            <button className="btn-secondary" disabled={busy} onClick={() => setPlan(null)}>
-              Back
-            </button>
+            <div className="min-w-0 space-y-5">
+              <div className="panel px-5 py-4">
+                <StageRail stage={stage} />
+              </div>
+
+              {errorNotice}
+
+              {health && !health.erc_supported && (
+                <Notice tone="copper" title="No verification available">
+                  kicad-cli can&apos;t run ERC here, so the pipeline still plans and applies, but no result can be
+                  called safe — every run comes back as <em>needs your review</em>.
+                </Notice>
+              )}
+
+              {/* One step in focus at a time. "Back to describe" clears the plan
+                  and brings this panel straight back. */}
+              {!report && !plan && (
+                <Composer
+                  session={session}
+                  selected={selected}
+                  mode={mode}
+                  instruction={instruction}
+                  answers={answers}
+                  busy={busy}
+                  onToggle={toggleComponent}
+                  onClearSelection={clearSelection}
+                  onMode={changeMode}
+                  onInstruction={changeInstruction}
+                  onAnswers={setAnswers}
+                  onPlan={() => generatePlan(selected, answers, mode === "form" ? "" : instruction)}
+                />
+              )}
+
+              {clarification && !plan && (
+                <Panel eyebrow="Before planning" title="One thing to pin down">
+                  <p className="min-w-0 wrap-any text-[0.9375rem] font-medium leading-snug text-ink">
+                    {clarification.question}
+                  </p>
+                  <p className="mt-1.5 min-w-0 wrap-any text-[0.8125rem] leading-snug text-muted">
+                    {clarification.reason}
+                  </p>
+                  {clarification.options.length > 0 && (
+                    <div className="mt-3.5 flex flex-wrap gap-2">
+                      {clarification.options.map((option) => (
+                        <button
+                          key={option}
+                          type="button"
+                          className={option === "Cancel" ? "btn-ghost !border-transparent !text-muted" : "btn-ghost"}
+                          disabled={busy}
+                          onClick={() => answerClarification(option)}
+                        >
+                          {option}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {clarification.answer_key === "selection" && (
+                    <p className="mt-3 min-w-0 wrap-any text-[0.75rem] leading-snug text-muted">
+                      Pick the components to connect — planning restarts as soon as two are chosen.
+                    </p>
+                  )}
+                </Panel>
+              )}
+
+              {plan && !report && (
+                <PlanReview
+                  plan={plan}
+                  meta={planMeta}
+                  busy={busy}
+                  onApprove={approve}
+                  onBack={() => setPlan(null)}
+                />
+              )}
+
+              {report && (
+                <Verdict
+                  report={report}
+                  onBackToPlan={() => setReport(null)}
+                  onNewChange={() => {
+                    setReport(null);
+                    setPlan(null);
+                  }}
+                />
+              )}
+            </div>
           </div>
-        </Card>
-      )}
-
-      {report && (
-        <Card title="4. Validation report">
-          <p
-            className={`rounded p-3 text-sm ${
-              report.decision === "accepted" ? "bg-green-50 text-green-800" : "bg-amber-50 text-amber-900"
-            }`}
-          >
-            <strong>{report.decision.replace(/_/g, " ")}</strong> — {report.reason}
-          </p>
-          <ul className="mt-3 space-y-1 text-sm">
-            {report.validation.checks.map((check) => (
-              <li key={check.name}>
-                <span className={check.passed ? "text-green-700" : "text-red-700"}>{check.passed ? "pass" : "fail"}</span>{" "}
-                <span className="font-mono text-xs">{check.name}</span>
-                {check.detail && <span className="text-neutral-500"> — {check.detail}</span>}
-              </li>
-            ))}
-          </ul>
-          <p className="mt-3 text-xs text-neutral-500">
-            ERC before: {report.validation.erc_before?.errors ?? 0} errors / {report.validation.erc_before?.warnings ?? 0}{" "}
-            warnings · after: {report.validation.erc_after?.errors ?? 0} errors /{" "}
-            {report.validation.erc_after?.warnings ?? 0} warnings · new critical:{" "}
-            {report.validation.violation_diff?.new.filter((v) => v.severity === "error").length ?? 0}
-          </p>
-          <Bullets title="Changes applied" items={report.changes} />
-          {report.restoration_verified !== null && (
-            <p className="mt-2 text-xs text-neutral-500">
-              checkpoint restored: {report.restoration_verified ? "verified" : "failed"}
-            </p>
-          )}
-          <button className="btn mt-4" onClick={() => setReport(null)}>
-            Back to plan
-          </button>
-        </Card>
-      )}
-    </main>
-  );
-}
-
-/**
- * Renders the session's working copy through kicad-cli, so it only ever shows changes that were
- * executed and kept — a rejected run is rolled back and the next render snaps back to the original.
- */
-function ProjectView({
-  session,
-  view,
-  revision,
-  pendingActions,
-  onView,
-}: {
-  session: SessionResponse;
-  view: "schematic" | "pcb";
-  revision: number;
-  pendingActions: number;
-  onView: (view: "schematic" | "pcb") => void;
-}) {
-  const [failed, setFailed] = useState(false);
-  const source = api.renderUrl(session.session_id, view, revision);
-
-  useEffect(() => setFailed(false), [source]);
-
-  return (
-    <Card title="Live project view">
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        {(["schematic", "pcb"] as const).map((option) => (
-          <button
-            key={option}
-            className={option === view ? "btn" : "btn-secondary"}
-            disabled={option === "pcb" && !session.has_pcb}
-            onClick={() => onView(option)}
-          >
-            {option === "pcb" ? "PCB" : "Schematic"}
-          </button>
-        ))}
-        <span className="text-xs text-neutral-500">
-          {pendingActions > 0
-            ? `${pendingActions} proposed action(s) not applied yet — the view updates once you approve them`
-            : "showing the project exactly as it is on disk"}
-        </span>
-      </div>
-      {failed ? (
-        <p className="rounded border border-dashed p-6 text-center text-sm text-neutral-500">
-          {view === "pcb" ? "This project has no board file." : "kicad-cli could not render this schematic."}
-        </p>
-      ) : (
-        /* eslint-disable-next-line @next/next/no-img-element */
-        <img
-          src={source}
-          alt={`${session.project} ${view}`}
-          className="max-h-[28rem] w-full rounded border bg-white object-contain"
-          onError={() => setFailed(true)}
-        />
-      )}
-    </Card>
-  );
-}
-
-function Steps({ stage }: { stage: Stage }) {
-  const stages: Stage[] = ["project", "select", "preview", "report"];
-  return (
-    <ol className="flex gap-2 pt-2 text-xs">
-      {stages.map((item, index) => (
-        <li key={item} className={item === stage ? "font-semibold text-blue-700" : "text-neutral-400"}>
-          {index + 1}. {item}
-        </li>
-      ))}
-    </ol>
-  );
-}
-
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded-lg border p-4">
-      <h2 className="mb-3 text-lg font-medium">{title}</h2>
-      {children}
-    </section>
-  );
-}
-
-function Meta({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="uppercase tracking-wide text-neutral-400">{label}</dt>
-      <dd className="font-mono">{value}</dd>
-    </div>
-  );
-}
-
-function Bullets({ title, items }: { title: string; items: string[] }) {
-  if (items.length === 0) return null;
-  return (
-    <div className="mt-3">
-      <h3 className="text-xs font-semibold uppercase tracking-wide text-neutral-500">{title}</h3>
-      <ul className="list-disc pl-5 text-sm">
-        {items.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
-    </div>
+        )}
+      </main>
+    </>
   );
 }

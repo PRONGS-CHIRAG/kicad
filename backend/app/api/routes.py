@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, File, Form, HTTPException, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from ..config import settings
 from ..kicad.erc import KicadCli
+from ..kicad.upload import UploadError, extract_project
 from ..models import ActionPlan, Clarification, ErcReport, PlanAnswers, RunReport
 from ..planning.validator import validate_plan
 from ..workflow import Session, store
@@ -25,6 +26,7 @@ class SessionResponse(BaseModel):
     components: list[dict]
     nets: dict[str, list[str]]
     baseline_erc: ErcReport
+    baseline_drc: ErcReport | None = None
     revision: int = 0
     has_pcb: bool = False
 
@@ -56,6 +58,7 @@ def _session_response(session: Session) -> SessionResponse:
         components=session.state.component_summaries(),
         nets={name: sorted(pins) for name, pins in sorted(session.state.nets.items())},
         baseline_erc=session.baseline_erc,
+        baseline_drc=session.baseline_drc,
         revision=session.revision,
         has_pcb=session.board_path is not None,
     )
@@ -74,9 +77,29 @@ def health() -> dict:
     }
 
 
+MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+
+
 @router.get("/projects")
 def list_projects() -> dict:
     return {"projects": store.list_projects()}
+
+
+@router.post("/projects", status_code=201)
+async def upload_project(
+    name: str = Form(...),
+    file: UploadFile = File(...),  # noqa: B008 - FastAPI resolves these at request time
+) -> dict:
+    """Accept a zipped KiCAD project. Uploads land in the workspace, not the fixtures."""
+    data = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(data) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"archive exceeds {MAX_UPLOAD_BYTES} bytes")
+    settings.uploads_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        target = extract_project(data, name.strip(), settings.uploads_dir)
+    except UploadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"name": target.name, "path": str(target), "origin": "uploaded"}
 
 
 @router.post("/sessions", response_model=SessionResponse)

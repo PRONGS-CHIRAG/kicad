@@ -2,15 +2,25 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 
-const geistSans = localFont({
-  src: "./fonts/GeistVF.woff",
-  variable: "--font-geist-sans",
-  weight: "100 900",
+/**
+ * Archivo for voice, IBM Plex Mono for data. Both self-hosted from
+ * ./fonts so the Docker build needs no network beyond npm.
+ */
+const archivo = localFont({
+  src: "./fonts/Archivo-Variable.woff2",
+  variable: "--font-archivo",
+  weight: "400 800",
+  display: "swap",
 });
-const geistMono = localFont({
-  src: "./fonts/GeistMonoVF.woff",
-  variable: "--font-geist-mono",
-  weight: "100 900",
+
+const plexMono = localFont({
+  src: [
+    { path: "./fonts/IBMPlexMono-Regular.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/IBMPlexMono-Medium.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/IBMPlexMono-SemiBold.woff2", weight: "600", style: "normal" },
+  ],
+  variable: "--font-plex-mono",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -25,11 +35,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
+      <body className={`${archivo.variable} ${plexMono.variable} antialiased`}>{children}</body>
     </html>
   );
 }

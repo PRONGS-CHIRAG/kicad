@@ -72,6 +72,7 @@ class PlanAnswers(BaseModel):
     peripheral_scl: str | None = None
     controller_sda: str | None = None
     controller_scl: str | None = None
+    pullup_value: str | None = None
 
 
 class Clarification(BaseModel):
@@ -89,8 +90,18 @@ class Violation(BaseModel):
     type: str
     description: str
     items: list[str] = Field(default_factory=list)
+    #: Nets named by this violation's items, when it names any.
+    nets: list[str] = Field(default_factory=list)
 
     def signature(self) -> str:
+        # An unconnected-items violation names an arbitrary representative pair
+        # drawn from the unconnected cluster, and KiCAD does not pick the same
+        # pair on consecutive runs of the same unchanged file. Keying those on
+        # the nets involved - which is what the violation is actually about -
+        # makes before/after diffing deterministic. Without this, a DRC gate
+        # would reject valid changes at random.
+        if self.type.endswith("unconnected_items") and self.nets:
+            return f"{self.severity}|{self.type}|{'|'.join(self.nets)}"
         return f"{self.severity}|{self.type}|{'|'.join(sorted(self.items))}"
 
 
@@ -140,7 +151,12 @@ class ValidationReport(BaseModel):
     erc_before: ErcReport | None = None
     erc_after: ErcReport | None = None
     violation_diff: ViolationDiff | None = None
+    drc_before: ErcReport | None = None
+    drc_after: ErcReport | None = None
+    drc_diff: ViolationDiff | None = None
     state_diff: StateDiff | None = None
+    files_changed: list[str] = Field(default_factory=list)
+    unexpected_files: list[str] = Field(default_factory=list)
     requested_connections_created: int = 0
     requested_connections_total: int = 0
     unexpected_changes: int = 0

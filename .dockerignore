@@ -1,0 +1,7 @@
+**/node_modules
+**/.next
+**/__pycache__
+**/.venv
+**/.git
+**/reports
+**/benchmark-results

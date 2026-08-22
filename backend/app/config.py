@@ -46,5 +46,10 @@ class Settings(BaseSettings):
     def sessions_dir(self) -> Path:
         return self.workspace_dir / "sessions"
 
+    @property
+    def uploads_dir(self) -> Path:
+        """Uploaded projects live in the workspace, never in the git-tracked fixture set."""
+        return self.workspace_dir / "projects"
+
 
 settings = Settings()

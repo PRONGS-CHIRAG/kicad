@@ -29,9 +29,21 @@ export type SessionResponse = {
   components: ComponentSummary[];
   nets: Record<string, string[]>;
   baseline_erc: ErcReport;
+  baseline_drc: ErcReport | null;
   revision: number;
   has_pcb: boolean;
 };
+
+export type HealthResponse = {
+  status: string;
+  kicad_cli: string | null;
+  erc_supported: boolean;
+  drc_supported: boolean;
+  executor: string;
+  llm_enabled: boolean;
+};
+
+export type ProjectSummary = { name: string; path: string; origin: "fixture" | "uploaded" };
 
 export type Action =
   | { id: string; type: "connect_pins"; from: string; to: string; net_name: string; purpose: string }
@@ -56,7 +68,8 @@ export type AnswerKey =
   | "peripheral_sda"
   | "peripheral_scl"
   | "controller_sda"
-  | "controller_scl";
+  | "controller_scl"
+  | "pullup_value";
 
 export type PlanAnswers = Partial<Record<AnswerKey, string>>;
 
@@ -93,6 +106,11 @@ export type RunReport = {
     erc_before: ErcReport | null;
     erc_after: ErcReport | null;
     violation_diff: { new: Violation[]; resolved: Violation[]; unchanged: Violation[] } | null;
+    drc_before: ErcReport | null;
+    drc_after: ErcReport | null;
+    drc_diff: { new: Violation[]; resolved: Violation[]; unchanged: Violation[] } | null;
+    files_changed: string[];
+    unexpected_files: string[];
     requested_connections_created: number;
     requested_connections_total: number;
     unexpected_changes: number;
@@ -115,8 +133,20 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  health: () => request<{ status: string; kicad_cli: string | null; executor: string; llm_enabled: boolean }>("/api/health"),
-  projects: () => request<{ projects: { name: string; path: string }[] }>("/api/projects"),
+  health: () => request<HealthResponse>("/api/health"),
+  projects: () => request<{ projects: ProjectSummary[] }>("/api/projects"),
+  /** Upload a zipped KiCAD project. Uploads land in the workspace, not the fixtures. */
+  uploadProject: async (name: string, file: File) => {
+    const body = new FormData();
+    body.append("name", name);
+    body.append("file", file);
+    const response = await fetch(`${API_BASE}/api/projects`, { method: "POST", body });
+    if (!response.ok) {
+      const detail = await response.json().catch(() => ({ detail: response.statusText }));
+      throw new Error(typeof detail.detail === "string" ? detail.detail : response.statusText);
+    }
+    return (await response.json()) as ProjectSummary;
+  },
   createSession: (project: string) =>
     request<SessionResponse>("/api/sessions", { method: "POST", body: JSON.stringify({ project }) }),
   plan: (sessionId: string, selected: string[], instruction: string, answers: PlanAnswers = {}) =>

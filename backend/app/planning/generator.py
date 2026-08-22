@@ -120,6 +120,7 @@ def generate_plan(
         parsed,
         protocol=answers.protocol or parsed.protocol,
         logic_voltage=answers.logic_voltage or parsed.logic_voltage,
+        pullup_value=answers.pullup_value or parsed.pullup_value,
     )
 
     unknown = [ref for ref in selected if ref not in state.components]

@@ -14,6 +14,8 @@ from .decision import evaluate
 from .execution.base import Executor
 from .execution.local import LocalExecutor
 from .execution.mitos import MitosExecutor
+from .kicad.board import BoardSync
+from .kicad.board import sync_to_schematic as sync_board
 from .kicad.checkpoint import Checkpoint
 from .kicad.erc import KicadCli, diff_violations
 from .kicad.reader import ProjectState, read_project
@@ -45,6 +47,7 @@ class Session:
     project_dir: Path
     baseline_erc: ErcReport
     state: ProjectState
+    baseline_drc: ErcReport | None = None
     plan: ActionPlan | None = None
     plan_source: str = "rules"
     clarification: Clarification | None = None
@@ -66,18 +69,35 @@ class SessionStore:
         self.cli = cli or KicadCli(settings.kicad_cli)
         self._sessions: dict[str, Session] = {}
 
+    def project_roots(self) -> list[tuple[Path, str]]:
+        """Fixture projects plus uploaded ones, in lookup order."""
+        return [(Path(settings.projects_dir), "fixture"), (settings.uploads_dir, "uploaded")]
+
     def list_projects(self) -> list[dict]:
         projects: list[dict] = []
-        root = Path(settings.projects_dir)
-        if not root.exists():
-            return projects
-        for path in sorted(root.iterdir()):
-            if path.is_dir() and list(path.glob("*.kicad_sch")):
-                projects.append({"name": path.name, "path": str(path)})
+        seen: set[str] = set()
+        for root, origin in self.project_roots():
+            if not root.exists():
+                continue
+            for path in sorted(root.iterdir()):
+                if path.name in seen or not path.is_dir() or not list(path.glob("*.kicad_sch")):
+                    continue
+                seen.add(path.name)
+                projects.append({"name": path.name, "path": str(path), "origin": origin})
         return projects
 
+    def resolve_project(self, project_name: str) -> Path:
+        """Locate a project by name across every root, refusing anything path-like."""
+        if project_name != Path(project_name).name or project_name in {"", ".", ".."}:
+            raise FileNotFoundError(f"invalid project name {project_name!r}")
+        for root, _ in self.project_roots():
+            candidate = root / project_name
+            if candidate.is_dir() and list(candidate.glob("*.kicad_sch")):
+                return candidate
+        raise FileNotFoundError(f"unknown project {project_name}")
+
     def create(self, project_name: str) -> Session:
-        source = Path(settings.projects_dir) / project_name
+        source = self.resolve_project(project_name)
         if not source.is_dir():
             raise FileNotFoundError(f"unknown project {project_name}")
         session_id = uuid.uuid4().hex[:12]
@@ -93,6 +113,8 @@ class SessionStore:
             baseline_erc=baseline,
             state=state,
         )
+        board = session.board_path
+        session.baseline_drc = self.cli.run_drc(board) if board else None
         self._sessions[session_id] = session
         return session
 
@@ -143,16 +165,50 @@ class SessionStore:
             logger.exception("executor raised")
             execution = ExecutionResult(completed=False, steps=[], error=str(exc))
 
+        # Reading the schematic back is a pure parse, so it runs before the file
+        # snapshot — the board sync needs the state it produces.
         after: ProjectState | None
-        erc_after: ErcReport | None
         try:
             after = read_project(session.project_dir)
-            erc_after = self.cli.run_erc(after.schematic_path)
-            if not erc_after.ran and self.cli.available:
-                after = None
         except Exception as exc:  # noqa: BLE001 - unreadable project is a hard failure
             logger.warning("post-execution read failed: %s", exc)
-            after, erc_after = None, None
+            after = None
+
+        # Bring the board in line with the schematic that was just written.
+        # kicad-cli has no "Update PCB from Schematic", so this is ours to do. It
+        # sits inside the checkpoint envelope, so a bad board write is reverted
+        # along with everything else.
+        board = session.board_path
+        board_sync = BoardSync()
+        if board and after is not None and execution.completed:
+            try:
+                board_sync = sync_board(board, after)
+            except Exception as exc:  # noqa: BLE001 - a failed sync must not crash the run
+                logger.exception("board sync failed")
+                execution = execution.model_copy(update={"error": f"board sync failed: {exc}"})
+
+        # Snapshot the file-level diff here, before ERC/DRC run: kicad-cli
+        # rewrites project files as a side effect, and attributing those writes
+        # to the executor would reject every run on a machine that has KiCAD.
+        files_changed = checkpoint.files_changed()
+
+        erc_after: ErcReport | None = None
+        if after is not None:
+            try:
+                erc_after = self.cli.run_erc(after.schematic_path)
+                if not erc_after.ran and self.cli.available:
+                    after = None
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("post-execution ERC failed: %s", exc)
+                after, erc_after = None, None
+
+        drc_after = self.cli.run_drc(board) if board else None
+        drc_before = session.baseline_drc
+        drc_diff = (
+            diff_violations(drc_before, drc_after)
+            if drc_before and drc_before.ran and drc_after and drc_after.ran
+            else None
+        )
 
         violation_diff = (
             diff_violations(session.baseline_erc, erc_after) if erc_after and erc_after.ran else None
@@ -165,6 +221,11 @@ class SessionStore:
             erc_before=session.baseline_erc,
             erc_after=erc_after,
             violation_diff=violation_diff,
+            files_changed=files_changed,
+            drc_before=drc_before,
+            drc_after=drc_after,
+            drc_diff=drc_diff,
+            board_sync=board_sync,
         )
 
         restoration_verified: bool | None = None
@@ -172,7 +233,10 @@ class SessionStore:
             restoration_verified = checkpoint.restore()
             self.refresh(session)
 
+        # The board sync is part of what the run changed, so it is reported
+        # alongside the executor's own steps rather than left implicit.
         changes = [step.detail for step in execution.steps if step.status == "applied"]
+        changes.extend(board_sync.summary())
         report = RunReport(
             session_id=session.id,
             goal=plan.goal,
@@ -190,6 +254,7 @@ class SessionStore:
         session.revision += 1
         if decision == Decision.ACCEPTED:
             session.baseline_erc = erc_after or session.baseline_erc
+            session.baseline_drc = drc_after or session.baseline_drc
         self.refresh(session)
         return report
 

@@ -17,7 +17,7 @@ def _approved_plan(store, session) -> ActionPlan:
     return plan
 
 
-def test_successful_batch_is_accepted(store) -> None:
+def test_successful_batch_is_accepted(store, requires_kicad: None) -> None:
     session = store.create("esp32_i2c_demo")
     report = store.execute(session, _approved_plan(store, session))
 
@@ -72,7 +72,7 @@ def test_partial_execution_is_rejected_and_restored(store) -> None:
     assert hash_tree(session.project_dir) == before
 
 
-def test_execution_is_idempotent_on_an_already_connected_project(store) -> None:
+def test_execution_is_idempotent_on_an_already_connected_project(store, requires_kicad: None) -> None:
     session = store.create("esp32_i2c_connected")
     plan = _approved_plan(store, session)
     report = store.execute(session, plan)

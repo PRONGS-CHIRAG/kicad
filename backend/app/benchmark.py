@@ -52,6 +52,9 @@ class BenchmarkOutcome:
     before: ProjectState | None = None
     after: ProjectState | None = None
     problems: list[str] = field(default_factory=list)
+    check_ran: bool = False
+    check_detail: str | None = None
+    duplicates: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -68,7 +71,49 @@ class BenchmarkOutcome:
             "plan_actions": len(self.plan.actions) if self.plan else 0,
             "unexpected_changes": self.report.validation.unexpected_changes if self.report else 0,
             "restoration_verified": self.report.restoration_verified if self.report else None,
+            "planning_correct": planning_correct(self),
+            "check_ran": self.check_ran,
+            "check_detail": self.check_detail,
+            "duplicate_components": self.duplicates,
+            "unexpected_files": self.report.validation.unexpected_files if self.report else [],
         }
+
+
+def planning_correct(outcome: BenchmarkOutcome) -> bool:
+    """Whether the planning stage alone did the right thing, regardless of execution."""
+    if outcome.benchmark.expect == "clarification":
+        return outcome.clarification is not None or bool(outcome.problems)
+    return outcome.plan is not None and not outcome.problems
+
+
+def _resistor_nets(state: ProjectState) -> dict[str, frozenset[str]]:
+    """reference -> the pair of nets each two-terminal resistor bridges."""
+    pairs: dict[str, frozenset[str]] = {}
+    for reference, component in state.components.items():
+        if component.is_power or not reference.startswith("R"):
+            continue
+        nets = frozenset(
+            net
+            for net in (state.pin_nets.get(f"{reference}.{pin.number}") for pin in component.pins)
+            if net
+        )
+        if len(nets) == 2:
+            pairs[reference] = nets
+    return pairs
+
+
+def duplicate_pullups(outcome: BenchmarkOutcome) -> list[str]:
+    """Resistors this run added that bridge a net pair already bridged before it ran."""
+    if outcome.before is None or outcome.after is None:
+        return []
+    before = _resistor_nets(outcome.before)
+    after = _resistor_nets(outcome.after)
+    already = set(before.values())
+    return [
+        f"{reference} duplicates an existing pull-up across {' / '.join(sorted(nets))}"
+        for reference, nets in sorted(after.items())
+        if reference not in before and nets in already
+    ]
 
 
 def _no_new_components(outcome: BenchmarkOutcome) -> str | None:
@@ -218,13 +263,23 @@ def run_benchmark(benchmark: Benchmark, store: SessionStore) -> BenchmarkOutcome
     report = store.execute(session, result, executor=benchmark.executor)
     outcome.report = report
     outcome.after = store.refresh(session)
+    outcome.duplicates = duplicate_pullups(outcome)
+
+    # The custom check runs unconditionally. Short-circuiting on a decision
+    # mismatch used to leave three benchmarks' real assertions never executed,
+    # which made them look covered when they were not.
     expected_decision = Decision(benchmark.expect)
+    if benchmark.check is not None:
+        outcome.check_ran = True
+        outcome.check_detail = benchmark.check(outcome)
+
     if report.decision != expected_decision:
         outcome.detail = f"expected {expected_decision.value}, got {report.decision.value}: {report.reason}"
+        if outcome.check_detail:
+            outcome.detail += f" | check also failed: {outcome.check_detail}"
     else:
-        extra = benchmark.check(outcome) if benchmark.check else None
-        outcome.passed = extra is None
-        outcome.detail = extra or report.reason
+        outcome.passed = outcome.check_detail is None
+        outcome.detail = outcome.check_detail or report.reason
     outcome.duration_seconds = time.perf_counter() - started
     return outcome
 
@@ -240,11 +295,19 @@ def summarize(outcomes: list[BenchmarkOutcome]) -> dict:
     restored = [o for o in outcomes if o.report and o.report.decision == Decision.REJECTED_AND_RESTORED]
     durations = sorted(o.duration_seconds for o in outcomes)
     median = durations[len(durations) // 2] if durations else 0.0
+    corrupted = [o for o in executed if o.report and not o.report.validation.project_readable]
+    duplicated = [o for o in executed if o.duplicates]
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "total": len(outcomes),
         "passed": sum(1 for o in outcomes if o.passed),
-        "plan_accuracy": round(sum(1 for o in outcomes if o.passed) / max(len(outcomes), 1), 3),
+        "overall_pass_rate": round(sum(1 for o in outcomes if o.passed) / max(len(outcomes), 1), 3),
+        # Planning-stage only: did it produce a validator-clean plan where a plan
+        # was expected, and clarify where clarification was expected? Kept
+        # separate from the overall pass rate, which also folds in execution.
+        "plan_accuracy": round(
+            sum(1 for o in outcomes if planning_correct(o)) / max(len(outcomes), 1), 3
+        ),
         "execution_success": round(
             sum(1 for o in executed if o.report and o.report.execution.completed) / max(len(executed), 1), 3
         ),
@@ -257,6 +320,9 @@ def summarize(outcomes: list[BenchmarkOutcome]) -> dict:
             for o in executed
             if o.report and o.report.decision == Decision.ACCEPTED
         ),
+        "duplicate_component_rate": round(len(duplicated) / max(len(executed), 1), 3),
+        "project_corruption_rate": round(len(corrupted) / max(len(executed), 1), 3),
+        "checks_not_run": [o.benchmark.name for o in outcomes if o.benchmark.check and not o.check_ran],
         "median_duration_seconds": round(median, 3),
         "results": [o.to_dict() for o in outcomes],
     }
@@ -290,6 +356,9 @@ tr.fail td:nth-child(5) {{ color: #b42318; font-weight: 600; }}
   <div class="metric"><b>{summary["unsafe_change_rejection"] * 100:.0f}%</b>unsafe changes rejected</div>
   <div class="metric"><b>{summary["rollback_success"] * 100:.0f}%</b>rollbacks verified</div>
   <div class="metric"><b>{summary["unauthorized_changes"]}</b>unauthorized changes</div>
+  <div class="metric"><b>{summary["plan_accuracy"] * 100:.0f}%</b>plan accuracy</div>
+  <div class="metric"><b>{summary["duplicate_component_rate"] * 100:.0f}%</b>duplicate components</div>
+  <div class="metric"><b>{summary["project_corruption_rate"] * 100:.0f}%</b>project corruption</div>
   <div class="metric"><b>{summary["median_duration_seconds"]}s</b>median duration</div>
 </div>
 <table><thead><tr><th>Benchmark</th><th>Project</th><th>Expected</th><th>Result</th><th>Status</th><th>Time</th><th>Detail</th></tr></thead>
