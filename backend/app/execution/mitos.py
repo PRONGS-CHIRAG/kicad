@@ -97,6 +97,23 @@ class McpStdioClient:
         return result
 
 
+def _result_text(result: dict) -> str:
+    """The human-readable line an MCP tool returns, if it returned one.
+
+    `RunReport.changes` is built from these and shown to the user, so a raw
+    argument dump would put JSON blobs in the UI where the local executor puts
+    "labelled U2.SDA as I2C_SDA".
+    """
+    content = result.get("content")
+    if not isinstance(content, list):
+        return ""
+    return " ".join(
+        str(part.get("text", "")).strip()
+        for part in content
+        if isinstance(part, dict) and part.get("type") == "text" and part.get("text")
+    ).strip()
+
+
 class MitosExecutor(Executor):
     name = "mitos"
 
@@ -126,7 +143,7 @@ class MitosExecutor(Executor):
             for action in plan.actions:
                 tool, arguments = self._map_action(project_dir, action)
                 try:
-                    client.call_tool(tool, arguments)
+                    result = client.call_tool(tool, arguments)
                 except RuntimeError as exc:
                     steps.append(
                         ExecutionStep(action_id=action.id, tool=tool, status="failed", detail=str(exc))
@@ -134,7 +151,10 @@ class MitosExecutor(Executor):
                     return ExecutionResult(completed=False, steps=steps, error=str(exc))
                 steps.append(
                     ExecutionStep(
-                        action_id=action.id, tool=tool, status="applied", detail=json.dumps(arguments)
+                        action_id=action.id,
+                        tool=tool,
+                        status="applied",
+                        detail=_result_text(result) or json.dumps(arguments),
                     )
                 )
         return ExecutionResult(completed=True, steps=steps)
