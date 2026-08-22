@@ -119,8 +119,11 @@ cd backend
 `app.demo` builds the three demo artefacts from §28 of the plan: an accepted batch, a batch that is
 rejected and restored, and the benchmark table. The rejected run needs a fault to reject and no
 instruction produces one organically (a wrong-voltage request is caught at planning time, before
-anything executes), so it injects a deliberately broken executor — labelled as an injected fault in
-both the JSON and the HTML.
+anything executes, and a synced board is engineered to never fail DRC on a valid plan), so it injects
+a fault at the executor boundary: a backend that applies different wiring than the approved plan,
+standing in for the real, disclosed risk that the Mitos MCP executor's tool mapping is unverified
+(see [docs/mitos.md](docs/mitos.md)). It is labelled as an injected fault in both the JSON and the
+HTML.
 
 The benchmark covers the ten scenarios from the product plan: standard connection, existing
 pull-ups, missing pin names, wrong voltage, protected USB circuit, pre-existing ERC warnings,

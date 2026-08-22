@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Show the rollback live: a saboteur executor wires the I2C bus to GND, and the
-decision engine catches it and restores the project.
+"""Show the rollback live: an executor wires the I2C bus to GND instead of what
+was approved, and the decision engine catches it and restores the project.
 
-The planner will not produce a bad plan on purpose, so there is no way to see a
-rejection through the UI. This swaps in `MisconnectingExecutor` — the same
-injected fault the benchmark uses for scenario 7 — while leaving every other
-stage untouched, so what you are watching is the real decision engine and the
-real checkpoint restore.
+The planner will not produce a bad plan on purpose, and a synced board cannot
+fail DRC on a valid plan either, so there is no way to see a rejection through
+the UI from an honest instruction. This swaps in `MisconnectingExecutor` — the
+same injected fault the benchmark uses for scenario 7, modeling the real,
+disclosed risk that the Mitos MCP executor's tool mapping is unverified (see
+docs/mitos.md) — while leaving every other stage untouched, so what you are
+watching is the real decision engine and the real checkpoint restore.
 
     python3 scripts/live_rollback.py [project]
 """
@@ -36,7 +38,8 @@ def main() -> int:
 
     print(f"project      {project}")
     print(f"plan         {len(plan.actions)} actions from the {source} planner, {len(problems)} problems")
-    print("executor     MisconnectingExecutor (injected fault: ties the bus to GND)\n")
+    print("executor     MisconnectingExecutor (injected fault: applies different wiring than approved,")
+    print("             modeling an unverified Mitos MCP tool mapping — ties the bus to GND)\n")
 
     before = hash_tree(session.project_dir)
     report = store.execute(session, plan, executor=MisconnectingExecutor())

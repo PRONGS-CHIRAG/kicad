@@ -2,8 +2,13 @@
 
 Everything here runs the real pipeline. The unsafe demo needs a fault to reject,
 and no natural instruction produces one (a wrong-voltage request is caught at
-planning time, before anything executes), so it injects a deliberately broken
-executor. That is labelled as an injected fault everywhere it is reported.
+planning time, before anything executes; a synced board is engineered and
+tested to never fail DRC on a valid plan). So it injects a fault at the
+executor boundary instead of at the instruction — modeling a real, disclosed
+risk of this architecture: the Mitos MCP executor's tool mapping is unverified
+(see docs/mitos.md), so a backend that applies something other than the
+approved plan is a plausible failure, not a contrived one. That is labelled as
+an injected fault everywhere it is reported.
 
     python -m app.demo --out reports/demo
 """
@@ -100,15 +105,22 @@ DEMOS = [
         instruction=DEMO_INSTRUCTION,
         selected=["U1", "U2"],
         narrative=(
-            "The same approved plan is executed by a deliberately broken executor that ties both bus "
-            "signals to GND. The decision engine compares the project against the approved plan, "
-            "rejects the batch and restores the checkpoint; the file hashes afterwards are identical "
-            "to the ones taken before execution."
+            "The same approved plan is executed by a backend that applies different wiring than "
+            "approved (ties both bus signals to GND) — standing in for a real, disclosed risk of this "
+            "architecture: the Mitos MCP executor's tool mapping is unverified, so an execution "
+            "backend can apply something other than what was approved. The decision engine never "
+            "trusts the executor's own success signal: it re-reads the project from disk and compares "
+            "it against the approved plan, rejects the batch and restores the checkpoint; the file "
+            "hashes afterwards are identical to the ones taken before execution."
         ),
         executor=MisconnectingExecutor(),
         injected_fault=(
-            "MisconnectingExecutor - a test double that rewrites every signal net to GND. "
-            "This fault is injected, not one the system discovered on its own."
+            "MisconnectingExecutor - models an execution backend applying different wiring than "
+            "approved (e.g. a mismapped Mitos MCP tool, see docs/mitos.md), by rewriting every signal "
+            "net to GND. This fault is injected to exercise the check, not one the system hit on its "
+            "own — no honest instruction produces a rejection organically, because bad instructions "
+            "are caught at planning time and a synced board is engineered never to fail DRC on a valid "
+            "plan."
         ),
     ),
 ]

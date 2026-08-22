@@ -158,9 +158,16 @@ Stated plainly, because several of these are easy to mistake for finished featur
   explicitly instead of silently mis-planning.
 - **Sessions are in-memory** (`SessionStore._sessions`); only the project working copies and
   checkpoints are on disk. A backend restart drops session state. There is no database.
-- **The demo's rejected run injects a deliberately broken executor**, labelled as such in both the
+- **The demo's rejected run injects a fault at the executor boundary**, labelled as such in both the
   JSON and the HTML — no honest instruction produces a rejection organically, because a wrong-voltage
-  request is caught at planning time, before anything executes.
+  request is caught at planning time before anything executes, and a synced board is engineered and
+  tested to never fail DRC on a valid plan (see the placement/overlap tests in
+  [test_board_sync.py](backend/tests/test_board_sync.py)). The injected fault models a real, disclosed
+  risk rather than an arbitrary one: it applies different wiring than the approved plan, standing in
+  for what an execution backend with an unverified tool mapping — the Mitos MCP executor, see
+  [docs/mitos.md](docs/mitos.md) — could actually do. The decision engine catches it the same way it
+  would catch the real thing: by comparing re-read project state against the approved plan, never by
+  trusting the executor's own success signal.
 
 ## Tech stack
 

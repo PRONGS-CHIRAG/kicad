@@ -17,7 +17,15 @@ from .workflow import Session, SessionStore
 
 
 class MisconnectingExecutor(LocalExecutor):
-    """Executor that ties every signal net to GND, to prove detection works."""
+    """Executor that applies different wiring than the approved plan.
+
+    This models a real risk for this architecture, not an arbitrary fault: the
+    Mitos MCP executor's tool mapping is unverified (`DEFAULT_TOOL_MAP` in
+    execution/mitos.py, see docs/mitos.md), so an execution backend applying
+    something other than what was approved is a plausible failure, not a
+    hypothetical one. It ties every signal net to GND as a concrete stand-in
+    for "the backend did something other than the approved plan."
+    """
 
     name = "misconnecting"
 
