@@ -1,0 +1,1223 @@
+implement all stuff from the plan
+
+---
+
+# KiCAD Mitos — Full MVP Plan
+
+## 1. Product overview
+
+The MVP is a **natural-language batch-editing copilot for KiCAD**.
+
+A user selects multiple components in KiCAD and describes the intended outcome:
+
+> “Connect this ESP32 to the temperature sensor using I²C and add the required pull-up resistors.”
+
+The system:
+
+1. Reads the selected components.
+2. Understands the requested outcome.
+3. Creates a structured action plan.
+4. Shows the plan to the user.
+5. Executes the approved actions through KiCAD Mitos.
+6. Runs KiCAD ERC/DRC tests.
+7. Accepts the changes or restores the previous project.
+
+The MVP is not intended to replace normal KiCAD controls. Users continue using the mouse for precise, simple operations. Natural language is used when one instruction represents several related PCB actions.
+
+---
+
+# 2. Core value proposition
+
+> Describe a multi-step circuit change once, preview it, execute it in KiCAD and verify it using KiCAD’s own engineering checks.
+
+The differentiation is not simply “control KiCAD with text.” It is:
+
+* Multi-component changes from one instruction.
+* A reviewable plan before execution.
+* Deterministic validation after execution.
+* Automatic rollback when a change fails.
+* Evidence showing why a change was accepted or rejected.
+
+---
+
+# 3. Target user
+
+The initial user is:
+
+* An electronics student.
+* A hardware hacker.
+* A junior PCB designer.
+* A software engineer building an electronics prototype.
+* A researcher who understands the desired circuit but is slower with KiCAD.
+
+The MVP is not intended to certify production-ready circuit boards.
+
+---
+
+# 4. Core MVP use case
+
+## Selected use case
+
+> Connect multiple selected components according to a common interface or a clearly described connection pattern.
+
+## Primary demo
+
+The user selects:
+
+* An ESP32.
+* An I²C temperature sensor.
+
+The user enters:
+
+```text
+Connect these components using I²C with 3.3 V logic.
+Add the required pull-up resistors.
+Do not modify the USB circuit.
+```
+
+The system proposes:
+
+* Sensor VCC → 3V3.
+* Sensor GND → GND.
+* Sensor SDA → ESP32 SDA pin.
+* Sensor SCL → ESP32 SCL pin.
+* Add SDA pull-up resistor.
+* Add SCL pull-up resistor.
+* Connect both pull-ups to 3V3.
+
+After user approval, the system executes the operations and runs KiCAD ERC.
+
+---
+
+# 5. MVP scope
+
+## Must-have features
+
+### 1. KiCAD project loading
+
+The system must:
+
+* Open an existing KiCAD project.
+* Read the schematic.
+* Read component references.
+* Read symbol names and values.
+* Read pin names and pin numbers.
+* Read existing nets.
+* Identify selected or user-specified components.
+
+### 2. Multi-component selection
+
+The user can provide components through either:
+
+* Current KiCAD selection, if Mitos exposes it.
+* Component references such as `U1` and `U2`.
+* A small component-selection interface in the web application.
+
+### 3. Natural-language instruction
+
+The user can describe:
+
+* Which interface to use.
+* Which components to connect.
+* Required supporting components.
+* Constraints.
+* Areas that must not be changed.
+
+### 4. Structured plan generation
+
+The instruction is converted into a fixed JSON action plan.
+
+### 5. Plan preview
+
+Before changing KiCAD, show:
+
+* Components that will be changed.
+* New components that will be added.
+* Proposed pin connections.
+* Constraints.
+* Assumptions.
+* Potential warnings.
+
+### 6. User approval
+
+The user must approve the plan before execution.
+
+### 7. KiCAD execution
+
+The approved plan is executed using the available Mitos MCP tools.
+
+### 8. KiCAD validation
+
+Run:
+
+* ERC after schematic or connection changes.
+* DRC when the PCB layout is changed.
+* Project-readability checks.
+* Expected-change verification.
+* Unauthorized-change detection.
+
+### 9. Accept or rollback
+
+* Accept changes that pass validation.
+* Restore the previous project if critical validation fails.
+* Request review for uncertain but technically valid results.
+
+### 10. Validation report
+
+Show why the operation passed or failed.
+
+---
+
+# 6. Features excluded from the MVP
+
+Do not build these during the hackathon:
+
+* Complete PCB generation from a product description.
+* Automatic circuit invention.
+* Full autorouting.
+* High-speed signal-integrity analysis.
+* Thermal simulation.
+* EMC certification.
+* Manufacturing approval.
+* Automatic component-price optimization.
+* Large component-library search.
+* Multiple autonomous agents.
+* Support for every communication protocol.
+* Guaranteed real-world circuit functionality.
+
+---
+
+# 7. Supported circuit pattern
+
+Start by supporting only **I²C connections**.
+
+This is a good MVP pattern because it commonly requires several related connections:
+
+* Power.
+* Ground.
+* SDA.
+* SCL.
+* One SDA pull-up resistor.
+* One SCL pull-up resistor.
+
+After the core workflow works, add:
+
+1. SPI.
+2. UART.
+3. GPIO peripheral.
+4. Simple power connection.
+
+Do not start with all protocols simultaneously.
+
+---
+
+# 8. User inputs
+
+## Required inputs
+
+* KiCAD project.
+* Two or more selected components.
+* Natural-language instruction.
+* User approval of the proposed plan.
+
+## Optional inputs
+
+* Logic voltage.
+* Preferred MCU pins.
+* Pull-up resistor value.
+* Components or circuit areas that must not change.
+* Net naming preferences.
+* Maximum number of changes.
+* Whether supporting components may be added.
+
+Example:
+
+```text
+Connect U1 and U3 using I²C.
+
+Use 3.3 V logic.
+Use GPIO21 for SDA and GPIO22 for SCL.
+Add 4.7 kΩ pull-ups if they are missing.
+Do not modify J1 or the USB circuit.
+```
+
+---
+
+# 9. System outputs
+
+The system produces:
+
+* Interpreted user goal.
+* Proposed action plan.
+* Assumptions.
+* Applied changes.
+* ERC/DRC results before and after.
+* New and resolved violations.
+* Unexpected modifications.
+* Final decision.
+* Updated KiCAD project or restored original project.
+
+Example:
+
+```json
+{
+  "goal": "Connect U1 and U3 using I2C",
+  "status": "accepted",
+  "changes": [
+    "Connected U3.SDA to U1.GPIO21",
+    "Connected U3.SCL to U1.GPIO22",
+    "Connected U3.VCC to 3V3",
+    "Connected U3.GND to GND",
+    "Added two 4.7k pull-up resistors"
+  ],
+  "validation": {
+    "project_readable": true,
+    "requested_connections_created": true,
+    "new_critical_erc_errors": 0,
+    "unexpected_changes": 0
+  }
+}
+```
+
+---
+
+# 10. User flow
+
+```mermaid
+flowchart TD
+    A["Open KiCAD project"] --> B["Select components"]
+    B --> C["Describe desired connection"]
+    C --> D["Generate structured plan"]
+    D --> E["Preview connections and assumptions"]
+    E --> F{"User approves?"}
+    F -->|No| C
+    F -->|Yes| G["Create project checkpoint"]
+    G --> H["Execute through Mitos"]
+    H --> I["Run KiCAD tests"]
+    I --> J{"Validation result"}
+    J -->|Pass| K["Accept changes"]
+    J -->|Fail| L["Restore checkpoint"]
+    J -->|Uncertain| M["Request user review"]
+```
+
+---
+
+# 11. System architecture
+
+```mermaid
+flowchart TD
+    UI["Web interface"] --> API["Backend API"]
+    API --> READ["KiCAD state reader"]
+    API --> LLM["Instruction-to-plan converter"]
+    LLM --> RULES["Plan validator"]
+    RULES --> MCP["Mitos MCP client"]
+    MCP --> KICAD["KiCAD project"]
+    KICAD --> TEST["KiCAD ERC/DRC"]
+    TEST --> DECISION["Deterministic decision engine"]
+    DECISION --> API
+```
+
+## Main components
+
+### Web interface
+
+Responsible for:
+
+* Project selection.
+* Component selection.
+* Natural-language input.
+* Plan preview.
+* User approval.
+* Validation results.
+* Before-and-after summary.
+
+### Backend API
+
+Responsible for coordinating the complete workflow.
+
+### KiCAD state reader
+
+Extracts:
+
+* Symbols.
+* References.
+* Pins.
+* Pin types.
+* Existing connections.
+* Power nets.
+* Existing supporting components.
+* Project rules.
+* Existing ERC/DRC results.
+
+### LLM plan converter
+
+Converts natural language and KiCAD context into structured JSON.
+
+### Plan validator
+
+Checks that:
+
+* Referenced components exist.
+* Referenced pins exist.
+* The protocol is supported.
+* The plan uses allowed action types.
+* Protected objects are not modified.
+* Required information is available.
+* Every generated action conforms to the schema.
+
+### Mitos MCP client
+
+Executes approved structured actions through the four available Mitos tools.
+
+### KiCAD validation service
+
+Runs KiCAD checks and normalizes their results.
+
+### Deterministic decision engine
+
+Decides whether to:
+
+* Accept.
+* Reject and restore.
+* Request user review.
+
+The LLM must not make the final pass/fail decision.
+
+---
+
+# 12. Structured action plan
+
+The LLM must return structured output, not free-form instructions.
+
+```json
+{
+  "schema_version": "1.0",
+  "goal": "Connect the selected sensor to the MCU using I2C",
+  "selected_components": ["U1", "U3"],
+  "protocol": "I2C",
+  "logic_voltage": "3.3V",
+  "assumptions": [
+    "U1 is the controller",
+    "U3 is the peripheral",
+    "GPIO21 and GPIO22 support I2C"
+  ],
+  "protected_objects": ["J1", "USB_D+", "USB_D-"],
+  "actions": [
+    {
+      "id": "action-1",
+      "type": "connect_pins",
+      "from": "U3.SDA",
+      "to": "U1.GPIO21",
+      "net_name": "I2C_SDA"
+    },
+    {
+      "id": "action-2",
+      "type": "connect_pins",
+      "from": "U3.SCL",
+      "to": "U1.GPIO22",
+      "net_name": "I2C_SCL"
+    },
+    {
+      "id": "action-3",
+      "type": "connect_pin_to_net",
+      "pin": "U3.VCC",
+      "net": "3V3"
+    },
+    {
+      "id": "action-4",
+      "type": "connect_pin_to_net",
+      "pin": "U3.GND",
+      "net": "GND"
+    },
+    {
+      "id": "action-5",
+      "type": "ensure_pullup",
+      "net": "I2C_SDA",
+      "to_net": "3V3",
+      "value": "4.7k"
+    },
+    {
+      "id": "action-6",
+      "type": "ensure_pullup",
+      "net": "I2C_SCL",
+      "to_net": "3V3",
+      "value": "4.7k"
+    }
+  ]
+}
+```
+
+---
+
+# 13. Prevent duplicate additions
+
+Before adding supporting components, inspect the existing schematic.
+
+For example, before adding pull-up resistors:
+
+1. Check whether SDA already has a pull-up.
+2. Check whether SCL already has a pull-up.
+3. Determine the connected voltage.
+4. Inspect the existing resistor value.
+5. Add a resistor only if an acceptable one is missing.
+
+Otherwise, the system could create duplicate or conflicting components while still passing basic ERC.
+
+---
+
+# 14. Defining a right move
+
+A batch of changes is considered correct only when all hard checks pass.
+
+## Hard checks
+
+* The KiCAD project remains readable.
+* The intended components exist.
+* The requested connections were created.
+* Required supporting components were added or already existed.
+* Protected components and nets were not modified.
+* No unauthorized object was changed.
+* No new critical ERC violations were introduced.
+* No conflicting nets were connected.
+* Explicit user constraints were followed.
+
+## Example
+
+The instruction is:
+
+> “Connect U3 to U1 using I²C with 3.3 V logic.”
+
+A correct result must contain:
+
+```text
+U3.SDA → MCU SDA pin
+U3.SCL → MCU SCL pin
+U3.VCC → 3V3
+U3.GND → GND
+SDA pull-up → 3V3
+SCL pull-up → 3V3
+```
+
+It must not:
+
+* Connect the sensor to 5 V.
+* Connect SDA and SCL together.
+* Create duplicate pull-ups unnecessarily.
+* Modify the protected USB circuit.
+* Introduce new critical ERC errors.
+
+---
+
+# 15. Defining a wrong move
+
+Reject the batch if:
+
+* A nonexistent component or pin was used.
+* The wrong components were modified.
+* The requested connections were not created.
+* Two incompatible power nets were connected.
+* A ground pin was connected to a power rail.
+* An output was incorrectly connected to another output.
+* Protected objects were changed.
+* Unexpected components or wires were added.
+* The project became unreadable.
+* New critical ERC/DRC violations appeared.
+* Execution stopped halfway and left a partial circuit.
+
+All actions in one instruction should behave as a transaction:
+
+> Either the entire approved batch succeeds, or the complete batch is reverted.
+
+---
+
+# 16. Grounding in truth with KiCAD
+
+## Before execution
+
+Run KiCAD ERC and store the baseline.
+
+```json
+{
+  "baseline": {
+    "errors": 1,
+    "warnings": 3,
+    "violations": []
+  }
+}
+```
+
+Existing errors should not automatically block the action. The important check is whether the new operation introduces additional errors.
+
+## After execution
+
+Run ERC again and calculate:
+
+```text
+New violations = after − before
+Resolved violations = before − after
+Unchanged violations = before ∩ after
+```
+
+Do not compare only error counts. The system must compare the actual violations.
+
+For example:
+
+* One old error disappears.
+* One dangerous new error appears.
+* The count remains the same.
+
+A count-only comparison would incorrectly accept the change.
+
+## KiCAD CLI
+
+The backend should discover the installed version and supported commands:
+
+```bash
+kicad-cli --version
+kicad-cli sch erc --help
+kicad-cli pcb drc --help
+```
+
+Then run the corresponding ERC or DRC command and parse its output.
+
+## Additional deterministic checks
+
+KiCAD ERC alone does not prove that the requested result happened. Therefore also inspect:
+
+* Pin-to-net assignments.
+* Net membership.
+* Component additions.
+* Symbol values.
+* Protected object hashes.
+* Unexpected file differences.
+
+---
+
+# 17. Validation pipeline
+
+```mermaid
+flowchart TD
+    P["Approved plan"] --> B["Save baseline"]
+    B --> E["Execute complete batch"]
+    E --> F["Verify expected file changes"]
+    F --> K["Run KiCAD ERC/DRC"]
+    K --> C["Compare project states"]
+    C --> D{"All hard checks pass?"}
+    D -->|Yes| A["Accept"]
+    D -->|No| R["Restore entire checkpoint"]
+    D -->|Cannot determine| H["User review"]
+```
+
+## Validation order
+
+1. Did the MCP execution complete?
+2. Can KiCAD process the modified project?
+3. Were all expected actions performed?
+4. Were any unauthorized actions performed?
+5. Were protected items preserved?
+6. Did KiCAD report new critical violations?
+7. Do the final connections match the approved plan?
+
+---
+
+# 18. Decision states
+
+## Accepted
+
+```json
+{
+  "decision": "accepted",
+  "reason": "All approved connections were created and no new critical ERC violations were introduced."
+}
+```
+
+## Rejected and restored
+
+```json
+{
+  "decision": "rejected_and_restored",
+  "reason": "The operation connected the sensor VCC pin to 5V instead of the approved 3V3 net.",
+  "restoration_verified": true
+}
+```
+
+## Needs review
+
+```json
+{
+  "decision": "needs_user_review",
+  "reason": "Both GPIO21 and GPIO25 appear to support SDA, but the project does not define a preferred pin."
+}
+```
+
+---
+
+# 19. Checkpoint and rollback
+
+Before applying changes:
+
+* Copy `.kicad_pro`.
+* Copy `.kicad_sch`.
+* Copy `.kicad_pcb`, if relevant.
+* Copy local symbol or footprint files if they may change.
+* Calculate SHA-256 hashes.
+* Store the original ERC/DRC reports.
+* Store the structured project state.
+
+If validation fails:
+
+1. Restore every checkpointed file.
+2. Compare restored hashes with original hashes.
+3. Run ERC again.
+4. Confirm that the original project state returned.
+
+Do not attempt to reverse individual actions manually. Restore the entire known-good checkpoint.
+
+---
+
+# 20. Benchmark suite
+
+Build a controlled collection of small KiCAD projects.
+
+## Benchmark 1: Standard I²C connection
+
+Input:
+
+```text
+Connect U1 and U2 using I2C with 3.3V logic.
+```
+
+Expected:
+
+* SDA connected.
+* SCL connected.
+* Power connected.
+* Ground connected.
+* Two valid pull-ups present.
+* No new critical ERC errors.
+
+## Benchmark 2: Existing pull-ups
+
+The schematic already contains valid pull-ups.
+
+Expected:
+
+* Use existing resistors.
+* Do not add duplicates.
+
+## Benchmark 3: Missing pin names
+
+The sensor symbol does not clearly identify SDA/SCL.
+
+Expected:
+
+* Do not guess.
+* Request user clarification.
+
+## Benchmark 4: Wrong voltage request
+
+The user requests 5 V for a 3.3 V-only component.
+
+Expected:
+
+* Reject or warn before execution.
+* Make no changes.
+
+## Benchmark 5: Protected circuit
+
+The user protects the USB circuit.
+
+Expected:
+
+* No USB-related objects change.
+
+## Benchmark 6: Existing ERC warnings
+
+The project starts with unrelated warnings.
+
+Expected:
+
+* Preserve baseline warnings.
+* Do not incorrectly blame the new operation.
+
+## Benchmark 7: Deliberately wrong connection
+
+Cause the executor to connect SDA to GND.
+
+Expected:
+
+* Detect the difference from the approved plan.
+* Reject the batch.
+* Restore the checkpoint.
+
+## Benchmark 8: Partial execution failure
+
+Stop after completing three of six actions.
+
+Expected:
+
+* Reject the incomplete batch.
+* Restore all files.
+
+## Benchmark 9: Unknown component
+
+Input references `U99`, which does not exist.
+
+Expected:
+
+* Reject before execution.
+
+## Benchmark 10: Ambiguous instruction
+
+```text
+Connect the sensor properly.
+```
+
+Expected:
+
+* Ask which interface and logic voltage to use.
+
+---
+
+# 21. Evaluation metrics
+
+| Metric                   | Meaning                            |        MVP target |
+| ------------------------ | ---------------------------------- | ----------------: |
+| Plan accuracy            | Correct structured plans           |              ≥80% |
+| Execution success        | Approved plans executed completely |              ≥80% |
+| Unsafe-change rejection  | Dangerous changes detected         | 100% on benchmark |
+| Rollback success         | Failed changes fully restored      |              100% |
+| Unauthorized-change rate | Changes outside approved scope     |                0% |
+| Duplicate-component rate | Unnecessary supporting parts       |                0% |
+| Project-corruption rate  | Unreadable KiCAD projects          |                0% |
+| Median completion time   | Instruction to result              |  Under 60 seconds |
+
+Safety metrics matter more than raw completion rate. It is better to reject an uncertain instruction than silently produce an incorrect connection.
+
+---
+
+# 22. MVP interface
+
+## Screen 1: Select project
+
+* Choose KiCAD project.
+* Display project health.
+* Run initial ERC.
+
+## Screen 2: Select components
+
+* List available component references.
+* Show component name and value.
+* Allow two or more selections.
+
+## Screen 3: Describe intended operation
+
+```text
+Connect the selected sensor to the ESP32 using I²C.
+Use 3.3 V and add pull-up resistors if necessary.
+```
+
+## Screen 4: Review plan
+
+Display a connection table:
+
+| From        | To           | Purpose     |
+| ----------- | ------------ | ----------- |
+| Sensor SDA  | ESP32 GPIO21 | I²C data    |
+| Sensor SCL  | ESP32 GPIO22 | I²C clock   |
+| Sensor VCC  | 3V3          | Power       |
+| Sensor GND  | GND          | Ground      |
+| SDA pull-up | 3V3          | Bus pull-up |
+| SCL pull-up | 3V3          | Bus pull-up |
+
+Buttons:
+
+* Approve and execute.
+* Edit instruction.
+* Cancel.
+
+## Screen 5: Results
+
+Show:
+
+```text
+Requested connections: 6/6 created
+Project readable: Passed
+New critical ERC errors: 0
+Protected circuit modified: No
+Unexpected changes: 0
+
+Result: Accepted
+```
+
+If rejected, display the reason and confirm rollback.
+
+---
+
+# 23. Technology stack
+
+## Frontend
+
+* Next.js.
+* TypeScript.
+* Tailwind CSS.
+* Simple component and connection tables.
+
+## Backend
+
+* Python.
+* FastAPI.
+* Pydantic for strict action schemas.
+* Subprocess execution for KiCAD CLI.
+* MCP client for Mitos.
+
+## AI
+
+* OpenAI or Anthropic model with structured JSON output.
+* Low temperature.
+* Fixed action schema.
+* No free-form tool execution.
+
+## Validation
+
+* KiCAD CLI ERC.
+* KiCAD CLI DRC when required.
+* Custom schematic state comparison.
+* File hashes.
+* Rule-based decision engine.
+
+## Storage
+
+For the MVP:
+
+* Local filesystem for projects and checkpoints.
+* In-memory session state.
+* JSON validation reports.
+* No database required.
+
+---
+
+# 24. Development phases
+
+## Phase 1: Confirm Mitos capabilities
+
+Document the four available Mitos tools:
+
+* Exact tool names.
+* Inputs.
+* Outputs.
+* Supported KiCAD operations.
+* Whether component selection is available.
+* Whether the tools manipulate schematic, PCB or both.
+* Whether they expose errors.
+
+Create a capability matrix before implementation.
+
+## Phase 2: Build KiCAD inspection
+
+Implement:
+
+* Project loading.
+* Component listing.
+* Pin listing.
+* Existing connection extraction.
+* Power-net identification.
+* Initial ERC execution.
+
+## Phase 3: Build validation foundation
+
+Implement:
+
+* KiCAD version detection.
+* ERC command execution.
+* DRC command execution.
+* Report parsing.
+* Normalized violation format.
+* Baseline-versus-new comparison.
+
+## Phase 4: Build checkpoint system
+
+Implement:
+
+* File copying.
+* File hashing.
+* Checkpoint metadata.
+* Complete restoration.
+* Restoration verification.
+
+## Phase 5: Implement deterministic I²C plan
+
+Before introducing natural language, make a form-based version:
+
+* Select controller.
+* Select sensor.
+* Select SDA.
+* Select SCL.
+* Select voltage.
+* Select pull-up value.
+
+Generate and execute the structured plan.
+
+This proves that Mitos execution and KiCAD validation work.
+
+## Phase 6: Add natural language
+
+Convert natural language into the same schema used by the form.
+
+The natural-language system should not introduce new execution capabilities. It should only make the proven structured workflow easier to use.
+
+## Phase 7: Add plan preview
+
+Show:
+
+* Actions.
+* Connections.
+* Added components.
+* Assumptions.
+* Protected objects.
+* Validation requirements.
+
+## Phase 8: Add execution and rollback
+
+Treat the complete plan as one transaction:
+
+```text
+checkpoint → execute → validate → accept/restore
+```
+
+## Phase 9: Create benchmark projects
+
+Implement the ten benchmarks and run them automatically.
+
+## Phase 10: Build polished demo
+
+Prepare:
+
+* One clean successful example.
+* One failure-and-rollback example.
+* Before-and-after KiCAD views.
+* A benchmark-results summary.
+
+---
+
+# 25. What Devin should build
+
+## Task 1: Repository and backend foundation
+
+Ask Devin to create:
+
+* FastAPI backend.
+* Project upload/loading.
+* Configuration.
+* Logging.
+* Error handling.
+* Test structure.
+* Docker setup.
+
+## Task 2: KiCAD validation service
+
+```text
+Build a KiCAD validation service that detects the installed KiCAD
+version, runs schematic ERC and PCB DRC, parses the reports into a
+normalized JSON schema and distinguishes errors, warnings and
+informational messages.
+
+The implementation must use KiCAD results as the source of truth.
+Include fixture-based tests.
+```
+
+## Task 3: State comparison service
+
+```text
+Implement before-and-after comparison for KiCAD schematic projects.
+
+Compare:
+- Components
+- Pin-to-net mappings
+- Added and removed symbols
+- Symbol values
+- Protected objects
+- KiCAD violations
+
+Return expected, unexpected, new, removed and unchanged items.
+```
+
+## Task 4: Checkpoint and rollback
+
+```text
+Build an atomic checkpoint system for KiCAD projects.
+
+A batch operation must either:
+1. complete and pass validation, or
+2. restore the complete original project.
+
+Use file hashes to verify successful restoration.
+```
+
+## Task 5: Mitos integration
+
+```text
+Create a controlled adapter around the four Mitos MCP tools.
+
+The adapter must accept only validated structured actions.
+Do not allow raw LLM-generated tool arguments to bypass schema
+validation.
+```
+
+## Task 6: I²C workflow
+
+```text
+Implement the structured I2C connection workflow.
+
+It must inspect existing connections, avoid duplicate pull-ups,
+generate a preview, execute approved actions, run KiCAD ERC, compare
+the final project with the approved plan and restore on failure.
+```
+
+## Task 7: Benchmark runner
+
+```text
+Create a repeatable benchmark runner for the ten defined KiCAD tasks.
+
+Generate a JSON and HTML report containing task accuracy, unsafe-change
+rejection, rollback success, unexpected changes and execution time.
+```
+
+## Task 8: Frontend
+
+Ask Devin to build:
+
+* Project selection.
+* Component selection.
+* Instruction input.
+* Plan preview.
+* Approve/cancel buttons.
+* Execution progress.
+* Validation report.
+* Rollback result.
+
+---
+
+# 26. What another coding agent should handle
+
+Claude Code or another interactive coding agent can handle:
+
+* Rapid frontend styling.
+* Adjusting the structured-output prompt.
+* Fixing small integration issues.
+* Inspecting logs during local testing.
+* Improving error messages.
+* Preparing demo fixtures.
+* Adding protocol support after I²C works.
+
+Devin should own the larger isolated implementation tasks. Use the interactive agent for fast iteration and local debugging.
+
+---
+
+# 27. Recommended build order for two developers
+
+## Initial shared setup
+
+Both developers first ensure:
+
+* KiCAD runs locally.
+* The Mitos MCP server works.
+* The four MCP tools are understood.
+* One test KiCAD project is available.
+* ERC can be run programmatically.
+
+## Developer 1
+
+Focus on:
+
+* KiCAD reader.
+* Mitos integration.
+* ERC/DRC service.
+* State comparison.
+* Checkpoint and rollback.
+* Benchmark fixtures.
+
+## Developer 2
+
+Focus on:
+
+* FastAPI endpoints.
+* Structured action schema.
+* Natural-language conversion.
+* Plan preview.
+* Frontend.
+* Results interface.
+
+## Integration point
+
+Both parts connect through a stable schema:
+
+```json
+{
+  "plan": {},
+  "baseline": {},
+  "execution": {},
+  "validation": {},
+  "decision": {}
+}
+```
+
+---
+
+# 28. Hackathon demo flow
+
+## Demo 1: Successful batch
+
+1. Open an incomplete ESP32 temperature-sensor project.
+2. Select the ESP32 and sensor.
+3. Enter the I²C instruction.
+4. Show the generated connection plan.
+5. Approve it.
+6. Show Mitos modifying KiCAD.
+7. Run ERC.
+8. Show that no critical errors were introduced.
+9. Display the accepted result.
+
+## Demo 2: Unsafe batch
+
+1. Submit an instruction that would use the wrong voltage.
+2. Show the proposed problem or intentionally test a bad execution.
+3. Run validation.
+4. Show the failure reason.
+5. Restore the previous project.
+6. Demonstrate that the project matches the checkpoint.
+
+## Demo 3: Benchmark
+
+Show:
+
+```text
+10 benchmark tasks
+8 correct executions
+2 unsafe operations correctly rejected
+100% successful rollbacks
+0 corrupted KiCAD projects
+0 unauthorized accepted changes
+```
+
+---
+
+# 29. Final MVP definition
+
+The MVP is complete when a user can:
+
+1. Open a KiCAD project.
+2. Select an MCU and one peripheral.
+3. Describe an I²C connection in natural language.
+4. Review a structured connection plan.
+5. Approve the plan.
+6. Execute the complete batch through Mitos.
+7. Run KiCAD ERC.
+8. Verify the expected connections.
+9. Detect unexpected changes.
+10. Accept the result or automatically restore the project.
+
+The final positioning should be:
+
+> **KiCAD Mitos turns high-level circuit intent into reviewable multi-step changes, executes them inside KiCAD and verifies the result against the real project using KiCAD’s own engineering checks.**
+ Implement everything, break it into subproblems and use subagents to implement everything.
