@@ -102,8 +102,12 @@ with **3.3V** as a clickable option that re-plans instantly.
 > "It read the actual schematic, found no 5 V rail, and asked instead of guessing. A chatbot would
 > have written you a 5 V bus."
 
-If you have time, `Connect these using SPI` → *"SPI is not supported yet. Connect these using I2C
-instead?"* Declining a case you haven't built reads as discipline, not as a hole.
+If you have time, open `esp32_spi_display` and say `Connect these over SPI at 3.3V` — four signals,
+power and ground, and *no* pull-ups, because SPI doesn't want them. Or `esp32_uart_module` with
+`Connect these over UART at 3.3V`, which crosses the pair for you: the controller's TX goes to the
+module's RX and vice versa, on two distinct nets. `esp32_gpio_peripheral` is the best one for this
+beat though — the relay's pins are called IN1/IN2/FAULT, nothing it can pattern-match, so it asks
+which pin carries the signal rather than picking one.
 
 ## Beat 5 — Break it on purpose (45s)
 
@@ -166,8 +170,8 @@ Then nothing is ever accepted. Every run returns "needs your review" and the UI 
 rather than looking healthy.
 
 **"Does it work on my project?"**
-Upload a zipped KiCAD project in the picker. I2C only for now, and the schematic must be at the
-archive root.
+Upload a zipped KiCAD project in the picker. I2C, SPI, UART, a single GPIO link or a power-only
+hookup, and the schematic must be at the archive root.
 
 ## If it breaks
 

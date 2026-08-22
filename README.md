@@ -4,7 +4,10 @@ Natural-language batch editing for KiCAD. You select components, describe the ch
 language, review a structured action plan, approve it, and the change is executed, verified with
 KiCAD's own ERC and automatically rolled back if it fails verification.
 
-The MVP supports **I2C** connections only.
+Supported connection patterns: **I2C**, **SPI**, **UART**, a single **GPIO** link and a
+**power-only** hookup. A protocol is a data table of per-signal pin aliases, named separately
+for the controller and the peripheral — which is how UART's TX/RX crossover falls out with no
+special case. All of them decompose into the same three action types.
 
 ## How it works
 
@@ -18,9 +21,15 @@ read project -> plan (rules or LLM) -> preview + approve -> checkpoint
   supporting components, protected objects, unauthorized changes and new critical ERC violations.
 - ERC is compared violation-by-violation against a baseline, not by counting, so pre-existing
   violations are never blamed on the change and a "swapped" violation is still detected.
-- DRC runs too when the project has a board, including KiCAD's schematic-parity check. It only gates
-  acceptance for a plan that edits the board — no action type does yet — so for schematic-only plans
-  it is reported as information rather than inventing a rejection path.
+- DRC runs too when the project has a board, including KiCAD's schematic-parity check, and it is a
+  real gate for any run that wrote the board — which a schematic edit does, because the board is
+  synced to match. The one carve-out is unconnected items whose every net that sync touched: a synced
+  board is unrouted by design, so those are pending work, not a regression. An unconnected item on any
+  other net still rejects, so severed copper cannot slip through.
+- The DRC baseline is the union of a couple of passes, because KiCAD's own DRC is not deterministic:
+  on a byte-identical board it intermittently reports one or two fewer clearance violations. Whichever
+  run became the baseline would otherwise decide whether a later, normal run looked like it introduced
+  errors, which rejected valid work about one time in twenty.
 - The file-level diff is snapshotted straight after execution, before ERC runs, because `kicad-cli`
   rewrites project files as a side effect. Only the schematic may change; a touched `.kicad_pro` or
   symbol library is an unauthorized change.

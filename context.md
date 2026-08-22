@@ -14,7 +14,8 @@ read project → plan (rules or LLM) → clarify if ambiguous → preview + appr
              → execute → re-read + ERC/DRC → deterministic decision → accept | restore
 ```
 
-The MVP scope is deliberately narrow: **I2C only**, and exactly three action types —
+The supported patterns are I2C, SPI, UART, a single GPIO link and a power-only hookup, built on
+exactly three action types —
 `connect_pins`, `connect_pin_to_net`, `ensure_pullup` (see [models.py](backend/app/models.py)).
 Everything else in the pipeline — checkpointing, ERC diffing, the decision engine, rollback — is
 protocol-agnostic and is the part that carries the design weight.
@@ -154,8 +155,8 @@ Stated plainly, because several of these are easy to mistake for finished featur
   through.
 - **Without `kicad-cli` the pipeline still plans and applies, but nothing can be called safe** — every
   run returns `needs_user_review`, and the UI says so in a banner rather than looking healthy.
-- **Only I2C.** SPI and UART are recognized by the parser purely so the planner can decline them
-  explicitly instead of silently mis-planning.
+- **No protocol beyond the five.** A sixth needs a `ProtocolSpec` entry, not new plumbing; anything
+  the parser cannot place is declined explicitly rather than mis-planned.
 - **Sessions are in-memory** (`SessionStore._sessions`); only the project working copies and
   checkpoints are on disk. A backend restart drops session state. There is no database.
 - **The demo's rejected run injects a deliberately broken executor**, labelled as such in both the
