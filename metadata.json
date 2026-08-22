@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.10.2",
+  "checkpoint_id": "01M0NQBGKE5N0HA8449BZAKCT0",
+  "strategy": "manual-commit",
+  "branch": "feat/protocols-spi-uart-gpio-power",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "backend/app/models.py",
+    "backend/app/planning/generator.py",
+    "backend/app/planning/instruction.py",
+    "backend/app/planning/llm.py",
+    "backend/app/planning/protocols.py",
+    "backend/app/planning/validator.py",
+    "backend/tests/test_board_sync.py",
+    "backend/tests/test_planning.py",
+    "backend/tests/test_protocols.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 26,
+    "cache_creation_tokens": 19158,
+    "cache_read_tokens": 3581947,
+    "output_tokens": 9789,
+    "api_call_count": 13
+  }
+}

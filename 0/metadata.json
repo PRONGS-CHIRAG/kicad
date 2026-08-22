@@ -1,0 +1,108 @@
+{
+  "cli_version": "0.10.2",
+  "checkpoint_id": "01M0NQBGKE5N0HA8449BZAKCT0",
+  "session_id": "5b79a1dc-9147-4c81-a5d1-6afa12bdb9e6",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-22T21:52:15.117491Z",
+  "branch": "feat/protocols-spi-uart-gpio-power",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "backend/app/models.py",
+    "backend/app/planning/generator.py",
+    "backend/app/planning/instruction.py",
+    "backend/app/planning/llm.py",
+    "backend/app/planning/protocols.py",
+    "backend/app/planning/validator.py",
+    "backend/tests/test_board_sync.py",
+    "backend/tests/test_planning.py",
+    "backend/tests/test_protocols.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5",
+  "turn_id": "08a961769904",
+  "checkpoint_transcript_start": 637,
+  "transcript_lines_at_start": 637,
+  "compact_transcript_start": 117,
+  "token_usage": {
+    "input_tokens": 26,
+    "cache_creation_tokens": 19158,
+    "cache_read_tokens": 3581947,
+    "output_tokens": 9789,
+    "api_call_count": 13
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01QySPqWPhN63kSrhV5f2JjH",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "playwright-skill:playwright-skill"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "08a961769904",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 284,
+        "end": 285,
+        "entry_ids": [
+          "51b990d1-9021-46e0-be55-6a2a1a045da2"
+        ],
+        "tool_use_id": "toolu_01QySPqWPhN63kSrhV5f2JjH"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01QySPqWPhN63kSrhV5f2JjH"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: playwright-skill:playwright-skill",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 8
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-22T21:52:15.029392Z",
+    "agent_lines": 0,
+    "agent_removed": 2,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 105,
+    "total_committed": 18,
+    "total_lines_changed": 107,
+    "agent_percentage": 1.8691588785046727,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1115,
+      "user_lines_removed": 105,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.json": 84,
+        ".codex/hooks.json": 88,
+        "backend/app/models.py": 9,
+        "backend/app/planning/generator.py": 288,
+        "backend/app/planning/instruction.py": 40,
+        "backend/app/planning/llm.py": 4,
+        "backend/app/planning/protocols.py": 155,
+        "backend/app/planning/validator.py": 32,
+        "backend/tests/test_protocols.py": 415
+      },
+      "user_removed_per_file": {
+        "backend/app/planning/generator.py": 96,
+        "backend/app/planning/instruction.py": 4,
+        "backend/app/planning/llm.py": 1,
+        "backend/app/planning/validator.py": 4
+      }
+    }
+  ]
+}

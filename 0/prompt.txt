@@ -1,0 +1,9 @@
+<task-notification>
+<task-id>aad1cade5e7a8caf9</task-id>
+<tool-use-id>toolu_014Vy2dzkkZZWwHMso2ueCEo</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-chiragnvijay-Desktop-Projects-kicad/5b79a1dc-9147-4c81-a5d1-6afa12bdb9e6/tasks/aad1cade5e7a8caf9.output</output-file>
+<status>failed</status>
+<summary>Agent "Implement SPI/UART/GPIO/POWER planner" failed: Agent terminated early due to an API error: API Error: Connection lost mid-response. The response above may be incomplete.</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>The work is durable in the tree. Let me get a final review.</result>
+</task-notification>
