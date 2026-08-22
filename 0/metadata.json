@@ -1,0 +1,263 @@
+{
+  "cli_version": "0.10.2",
+  "checkpoint_id": "01M0NJ0MZBCM51M7PPVP2TNZ64",
+  "session_id": "24829249-5fc7-4939-be1b-ba6da88425c5",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-22T20:18:55.538766Z",
+  "branch": "devin/1787413084-kicad-mitos-mvp",
+  "checkpoints_count": 7,
+  "save_step_count": 7,
+  "files_touched": [
+    ".dockerignore",
+    "README.md",
+    "backend/Dockerfile",
+    "backend/app/api/routes.py",
+    "backend/app/benchmark.py",
+    "backend/app/config.py",
+    "backend/app/decision.py",
+    "backend/app/demo.py",
+    "backend/app/kicad/board.py",
+    "backend/app/kicad/erc.py",
+    "backend/app/kicad/upload.py",
+    "backend/app/models.py",
+    "backend/app/planning/generator.py",
+    "backend/app/probe_mitos.py",
+    "backend/app/workflow.py",
+    "backend/pyproject.toml",
+    "backend/tests/conftest.py",
+    "backend/tests/mitos_stub.py",
+    "backend/tests/test_api.py",
+    "backend/tests/test_board_sync.py",
+    "backend/tests/test_decision_extras.py",
+    "backend/tests/test_mitos.py",
+    "backend/tests/test_upload.py",
+    "backend/tests/test_workflow.py",
+    "docker-compose.yml",
+    "docs/mitos.md",
+    "fixtures/projects/esp32_i2c_connected/esp32_i2c_connected.kicad_pcb",
+    "fixtures/projects/esp32_i2c_demo/esp32_i2c_demo.kicad_pcb",
+    "fixtures/projects/esp32_i2c_existing_pullups/esp32_i2c_existing_pullups.kicad_pcb",
+    "fixtures/projects/esp32_i2c_unnamed_pins/esp32_i2c_unnamed_pins.kicad_pcb",
+    "frontend/Dockerfile",
+    "frontend/next.config.mjs",
+    "frontend/public/.gitkeep",
+    "frontend/src/app/fonts/Archivo-Variable.woff2",
+    "frontend/src/app/fonts/GeistMonoVF.woff",
+    "frontend/src/app/fonts/GeistVF.woff",
+    "frontend/src/app/fonts/IBMPlexMono-Medium.woff2",
+    "frontend/src/app/fonts/IBMPlexMono-Regular.woff2",
+    "frontend/src/app/fonts/IBMPlexMono-SemiBold.woff2",
+    "frontend/src/app/globals.css",
+    "frontend/src/app/layout.tsx",
+    "frontend/src/app/page.tsx",
+    "frontend/src/components/action-wire.tsx",
+    "frontend/src/components/composer.tsx",
+    "frontend/src/components/plan-review.tsx",
+    "frontend/src/components/project-picker.tsx",
+    "frontend/src/components/sheet-pane.tsx",
+    "frontend/src/components/stage-rail.tsx",
+    "frontend/src/components/top-rail.tsx",
+    "frontend/src/components/ui.tsx",
+    "frontend/src/components/verdict.tsx",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/stages.ts",
+    "frontend/tailwind.config.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5",
+  "turn_id": "9bc20c9cd06b",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 468,
+    "cache_creation_tokens": 364539,
+    "cache_read_tokens": 54075733,
+    "output_tokens": 209706,
+    "api_call_count": 230
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01HkEoEebt91ydgkCQMUFGkE",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "frontend-design:frontend-design"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "9bc20c9cd06b",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 44,
+        "end": 45,
+        "entry_ids": [
+          "bfe51c78-e3bc-4582-92d7-531cc03d5c39"
+        ],
+        "tool_use_id": "toolu_01HkEoEebt91ydgkCQMUFGkE"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01HkEoEebt91ydgkCQMUFGkE"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: frontend-design:frontend-design",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01MUP1uyvEPFEU8DWtkTjDsL",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "playwright-skill:playwright-skill"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "9bc20c9cd06b",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 172,
+        "end": 173,
+        "entry_ids": [
+          "f20a6fa6-82fc-418b-8258-1dae38369190"
+        ],
+        "tool_use_id": "toolu_01MUP1uyvEPFEU8DWtkTjDsL"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01MUP1uyvEPFEU8DWtkTjDsL"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: playwright-skill:playwright-skill",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01JLfHM6kg7Mp45SX4hrs6nb",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "run"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "9bc20c9cd06b",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 514,
+        "end": 515,
+        "entry_ids": [
+          "9f9eb65a-7a7d-4457-8c81-db9157cd4c51"
+        ],
+        "tool_use_id": "toolu_01JLfHM6kg7Mp45SX4hrs6nb"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01JLfHM6kg7Mp45SX4hrs6nb"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: run",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-22T20:18:55.312491Z",
+    "agent_lines": 5674,
+    "agent_removed": 357,
+    "human_added": 2,
+    "human_modified": 2,
+    "human_removed": 0,
+    "total_committed": 5678,
+    "total_lines_changed": 6035,
+    "agent_percentage": 99.93371996685998,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 172,
+      "user_lines_removed": 0,
+      "agent_lines_added": 3562,
+      "agent_lines_removed": 347,
+      "user_added_per_file": {
+        ".claude/settings.json": 84,
+        ".codex/hooks.json": 88
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 172,
+      "user_lines_removed": 0,
+      "agent_lines_added": 3562,
+      "agent_lines_removed": 347,
+      "user_added_per_file": {
+        ".claude/settings.json": 84,
+        ".codex/hooks.json": 88
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 172,
+      "user_lines_removed": 0,
+      "agent_lines_added": 3562,
+      "agent_lines_removed": 347,
+      "user_added_per_file": {
+        ".claude/settings.json": 84,
+        ".codex/hooks.json": 88
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 172,
+      "user_lines_removed": 0,
+      "agent_lines_added": 3562,
+      "agent_lines_removed": 347,
+      "user_added_per_file": {
+        ".claude/settings.json": 84,
+        ".codex/hooks.json": 88
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 172,
+      "user_lines_removed": 0,
+      "agent_lines_added": 3591,
+      "agent_lines_removed": 350,
+      "user_added_per_file": {
+        ".claude/settings.json": 84,
+        ".codex/hooks.json": 88
+      }
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 172,
+      "user_lines_removed": 0,
+      "agent_lines_added": 3591,
+      "agent_lines_removed": 350,
+      "user_added_per_file": {
+        ".claude/settings.json": 84,
+        ".codex/hooks.json": 88
+      }
+    }
+  ]
+}
