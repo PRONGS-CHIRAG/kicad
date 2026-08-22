@@ -1,0 +1,5 @@
+make like a context.md file which contains overview, features implemented, tech stack, user flow, how it differs from kicad and generic LLMs.
+
+---
+
+commit and push changes
