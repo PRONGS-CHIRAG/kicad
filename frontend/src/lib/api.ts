@@ -48,7 +48,22 @@ export type ActionPlan = {
   actions: Action[];
 };
 
-export type Clarification = { question: string; reason: string; options: string[] };
+export type AnswerKey =
+  | "protocol"
+  | "logic_voltage"
+  | "peripheral_sda"
+  | "peripheral_scl"
+  | "controller_sda"
+  | "controller_scl";
+
+export type PlanAnswers = Partial<Record<AnswerKey, string>>;
+
+export type Clarification = {
+  question: string;
+  reason: string;
+  options: string[];
+  answer_key: AnswerKey | "selection" | null;
+};
 
 export type PlanResponse = {
   plan: ActionPlan | null;
@@ -102,10 +117,10 @@ export const api = {
   projects: () => request<{ projects: { name: string; path: string }[] }>("/api/projects"),
   createSession: (project: string) =>
     request<SessionResponse>("/api/sessions", { method: "POST", body: JSON.stringify({ project }) }),
-  plan: (sessionId: string, selected: string[], instruction: string) =>
+  plan: (sessionId: string, selected: string[], instruction: string, answers: PlanAnswers = {}) =>
     request<PlanResponse>(`/api/sessions/${sessionId}/plan`, {
       method: "POST",
-      body: JSON.stringify({ selected_components: selected, instruction }),
+      body: JSON.stringify({ selected_components: selected, instruction, answers }),
     }),
   execute: (sessionId: string) =>
     request<RunReport>(`/api/sessions/${sessionId}/execute`, {

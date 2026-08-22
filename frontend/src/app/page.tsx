@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   ActionPlan,
   Clarification,
+  PlanAnswers,
   PlanResponse,
   RunReport,
   SessionResponse,
@@ -25,6 +26,7 @@ export default function Home() {
   const [plan, setPlan] = useState<ActionPlan | null>(null);
   const [planMeta, setPlanMeta] = useState<PlanResponse | null>(null);
   const [clarification, setClarification] = useState<Clarification | null>(null);
+  const [answers, setAnswers] = useState<PlanAnswers>({});
   const [report, setReport] = useState<RunReport | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,17 +56,41 @@ export default function Home() {
       setSelected([]);
       setPlan(null);
       setClarification(null);
+      setAnswers({});
       setReport(null);
     });
 
-  const generatePlan = () =>
+  const generatePlan = (nextSelected = selected, nextAnswers = answers) =>
     run(async () => {
       if (!session) return;
-      const response = await api.plan(session.session_id, selected, instruction);
+      const response = await api.plan(session.session_id, nextSelected, instruction, nextAnswers);
       setPlanMeta(response);
       setPlan(response.plan);
       setClarification(response.clarification);
     });
+
+  /** Apply a clicked clarification option and immediately re-plan with it. */
+  const answerClarification = (option: string) => {
+    if (!clarification) return;
+    if (option === "Cancel") {
+      setClarification(null);
+      setAnswers({});
+      return;
+    }
+    if (clarification.answer_key === "selection") {
+      const known = new Set(session?.components.map((c) => c.reference) ?? []);
+      const kept = selected.filter((ref) => known.has(ref));
+      const next = kept.includes(option) ? kept.filter((ref) => ref !== option) : [...kept, option];
+      setSelected(next);
+      setClarification(null);
+      if (next.length >= 2) generatePlan(next);
+      return;
+    }
+    if (!clarification.answer_key) return;
+    const next = { ...answers, [clarification.answer_key]: option };
+    setAnswers(next);
+    generatePlan(selected, next);
+  };
 
   const approve = () =>
     run(async () => {
@@ -121,6 +147,7 @@ export default function Home() {
                             : current.filter((r) => r !== component.reference),
                         )
                       }
+                      onClick={() => setAnswers({})}
                     />
                     <span className="font-mono">{component.reference}</span>
                     <span className="text-neutral-500">{component.value}</span>
@@ -132,9 +159,16 @@ export default function Home() {
               <textarea
                 className="h-40 w-full rounded border p-2 font-mono text-sm"
                 value={instruction}
-                onChange={(event) => setInstruction(event.target.value)}
+                onChange={(event) => {
+                  setInstruction(event.target.value);
+                  setAnswers({});
+                }}
               />
-              <button className="btn" disabled={busy || selected.length < 2} onClick={generatePlan}>
+              <button
+                className="btn"
+                disabled={busy || selected.length < 2}
+                onClick={() => generatePlan()}
+              >
                 {busy ? "Working…" : "Generate plan"}
               </button>
             </div>
@@ -147,7 +181,23 @@ export default function Home() {
           <p className="text-sm">{clarification.question}</p>
           <p className="mt-1 text-xs text-neutral-500">reason: {clarification.reason}</p>
           {clarification.options.length > 0 && (
-            <p className="mt-2 text-xs text-neutral-500">options: {clarification.options.join(", ")}</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              {clarification.options.map((option) => (
+                <button
+                  key={option}
+                  className="btn-secondary"
+                  disabled={busy}
+                  onClick={() => answerClarification(option)}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          )}
+          {clarification.answer_key === "selection" && (
+            <p className="mt-2 text-xs text-neutral-500">
+              Pick the components to connect — planning restarts once two are selected.
+            </p>
           )}
         </Card>
       )}

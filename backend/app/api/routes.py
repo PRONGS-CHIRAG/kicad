@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from ..config import settings
 from ..kicad.erc import KicadCli
-from ..models import ActionPlan, Clarification, ErcReport, RunReport
+from ..models import ActionPlan, Clarification, ErcReport, PlanAnswers, RunReport
 from ..planning.validator import validate_plan
 from ..workflow import Session, store
 
@@ -30,6 +30,7 @@ class SessionResponse(BaseModel):
 class PlanRequest(BaseModel):
     selected_components: list[str] = Field(min_length=1)
     instruction: str
+    answers: PlanAnswers = Field(default_factory=PlanAnswers)
 
 
 class PlanResponse(BaseModel):
@@ -99,7 +100,9 @@ def create_plan(session_id: str, request: PlanRequest) -> PlanResponse:
         session = store.get(session_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=f"unknown session {session_id}") from exc
-    result, problems, source = store.plan(session, request.selected_components, request.instruction)
+    result, problems, source = store.plan(
+        session, request.selected_components, request.instruction, request.answers
+    )
     if isinstance(result, Clarification):
         return PlanResponse(clarification=result, source=source)
     return PlanResponse(plan=result, problems=problems, source=source, executable=not problems)

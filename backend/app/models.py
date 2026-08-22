@@ -63,12 +63,25 @@ class ActionPlan(BaseModel):
     actions: list[Action] = Field(default_factory=list)
 
 
+class PlanAnswers(BaseModel):
+    """Answers to earlier clarifications, replayed into the next planning attempt."""
+
+    protocol: str | None = None
+    logic_voltage: str | None = None
+    peripheral_sda: str | None = None
+    peripheral_scl: str | None = None
+    controller_sda: str | None = None
+    controller_scl: str | None = None
+
+
 class Clarification(BaseModel):
     """Returned instead of a plan when the request cannot be resolved safely."""
 
     question: str
     reason: str
     options: list[str] = Field(default_factory=list)
+    answer_key: str | None = None
+    """Which `PlanAnswers` field a chosen option fills, or "selection" for a component choice."""
 
 
 class Violation(BaseModel):

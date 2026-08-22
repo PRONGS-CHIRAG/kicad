@@ -23,6 +23,7 @@ from .models import (
     Decision,
     ErcReport,
     ExecutionResult,
+    PlanAnswers,
     RunReport,
 )
 from .planning.llm import plan_from_instruction
@@ -99,10 +100,14 @@ class SessionStore:
         return session.state
 
     def plan(
-        self, session: Session, selected: list[str], instruction: str
+        self,
+        session: Session,
+        selected: list[str],
+        instruction: str,
+        answers: PlanAnswers | None = None,
     ) -> tuple[ActionPlan | Clarification, list[str], str]:
         self.refresh(session)
-        result, source = plan_from_instruction(session.state, selected, instruction)
+        result, source = plan_from_instruction(session.state, selected, instruction, answers)
         session.plan_source = source
         if isinstance(result, Clarification):
             session.plan, session.clarification = None, result

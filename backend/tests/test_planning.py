@@ -1,6 +1,13 @@
 from __future__ import annotations
 
-from app.models import ActionPlan, Clarification, ConnectPins, ConnectPinToNet, EnsurePullup
+from app.models import (
+    ActionPlan,
+    Clarification,
+    ConnectPins,
+    ConnectPinToNet,
+    EnsurePullup,
+    PlanAnswers,
+)
 from app.planning.generator import generate_plan
 from app.planning.instruction import parse_instruction
 from app.planning.validator import validate_plan
@@ -82,6 +89,35 @@ def test_unidentified_peripheral_pins_are_not_guessed(store) -> None:
     result, _, _ = store.plan(session, ["U1", "U2"], "Connect U1 and U2 using I2C with 3.3V logic.")
     assert isinstance(result, Clarification)
     assert result.reason == "unidentified_peripheral_pins"
+    assert result.answer_key == "peripheral_sda"
+
+
+def test_protocol_answer_resumes_planning(state) -> None:
+    question = generate_plan(state, ["U1", "U2"], "Connect the sensor properly.")
+    assert isinstance(question, Clarification)
+    assert question.answer_key == "protocol"
+
+    answered = generate_plan(
+        state, ["U1", "U2"], "Connect the sensor properly.", answers=PlanAnswers(protocol="I2C")
+    )
+    assert isinstance(answered, ActionPlan)
+    assert validate_plan(state, answered) == []
+
+
+def test_answered_peripheral_pins_produce_a_plan(store) -> None:
+    """Both pin answers are collected one at a time, then planning completes."""
+    session = store.create("esp32_i2c_unnamed_pins")
+    instruction = "Connect U1 and U2 using I2C with 3.3V logic."
+    answers = PlanAnswers(peripheral_sda="3:P3")
+    result, _, _ = store.plan(session, ["U1", "U2"], instruction, answers)
+    assert isinstance(result, Clarification)
+    assert result.answer_key == "peripheral_scl"
+
+    answers.peripheral_scl = "4:P4"
+    plan, problems, _ = store.plan(session, ["U1", "U2"], instruction, answers)
+    assert isinstance(plan, ActionPlan)
+    assert problems == []
+    assert any(isinstance(a, ConnectPins) and a.from_pin == "U2.P3" for a in plan.actions)
 
 
 def test_validator_rejects_nonexistent_pin(state) -> None:

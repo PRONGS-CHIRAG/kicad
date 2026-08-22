@@ -3,9 +3,18 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 
 from ..kicad.reader import Component, ProjectState
-from ..models import ActionPlan, Clarification, ConnectPins, ConnectPinToNet, EnsurePullup, Protocol
+from ..models import (
+    ActionPlan,
+    Clarification,
+    ConnectPins,
+    ConnectPinToNet,
+    EnsurePullup,
+    PlanAnswers,
+    Protocol,
+)
 from .instruction import ParsedInstruction, parse_instruction
 
 SUPPORTED_PROTOCOLS = {Protocol.I2C.value}
@@ -26,6 +35,17 @@ VOLTAGE_RAIL_ALIASES = {
 def _pin_by_names(component: Component, names: tuple[str, ...]) -> str | None:
     for candidate in names:
         pin = component.pin(candidate)
+        if pin is not None:
+            return pin.name
+    return None
+
+
+def _answered_pin(component: Component, answer: str | None) -> str | None:
+    """Resolve a clarification answer such as "3:SDA", "3" or "SDA" to a pin name."""
+    if not answer:
+        return None
+    for token in (answer, answer.split(":", 1)[0], answer.split(":", 1)[-1]):
+        pin = component.pin(token.strip())
         if pin is not None:
             return pin.name
     return None
@@ -91,9 +111,16 @@ def generate_plan(
     selected: list[str],
     instruction: str,
     parsed: ParsedInstruction | None = None,
+    answers: PlanAnswers | None = None,
 ) -> ActionPlan | Clarification:
     """Deterministic I2C planner. Never guesses when the schematic is ambiguous."""
     parsed = parsed or parse_instruction(instruction)
+    answers = answers or PlanAnswers()
+    parsed = replace(
+        parsed,
+        protocol=answers.protocol or parsed.protocol,
+        logic_voltage=answers.logic_voltage or parsed.logic_voltage,
+    )
 
     unknown = [ref for ref in selected if ref not in state.components]
     if unknown:
@@ -104,12 +131,14 @@ def generate_plan(
             ),
             reason="unknown_component",
             options=sorted(ref for ref, c in state.components.items() if not c.is_power),
+            answer_key="selection",
         )
     if len(selected) < 2:
         return Clarification(
             question="Select at least two components to connect.",
             reason="insufficient_selection",
             options=sorted(ref for ref, c in state.components.items() if not c.is_power),
+            answer_key="selection",
         )
 
     if parsed.protocol is None:
@@ -117,12 +146,14 @@ def generate_plan(
             question="Which interface should be used to connect these components?",
             reason="protocol_not_specified",
             options=["I2C", "SPI", "UART"],
+            answer_key="protocol",
         )
     if parsed.protocol not in SUPPORTED_PROTOCOLS:
         return Clarification(
             question=f"{parsed.protocol} is not supported yet. Connect these components using I2C instead?",
             reason="unsupported_protocol",
             options=["I2C"],
+            answer_key="protocol",
         )
 
     controllers = [ref for ref in selected if _is_controller(state.components[ref])]
@@ -132,6 +163,7 @@ def generate_plan(
             question="Which component is the I2C controller and which is the peripheral?",
             reason="ambiguous_roles",
             options=selected,
+            answer_key="selection",
         )
     controller_ref, peripheral_ref = controllers[0], peripherals[0]
     controller, peripheral = state.components[controller_ref], state.components[peripheral_ref]
@@ -147,6 +179,7 @@ def generate_plan(
                 question="Which logic voltage should be used for this connection?",
                 reason="voltage_not_specified",
                 options=["3.3V", "5V"],
+                answer_key="logic_voltage",
             )
         assumptions.append(f"{voltage} logic assumed because {why}")
 
@@ -160,6 +193,7 @@ def generate_plan(
             ),
             reason="incompatible_voltage",
             options=available,
+            answer_key="logic_voltage",
         )
 
     controller_supply = _supply_net(state, controller)
@@ -172,22 +206,36 @@ def generate_plan(
             ),
             reason="incompatible_logic_voltage",
             options=[controller_supply, "Cancel"],
+            answer_key="logic_voltage",
         )
 
-    peripheral_sda = _pin_by_names(peripheral, SDA_NAMES)
-    peripheral_scl = _pin_by_names(peripheral, SCL_NAMES)
-    if peripheral_sda is None or peripheral_scl is None:
-        return Clarification(
-            question=(
-                f"The symbol for {peripheral_ref} does not identify its SDA/SCL pins. "
-                "Which pins carry I2C data and clock?"
-            ),
-            reason="unidentified_peripheral_pins",
-            options=[f"{p.number}:{p.name}" for p in peripheral.pins],
-        )
+    peripheral_sda = _answered_pin(peripheral, answers.peripheral_sda) or _pin_by_names(peripheral, SDA_NAMES)
+    peripheral_scl = _answered_pin(peripheral, answers.peripheral_scl) or _pin_by_names(peripheral, SCL_NAMES)
+    for label, signal, pin_name in (
+        ("SDA", "data", peripheral_sda),
+        ("SCL", "clock", peripheral_scl),
+    ):
+        if pin_name is None:
+            return Clarification(
+                question=(
+                    f"The symbol for {peripheral_ref} does not identify its SDA/SCL pins. "
+                    f"Which pin carries I2C {signal} ({label})?"
+                ),
+                reason="unidentified_peripheral_pins",
+                options=[f"{p.number}:{p.name}" for p in peripheral.pins],
+                answer_key=f"peripheral_{label.lower()}",
+            )
 
-    controller_sda = parsed.sda_pin or _pin_by_names(controller, SDA_NAMES)
-    controller_scl = parsed.scl_pin or _pin_by_names(controller, SCL_NAMES)
+    controller_sda = (
+        _answered_pin(controller, answers.controller_sda)
+        or parsed.sda_pin
+        or _pin_by_names(controller, SDA_NAMES)
+    )
+    controller_scl = (
+        _answered_pin(controller, answers.controller_scl)
+        or parsed.scl_pin
+        or _pin_by_names(controller, SCL_NAMES)
+    )
     if controller_sda is None and controller.pin("GPIO21"):
         controller_sda = "GPIO21"
         assumptions.append("GPIO21 used for SDA (default ESP32 I2C pin)")
@@ -200,6 +248,7 @@ def generate_plan(
                 question=f"Which {controller_ref} pin should be used for {label}?",
                 reason="controller_pin_unresolved",
                 options=[p.name for p in controller.pins if CONTROLLER_PIN_HINT.match(p.name)],
+                answer_key=f"controller_{label.lower()}",
             )
 
     peripheral_vcc = _pin_by_names(peripheral, VCC_NAMES)

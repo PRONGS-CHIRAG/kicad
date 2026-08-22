@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 from ..config import settings
 from ..kicad.reader import ProjectState
-from ..models import ActionPlan, Clarification
+from ..models import ActionPlan, Clarification, PlanAnswers
 from .generator import generate_plan
 from .instruction import parse_instruction
 from .validator import validate_plan
@@ -73,10 +73,11 @@ def plan_from_instruction(
     state: ProjectState,
     selected: list[str],
     instruction: str,
+    answers: PlanAnswers | None = None,
 ) -> tuple[ActionPlan | Clarification, str]:
     """Return (plan_or_clarification, source) where source is 'llm' or 'rules'."""
-    fallback = generate_plan(state, selected, instruction, parse_instruction(instruction))
-    if not settings.llm_enabled:
+    fallback = generate_plan(state, selected, instruction, parse_instruction(instruction), answers)
+    if not settings.llm_enabled or (answers and answers.model_dump(exclude_none=True)):
         return fallback, "rules"
 
     try:
