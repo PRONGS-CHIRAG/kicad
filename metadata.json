@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.10.2",
+  "checkpoint_id": "01M0NP4G0VDRME1TPTSZ8XD0JT",
+  "strategy": "manual-commit",
+  "branch": "feat/protocols-spi-uart-gpio-power",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "backend/app/kicad/erc.py",
+    "backend/app/workflow.py",
+    "backend/tests/test_board_sync.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 12,
+    "cache_creation_tokens": 18474,
+    "cache_read_tokens": 1488096,
+    "output_tokens": 10421,
+    "api_call_count": 6
+  }
+}
