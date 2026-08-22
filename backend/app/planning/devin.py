@@ -25,7 +25,12 @@ explicit that rejecting an uncertain instruction beats silently producing a wron
 connection, so the resolvable reasons are an allowlist: a reason code added later
 is unresolvable until someone deliberately says otherwise.
 
-API: https://docs.devin.ai/api-reference/v1/sessions/create-a-new-devin-session
+API: the v3 organization endpoints. `cog_` service-user keys work only with
+v3 — v1/v2 are for the legacy `apk_` keys and return 403 to a service user.
+  POST /v3/organizations/{org_id}/sessions
+  GET  /v3/organizations/{org_id}/sessions/{devin_id}
+  GET  /v3/self                              (discovers org_id)
+https://docs.devin.ai/api-reference/v3/sessions/post-organizations-sessions
 """
 
 from __future__ import annotations
@@ -104,7 +109,7 @@ class AgentAnswer:
 
 
 class DevinClient:
-    """The Devin v1 sessions API: create a session, poll it, read structured output."""
+    """The Devin v3 organization sessions API."""
 
     def __init__(
         self,
@@ -112,11 +117,15 @@ class DevinClient:
         base_url: str | None = None,
         timeout_seconds: float | None = None,
         poll_seconds: float | None = None,
+        org_id: str | None = None,
     ) -> None:
         self.api_key = api_key or settings.devin_api_key
         self.base_url = (base_url or settings.devin_base_url).rstrip("/")
         self.timeout_seconds = timeout_seconds or settings.devin_timeout_seconds
         self.poll_seconds = poll_seconds or settings.devin_poll_seconds
+        self._org_id = org_id or settings.devin_org_id
+        self.connect_budget_seconds = 90.0
+        """How long to keep retrying a transport error before giving up."""
 
     @property
     def available(self) -> bool:
@@ -125,37 +134,69 @@ class DevinClient:
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
+    def _request(self, method: str, url: str, **kwargs) -> httpx.Response:
+        """Retry transport errors with backoff.
+
+        Name resolution is not reliable on every machine - measured here failing
+        in bursts of tens of seconds while succeeding 40/40 moments later, which
+        killed an otherwise-successful session. So the budget is a duration, not
+        an attempt count. Only transport errors are retried; an HTTP status is a
+        real answer and is raised straight away.
+        """
+        last: Exception | None = None
+        delay = 1.0
+        deadline = time.monotonic() + self.connect_budget_seconds
+        while True:
+            try:
+                response = httpx.request(method, url, headers=self._headers(), timeout=30.0, **kwargs)
+                response.raise_for_status()
+                return response
+            except httpx.TransportError as exc:  # DNS / connection, worth retrying
+                last = exc
+                if time.monotonic() + delay >= deadline:
+                    break
+                time.sleep(delay)
+                delay = min(delay * 2, 8.0)
+        raise DevinError(f"{method} {url} failed to connect: {last}")
+
+    def org_id(self) -> str:
+        """Configured, or discovered once from /v3/self so nobody has to look it up."""
+        if not self._org_id:
+            payload = self._request("GET", f"{self.base_url}/self").json()
+            self._org_id = payload.get("org_id")
+            if not self._org_id:
+                raise DevinError(f"/self did not report an org_id: {payload}")
+            logger.info("discovered Devin org %s", self._org_id)
+        return self._org_id
+
+    def _sessions_url(self) -> str:
+        return f"{self.base_url}/organizations/{self.org_id()}/sessions"
+
     def create_session(self, prompt: str, title: str, schema: dict) -> dict:
-        response = httpx.post(
-            f"{self.base_url}/sessions",
-            headers=self._headers(),
+        return self._request(
+            "POST",
+            self._sessions_url(),
             json={
                 "prompt": prompt,
                 "title": title,
                 "structured_output_schema": schema,
-                # An identical question reuses the session instead of paying for
-                # a second one, and the ACU ceiling keeps one answer cheap.
-                "idempotent": True,
+                # Make the answer a contract rather than a hope.
+                "structured_output_required": True,
+                # An ACU is roughly fifteen minutes of work; one question needs
+                # a fraction of that, and the ceiling stops a runaway session.
                 "max_acu_limit": settings.devin_max_acu,
-                "unlisted": True,
+                "devin_mode": settings.devin_mode,
                 "tags": ["kicad-mitos", "clarification"],
             },
-            timeout=30.0,
-        )
-        response.raise_for_status()
-        return response.json()
+        ).json()
 
     def session(self, session_id: str) -> dict:
-        response = httpx.get(
-            f"{self.base_url}/sessions/{session_id}", headers=self._headers(), timeout=30.0
-        )
-        response.raise_for_status()
-        return response.json()
+        return self._request("GET", f"{self._sessions_url()}/{session_id}").json()
 
     def run(self, prompt: str, title: str, schema: dict = ANSWER_SCHEMA) -> tuple[dict, str]:
         """Create a session, wait for it to finish, return (structured_output, url).
 
-        Raises DevinError on a terminal status or when the wait runs out. Callers
+        Raises DevinError on a terminal failure or when the wait runs out. Callers
         treat that as "unresolved" and fall back to asking the user.
         """
         if not self.available:
@@ -167,16 +208,35 @@ class DevinClient:
             raise DevinError(f"Devin did not return a session_id: {created}")
 
         deadline = time.monotonic() + self.timeout_seconds
+        status = "new"
         while True:
-            detail = self.session(session_id)
-            status = detail.get("status_enum") or detail.get("status")
-            if status in {"finished", "blocked"}:
-                output = detail.get("structured_output")
-                if not isinstance(output, dict) or not output:
-                    raise DevinError(f"session {session_id} ended {status} with no structured output")
+            try:
+                detail = self.session(session_id)
+            except DevinError as exc:
+                # A transient poll failure must not throw away a session that is
+                # about to answer. Keep polling until the deadline instead.
+                logger.warning("poll of %s failed, retrying: %s", session_id, exc)
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(self.poll_seconds)
+                continue
+
+            status = detail.get("status", "unknown")
+            # Read the answer the moment it appears. Measured against the real
+            # API, `structured_output` is populated while the session is still
+            # `running` - waiting for `exit` costs minutes for no extra
+            # information, and is what made this look like a timeout.
+            output = detail.get("structured_output")
+            if isinstance(output, dict) and output:
+                logger.info(
+                    "Devin session %s answered while %s, %.2f ACU consumed",
+                    session_id,
+                    status,
+                    detail.get("acus_consumed", 0.0) or 0.0,
+                )
                 return output, url
-            if status in {"expired"}:
-                raise DevinError(f"session {session_id} expired before answering")
+            if status in {"exit", "error", "suspended"}:
+                raise DevinError(f"session {session_id} ended as {status} with no structured output")
             if time.monotonic() >= deadline:
                 raise DevinError(
                     f"session {session_id} still {status} after {self.timeout_seconds:.0f}s"

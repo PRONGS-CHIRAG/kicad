@@ -91,7 +91,22 @@ def _auto_resolve(
     result, _, notes = resolve_and_plan(
         state, selected, instruction, answers or PlanAnswers(), clarification, replan
     )
-    return result, ("agent+rules" if notes else "rules")
+    if not notes:
+        return result, "rules"
+    # The agent is fallible, and a plan it led us to that cannot pass the
+    # validator is worse than the question it replaced: the preview would show a
+    # plan nobody can approve. Observed for real - the agent picked a pin the
+    # fixture ties to GND, which would have grounded the I2C clock. So a plan
+    # that does not validate discards the agent's answers and hands the original
+    # question back.
+    if isinstance(result, ActionPlan):
+        problems = validate_plan(state, result)
+        if problems:
+            logger.warning(
+                "discarding agent-resolved plan, it does not validate: %s", "; ".join(problems)
+            )
+            return clarification, "rules"
+    return result, "agent+rules"
 
 
 def plan_from_instruction(

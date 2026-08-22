@@ -13,6 +13,20 @@ from app.workflow import SessionStore
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "projects"
 
 
+@pytest.fixture(autouse=True)
+def _no_live_agent(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep the suite hermetic and free.
+
+    `Settings` reads `backend/.env`, so a real Devin key on the developer's
+    machine would otherwise make any test that triggers a clarification create
+    live Devin sessions - which spends money, takes minutes, and makes results
+    depend on what an agent happened to answer. Tests that exercise the agent
+    opt back in explicitly against a local stub.
+    """
+    monkeypatch.setattr(settings, "auto_resolve", False)
+    monkeypatch.setattr(settings, "devin_api_key", None)
+
+
 @pytest.fixture()
 def project(tmp_path: Path) -> Path:
     target = tmp_path / "esp32_i2c_demo"

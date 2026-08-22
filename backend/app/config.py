@@ -34,7 +34,17 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("KICAD_MITOS_DEVIN_API_KEY", "DEVIN_API_KEY"),
     )
-    devin_base_url: str = "https://api.devin.ai/v1"
+    # v3: `cog_` service-user keys work only with the v3 API. The v1/v2
+    # endpoints are for the legacy `apk_` keys and answer 403 to a service user.
+    devin_base_url: str = "https://api.devin.ai/v3"
+    devin_org_id: str | None = Field(
+        default=None,
+        description="org-… id. Left unset it is discovered once from GET /v3/self.",
+    )
+    devin_mode: str = Field(
+        default="normal",
+        description="normal | fast | lite | ultra | fusion. 'fast' is ~2x quicker at ~4x the ACU.",
+    )
     devin_timeout_seconds: float = 120.0
     devin_poll_seconds: float = 5.0
     devin_max_acu: int = 5

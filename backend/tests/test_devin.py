@@ -1,4 +1,4 @@
-"""The Devin agent path, against a real local stub of the v1 sessions API.
+"""The Devin agent path, against a real local stub of the v3 sessions API.
 
 Driven over real HTTP rather than a patched function, so the client's request
 shape, the poll loop, the timeout and every fallback actually execute. The
@@ -44,8 +44,10 @@ class _Stub:
     def __init__(self) -> None:
         self.created: list[dict] = []
         self.headers: list[dict] = []
+        self.paths: list[str] = []
         self.polls = 0
-        self.statuses = ["finished"]
+        # v3 status values: new | claimed | running | exit | error | suspended
+        self.statuses = ["exit"]
         self.structured_output: dict | None = {"answer": "3:P3", "reasoning": "TMP102 pin 3 is SDA."}
         self.create_status = 200
 
@@ -67,17 +69,30 @@ def stub(monkeypatch: pytest.MonkeyPatch) -> _Stub:
             length = int(self.headers.get("Content-Length", 0))
             state.created.append(json.loads(self.rfile.read(length) or b"{}"))
             state.headers.append(dict(self.headers))
+            state.paths.append(self.path)
             if state.create_status != 200:
                 self._json({"error": "nope"}, state.create_status)
                 return
-            self._json({"session_id": "devin-1", "url": "https://app.devin.ai/sessions/1"})
+            self._json(
+                {
+                    "session_id": "devin-1",
+                    "url": "https://app.devin.ai/sessions/1",
+                    "status": "new",
+                    "org_id": "org-test",
+                }
+            )
 
         def do_GET(self) -> None:  # noqa: N802
+            state.paths.append(self.path)
+            if self.path.endswith("/self"):
+                self._json({"principal_type": "service_user", "org_id": "org-test"})
+                return
             index = min(state.polls, len(state.statuses) - 1)
             status = state.statuses[index]
             state.polls += 1
-            payload: dict = {"session_id": "devin-1", "status": status, "status_enum": status}
-            if status == "finished" and state.structured_output is not None:
+            payload: dict = {"session_id": "devin-1", "status": status, "acus_consumed": 0.4}
+            # Only the get/list endpoints carry structured_output.
+            if status == "exit" and state.structured_output is not None:
                 payload["structured_output"] = state.structured_output
             self._json(payload)
 
@@ -133,13 +148,17 @@ def test_request_carries_the_schema_the_cost_cap_and_the_key(state, stub: _Stub)
     resolve_clarification(state, ["U1", "U2"], "connect over I2C", PIN_QUESTION)
     sent = stub.created[0]
     assert sent["structured_output_schema"]["required"] == ["answer", "reasoning"]
-    assert sent["idempotent"] is True
+    assert sent["structured_output_required"] is True
     assert sent["max_acu_limit"] == settings.devin_max_acu
+    assert sent["devin_mode"] == settings.devin_mode
     assert stub.headers[0]["Authorization"] == "Bearer cog_test"
+    # v3 shape: org-scoped path, and the org was discovered from /self.
+    assert any(p.endswith("/self") for p in stub.paths)
+    assert any(p == "/organizations/org-test/sessions" for p in stub.paths)
 
 
 def test_it_polls_until_the_session_finishes(state, stub: _Stub) -> None:
-    stub.statuses = ["working", "working", "finished"]
+    stub.statuses = ["new", "running", "running", "exit"]
     answer = resolve_clarification(state, ["U1", "U2"], "connect over I2C", PIN_QUESTION)
     assert answer is not None
     assert answer.answer == "3:P3"
@@ -147,12 +166,12 @@ def test_it_polls_until_the_session_finishes(state, stub: _Stub) -> None:
 
 
 def test_a_session_that_never_finishes_falls_back_rather_than_hanging(state, stub: _Stub) -> None:
-    stub.statuses = ["working"]
+    stub.statuses = ["running"]
     assert resolve_clarification(state, ["U1", "U2"], "connect over I2C", PIN_QUESTION) is None
 
 
-def test_an_expired_session_falls_back(state, stub: _Stub) -> None:
-    stub.statuses = ["expired"]
+def test_an_errored_session_falls_back(state, stub: _Stub) -> None:
+    stub.statuses = ["error"]
     assert resolve_clarification(state, ["U1", "U2"], "connect over I2C", PIN_QUESTION) is None
 
 
@@ -243,6 +262,21 @@ def test_auto_resolve_is_off_unless_both_key_and_flag_are_set(state, monkeypatch
     monkeypatch.setattr(settings, "auto_resolve", False)
     assert settings.agent_resolves_ambiguity is False
     result, source = plan_from_instruction(state, ["U1", "U2"], "Connect these somehow")
+    assert isinstance(result, Clarification)
+    assert source == "rules"
+
+
+def test_an_agent_resolved_plan_that_fails_the_validator_is_discarded(store, stub: _Stub) -> None:
+    """Observed against the live API: the agent picked a pin tied to GND.
+
+    A plan nobody can approve is worse than the question it replaced, so the
+    agent's answers are thrown away and the original question comes back.
+    """
+    session = store.create("esp32_i2c_unnamed_pins")
+    # P5 is tied to GND in this fixture, so choosing it for SCL yields a pull-up
+    # on a power net - exactly what the live agent did.
+    stub.structured_output = {"answer": "5:P5", "reasoning": "confidently wrong"}
+    result, source = plan_from_instruction(session.state, ["U1", "U2"], "Connect over I2C at 3.3V")
     assert isinstance(result, Clarification)
     assert source == "rules"
 

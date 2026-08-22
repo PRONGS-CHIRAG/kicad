@@ -97,8 +97,10 @@ but the decision engine refuses to accept a change it could not verify — every
 | `OPENAI_API_KEY` | – | Enables LLM planning; falls back to the rule planner on any failure |
 | `KICAD_MITOS_DEVIN_API_KEY` | – | Devin service-user key (`cog_…`); `DEVIN_API_KEY` also works |
 | `KICAD_MITOS_AUTO_RESOLVE` | `false` | Let the Devin agent answer an ambiguity instead of asking you |
-| `KICAD_MITOS_DEVIN_BASE_URL` | `https://api.devin.ai/v1` | Override for an enterprise tenant |
-| `KICAD_MITOS_DEVIN_TIMEOUT_SECONDS` | `120` | Ceiling before falling back to asking |
+| `KICAD_MITOS_DEVIN_BASE_URL` | `https://api.devin.ai/v3` | Enterprise tenant override. `cog_` keys work only on v3 |
+| `KICAD_MITOS_DEVIN_ORG_ID` | auto | Discovered from `GET /v3/self`; set only to pin one org |
+| `KICAD_MITOS_DEVIN_MODE` | `normal` | `normal｜fast｜lite｜ultra｜fusion`; `fast` is ~2× quicker at ~4× ACU |
+| `KICAD_MITOS_DEVIN_TIMEOUT_SECONDS` | `180` | Ceiling before falling back to asking |
 | `KICAD_MITOS_DEVIN_POLL_SECONDS` | `5` | Poll interval while the session runs |
 | `KICAD_MITOS_DEVIN_MAX_ACU` | `5` | ACU ceiling per session |
 
@@ -130,8 +132,16 @@ produce a wrong connection). Neither are the three that pick *which* components 
 resolvable set is an allowlist, so a reason code added later is unresolvable until someone says
 otherwise.
 
-If the session times out, errors, or answers something that was not on the list, the question comes
-back to you — the agent degrades to the old behaviour rather than to a dead screen.
+If the session times out, errors, answers something that was not on the list, **or leads to a plan
+the validator rejects**, the question comes back to you — the agent degrades to the old behaviour
+rather than to a dead screen. That last case is not hypothetical: running this against the live API,
+the agent picked a pin that the fixture ties to GND, which would have grounded the I2C clock. The
+validator caught it (*"refusing to pull up power net GND"*), and the run fell back to asking. The
+agent is fallible; the rules are the backstop, which is the whole point of the split.
+
+Measured against the live v3 API: an answer arrives in roughly 20–40 s for 0 ACU, and it arrives
+while the session is still `running` — the client reads `structured_output` the moment it appears
+instead of waiting for the session to exit.
 
 **This sends your schematic to a third party.** The prompt carries the selected components, their pin
 tables and the project's net names to `api.devin.ai` so the agent can reason about the real design.
