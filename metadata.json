@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.10.2",
+  "checkpoint_id": "01M0NR633JEN59BADMQF0ZZ34H",
+  "strategy": "manual-commit",
+  "branch": "feat/protocols-spi-uart-gpio-power",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "DEMO.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 18,
+    "cache_creation_tokens": 11882,
+    "cache_read_tokens": 2851183,
+    "output_tokens": 8523,
+    "api_call_count": 8
+  }
+}
