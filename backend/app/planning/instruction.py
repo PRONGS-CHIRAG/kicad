@@ -15,6 +15,7 @@ VOLTAGE_PATTERN = r"(\d(?:[.,]\d)?)\s*[vV]\b"
 PULLUP_VALUE_PATTERN = r"(\d+(?:[.,]\d+)?)\s*k(?:ilo)?\s*(?:Ω|ω|ohms?)?"
 REFERENCE_PATTERN = r"\b([A-Z]{1,3}\d{1,3})\b"
 PIN_PATTERN = r"\b(GPIO\s?\d{1,2}|IO\s?\d{1,2}|P[A-D]\d{1,2})\b"
+PLACEMENT_PATTERN = r"\b(?i:near)\s+([A-Z]{1,3}\d{1,3})\b"
 
 
 @dataclass
@@ -24,6 +25,7 @@ class ParsedInstruction:
     pullup_value: str | None = None
     sda_pin: str | None = None
     scl_pin: str | None = None
+    placement_near: str | None = None
     mentioned_references: list[str] = field(default_factory=list)
     protected_objects: list[str] = field(default_factory=list)
     allow_new_components: bool = True
@@ -66,6 +68,10 @@ def parse_instruction(text: str) -> ParsedInstruction:
 
     parsed.sda_pin = _pin_for_signal(text, r"sda|data")
     parsed.scl_pin = _pin_for_signal(text, r"scl|clock|clk")
+
+    placement = re.search(PLACEMENT_PATTERN, text)
+    if placement:
+        parsed.placement_near = placement.group(1).upper()
 
     parsed.mentioned_references = sorted(set(re.findall(REFERENCE_PATTERN, text)))
 

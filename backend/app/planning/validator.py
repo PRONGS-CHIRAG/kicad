@@ -3,9 +3,22 @@
 from __future__ import annotations
 
 from ..kicad.reader import ProjectState
-from ..models import ActionPlan, ActionType, ConnectPins, ConnectPinToNet, EnsurePullup, Protocol
+from ..models import (
+    ActionPlan,
+    ActionType,
+    ConnectPins,
+    ConnectPinToNet,
+    EnsurePullup,
+    PlaceFootprint,
+    Protocol,
+)
 
-ALLOWED_ACTION_TYPES = {ActionType.CONNECT_PINS, ActionType.CONNECT_PIN_TO_NET, ActionType.ENSURE_PULLUP}
+ALLOWED_ACTION_TYPES = {
+    ActionType.CONNECT_PINS,
+    ActionType.CONNECT_PIN_TO_NET,
+    ActionType.ENSURE_PULLUP,
+    ActionType.PLACE_FOOTPRINT,
+}
 GROUND_NETS = {"GND", "GNDA", "VSS", "AGND"}
 POWER_NET_PREFIXES = ("+", "VCC", "VDD", "VBUS")
 
@@ -74,6 +87,18 @@ def validate_plan(state: ProjectState, plan: ActionPlan) -> list[str]:
                 problems.append(f"{action.id}: pull-up target {action.to_net} is not a power net")
             if action.to_net.upper() in GROUND_NETS:
                 problems.append(f"{action.id}: pull-up to ground is not valid")
+        elif isinstance(action, PlaceFootprint):
+            nets = [action.net]
+            if action.near not in state.components:
+                problems.append(f"{action.id}: placement target {action.near} does not exist")
+            elif action.near.upper() in protected:
+                problems.append(f"{action.id}: placement target {action.near} is protected")
+            if not any(
+                isinstance(other, EnsurePullup) and other.net == action.net for other in plan.actions
+            ):
+                problems.append(
+                    f"{action.id}: no pull-up is being added on {action.net} for this placement to attach to"
+                )
 
         for pin in pins:
             error = _pin_exists(state, pin)

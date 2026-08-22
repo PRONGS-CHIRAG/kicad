@@ -140,6 +140,26 @@ def footprint_reference(footprint: list) -> str | None:
     return None
 
 
+def footprint_by_reference(doc: list, reference: str) -> list | None:
+    for footprint in sexpr.find_all(doc, "footprint"):
+        if footprint_reference(footprint) == reference:
+            return footprint
+    return None
+
+
+def footprint_on_net(doc: list, net: str, candidates: list[str]) -> str | None:
+    """Which of `candidates` (references) has a pad bound to `net`, if any."""
+    for reference in candidates:
+        footprint = footprint_by_reference(doc, reference)
+        if footprint is None:
+            continue
+        for pad in sexpr.find_all(footprint, "pad"):
+            bound = sexpr.find(pad, "net")
+            if bound is not None and len(bound) >= 3 and str(bound[2]) == net:
+                return reference
+    return None
+
+
 def _pad_number(pad: list) -> str:
     return str(pad[1]) if len(pad) > 1 else ""
 
@@ -225,6 +245,77 @@ def free_position(doc: list, half_w: float, half_h: float, reserved: list[tuple]
             x += _PLACEMENT_STEP
         y += _PLACEMENT_STEP
     return None
+
+
+def _positions_near(target_extent: tuple, half_w: float, half_h: float, max_radius: float = 60.0):
+    """Points hugging each side of `target_extent`, nearest first, spiralling outward."""
+    tx1, ty1, tx2, ty2 = target_extent
+    cx, cy = (tx1 + tx2) / 2, (ty1 + ty2) / 2
+    offset = 0.0
+    while offset <= max_radius:
+        yield from (
+            (tx2 + _PLACEMENT_CLEARANCE + half_w + offset, cy),
+            (tx1 - _PLACEMENT_CLEARANCE - half_w - offset, cy),
+            (cx, ty2 + _PLACEMENT_CLEARANCE + half_h + offset),
+            (cx, ty1 - _PLACEMENT_CLEARANCE - half_h - offset),
+        )
+        offset += _PLACEMENT_STEP
+
+
+def free_position_near(
+    doc: list, target_extent: tuple, half_w: float, half_h: float, exclude: list | None = None
+) -> tuple[float, float] | None:
+    """Nearest free slot to `target_extent`, skipping `exclude` (the footprint being moved)."""
+    min_x, min_y, max_x, max_y = board_outline(doc)
+    occupied = [
+        extent
+        for footprint in sexpr.find_all(doc, "footprint")
+        if footprint is not exclude
+        for extent in [_footprint_extent(footprint)]
+        if extent
+    ]
+    for x, y in _positions_near(target_extent, half_w, half_h):
+        if not (min_x + _OUTLINE_MARGIN <= x - half_w and x + half_w <= max_x - _OUTLINE_MARGIN):
+            continue
+        if not (min_y + _OUTLINE_MARGIN <= y - half_h and y + half_h <= max_y - _OUTLINE_MARGIN):
+            continue
+        box = (x - half_w, y - half_h, x + half_w, y + half_h)
+        clash = any(
+            box[0] - _PLACEMENT_CLEARANCE < ox2
+            and box[2] + _PLACEMENT_CLEARANCE > ox1
+            and box[1] - _PLACEMENT_CLEARANCE < oy2
+            and box[3] + _PLACEMENT_CLEARANCE > oy1
+            for ox1, oy1, ox2, oy2 in occupied
+        )
+        if not clash:
+            return (round(x, 2), round(y, 2))
+    return None
+
+
+def move_footprint_near(doc: list, reference: str, target_reference: str) -> bool:
+    """Reposition an existing footprint next to another. Returns whether it moved.
+
+    Only ever called on a footprint this same run just synthesised (see
+    `place_footprint` handling in workflow.py), so this never disturbs a
+    component the person placed themselves.
+    """
+    footprint = footprint_by_reference(doc, reference)
+    target = footprint_by_reference(doc, target_reference)
+    if footprint is None or target is None:
+        return False
+    target_extent = _footprint_extent(target)
+    own_extent = _footprint_extent(footprint)
+    if target_extent is None or own_extent is None:
+        return False
+    half_w, half_h = (own_extent[2] - own_extent[0]) / 2, (own_extent[3] - own_extent[1]) / 2
+    spot = free_position_near(doc, target_extent, half_w, half_h, exclude=footprint)
+    if spot is None:
+        return False
+    at = sexpr.find(footprint, "at")
+    if at is None or len(at) < 3:
+        return False
+    at[1], at[2] = _num(spot[0]), _num(spot[1])
+    return True
 
 
 def _num(value: float) -> S:

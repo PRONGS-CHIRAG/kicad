@@ -48,7 +48,8 @@ export type ProjectSummary = { name: string; path: string; origin: "fixture" | "
 export type Action =
   | { id: string; type: "connect_pins"; from: string; to: string; net_name: string; purpose: string }
   | { id: string; type: "connect_pin_to_net"; pin: string; net: string; purpose: string }
-  | { id: string; type: "ensure_pullup"; net: string; to_net: string; value: string; purpose: string };
+  | { id: string; type: "ensure_pullup"; net: string; to_net: string; value: string; purpose: string }
+  | { id: string; type: "place_footprint"; net: string; near: string; purpose: string };
 
 export type ActionPlan = {
   schema_version: string;
@@ -172,5 +173,7 @@ export function describeAction(action: Action): string {
       return `Connect ${action.pin} to ${action.net}`;
     case "ensure_pullup":
       return `Add ${action.value} pull-up from ${action.net} to ${action.to_net}`;
+    case "place_footprint":
+      return `Place the ${action.net} pull-up on the board next to ${action.near}`;
   }
 }

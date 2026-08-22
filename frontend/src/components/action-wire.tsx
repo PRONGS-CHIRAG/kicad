@@ -145,6 +145,13 @@ export function ActionWire({ action, index }: { action: Action; index: number })
             <NetEndpoint name={action.to_net} />
           </>
         )}
+        {action.type === "place_footprint" && (
+          <>
+            <NetEndpoint name={action.net} />
+            <Run label="near" delay={delay} />
+            <PinEndpoint reference={action.near} align="right" />
+          </>
+        )}
       </div>
 
       {/* The drawing is decorative; this sentence is the actual accessible content. */}

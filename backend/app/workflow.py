@@ -3,18 +3,24 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from pydantic import BaseModel
+from pydantic import Field as PydanticField
+
 from .config import settings
 from .decision import evaluate
 from .execution.base import Executor
 from .execution.local import LocalExecutor
 from .execution.mitos import MitosExecutor
-from .kicad.board import BoardSync
+from .kicad.board import BoardSync, footprint_on_net, move_footprint_near
+from .kicad.board import load as load_board
+from .kicad.board import save as save_board
 from .kicad.board import sync_to_schematic as sync_board
 from .kicad.checkpoint import Checkpoint
 from .kicad.erc import KicadCli, diff_violations
@@ -25,6 +31,7 @@ from .models import (
     Decision,
     ErcReport,
     ExecutionResult,
+    PlaceFootprint,
     PlanAnswers,
     RunReport,
 )
@@ -62,12 +69,91 @@ class Session:
         return boards[0] if boards else None
 
 
+class SessionRecord(BaseModel):
+    """The subset of `Session` that cannot be recomputed from disk.
+
+    `state` is deliberately absent: it is a pure function of `project_dir`
+    (`read_project`), which is already persisted as the session's working
+    copy, so re-deriving it on load is both cheaper and safer than trusting a
+    stale snapshot.
+    """
+
+    id: str
+    source_project: str
+    project_dir: str
+    baseline_erc: ErcReport
+    baseline_drc: ErcReport | None = None
+    plan: ActionPlan | None = None
+    plan_source: str = "rules"
+    clarification: Clarification | None = None
+    report: RunReport | None = None
+    history: list[str] = PydanticField(default_factory=list)
+    revision: int = 0
+
+    @classmethod
+    def from_session(cls, session: Session) -> SessionRecord:
+        return cls(
+            id=session.id,
+            source_project=str(session.source_project),
+            project_dir=str(session.project_dir),
+            baseline_erc=session.baseline_erc,
+            baseline_drc=session.baseline_drc,
+            plan=session.plan,
+            plan_source=session.plan_source,
+            clarification=session.clarification,
+            report=session.report,
+            history=session.history,
+            revision=session.revision,
+        )
+
+
 class SessionStore:
-    """In-memory session state; each session owns a scratch copy of the project."""
+    """Session state cached in memory and persisted to the workspace, so a
+    backend restart does not drop a session whose working copy is still there.
+    """
 
     def __init__(self, cli: KicadCli | None = None) -> None:
         self.cli = cli or KicadCli(settings.kicad_cli)
         self._sessions: dict[str, Session] = {}
+
+    @staticmethod
+    def _record_path(session_id: str) -> Path:
+        return settings.sessions_dir / session_id / "session.json"
+
+    def _save(self, session: Session) -> None:
+        """Write the session's metadata to disk, atomically.
+
+        Only metadata is written here - the project working copy and the
+        checkpoint are already persisted by the code that produced them.
+        """
+        record_path = self._record_path(session.id)
+        record_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = record_path.with_suffix(".json.tmp")
+        tmp_path.write_text(SessionRecord.from_session(session).model_dump_json())
+        os.replace(tmp_path, record_path)
+
+    def _load(self, session_id: str) -> Session | None:
+        record_path = self._record_path(session_id)
+        if not record_path.is_file():
+            return None
+        record = SessionRecord.model_validate_json(record_path.read_text())
+        project_dir = Path(record.project_dir)
+        if not project_dir.is_dir():
+            return None
+        return Session(
+            id=record.id,
+            source_project=Path(record.source_project),
+            project_dir=project_dir,
+            baseline_erc=record.baseline_erc,
+            state=read_project(project_dir),
+            baseline_drc=record.baseline_drc,
+            plan=record.plan,
+            plan_source=record.plan_source,
+            clarification=record.clarification,
+            report=record.report,
+            history=record.history,
+            revision=record.revision,
+        )
 
     def project_roots(self) -> list[tuple[Path, str]]:
         """Fixture projects plus uploaded ones, in lookup order."""
@@ -116,12 +202,17 @@ class SessionStore:
         board = session.board_path
         session.baseline_drc = self.cli.run_drc(board) if board else None
         self._sessions[session_id] = session
+        self._save(session)
         return session
 
     def get(self, session_id: str) -> Session:
         session = self._sessions.get(session_id)
+        if session is not None:
+            return session
+        session = self._load(session_id)
         if session is None:
             raise KeyError(session_id)
+        self._sessions[session_id] = session
         return session
 
     def refresh(self, session: Session) -> ProjectState:
@@ -147,10 +238,12 @@ class SessionStore:
         session.plan_source = source
         if isinstance(result, Clarification):
             session.plan, session.clarification = None, result
+            self._save(session)
             return result, [], source
         problems = validate_plan(session.state, result)
         session.plan = None if problems else result
         session.clarification = None
+        self._save(session)
         return result, problems, source
 
     def execute(self, session: Session, plan: ActionPlan, executor: Executor | None = None) -> RunReport:
@@ -180,12 +273,46 @@ class SessionStore:
         # along with everything else.
         board = session.board_path
         board_sync = BoardSync()
+        placement_notes: list[str] = []
         if board and after is not None and execution.completed:
             try:
                 board_sync = sync_board(board, after)
             except Exception as exc:  # noqa: BLE001 - a failed sync must not crash the run
                 logger.exception("board sync failed")
                 execution = execution.model_copy(update={"error": f"board sync failed: {exc}"})
+
+            # `place_footprint` only ever targets a resistor this same sync just
+            # synthesised, so it runs after the sync and only touches footprints
+            # named in `board_sync.footprints_added` - never a component the
+            # person placed themselves. A placement that cannot be satisfied
+            # (target missing, board too crowded) is reported, not rejected: it
+            # is a layout nicety, not an electrical-correctness matter.
+            placements = [action for action in plan.actions if isinstance(action, PlaceFootprint)]
+            if placements and board_sync.footprints_added:
+                doc = load_board(board)
+                moved = False
+                for action in placements:
+                    reference = footprint_on_net(doc, action.net, board_sync.footprints_added)
+                    if reference is None:
+                        placement_notes.append(
+                            f"could not find the {action.net} pull-up to place near {action.near}"
+                        )
+                    elif move_footprint_near(doc, reference, action.near):
+                        placement_notes.append(f"moved {reference} next to {action.near}")
+                        moved = True
+                    else:
+                        placement_notes.append(f"no free area to place {reference} near {action.near}")
+                if moved:
+                    save_board(doc, board)
+            elif placements:
+                # Nothing new was synthesised (e.g. the pull-up already existed),
+                # so there is no Mitos-added footprint to move - moving the
+                # existing one would break the "never touch what the person
+                # placed" guarantee.
+                placement_notes.extend(
+                    f"{action.net} pull-up already existed; nothing new to place near {action.near}"
+                    for action in placements
+                )
 
         # Snapshot the file-level diff here, before ERC/DRC run: kicad-cli
         # rewrites project files as a side effect, and attributing those writes
@@ -237,6 +364,7 @@ class SessionStore:
         # alongside the executor's own steps rather than left implicit.
         changes = [step.detail for step in execution.steps if step.status == "applied"]
         changes.extend(board_sync.summary())
+        changes.extend(placement_notes)
         report = RunReport(
             session_id=session.id,
             goal=plan.goal,
@@ -256,6 +384,7 @@ class SessionStore:
             session.baseline_erc = erc_after or session.baseline_erc
             session.baseline_drc = drc_after or session.baseline_drc
         self.refresh(session)
+        self._save(session)
         return report
 
 

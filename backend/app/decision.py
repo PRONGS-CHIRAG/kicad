@@ -29,9 +29,11 @@ BOARD_SUFFIXES = {".kicad_pcb"}
 # never evidence that the project was modified.
 IGNORED_SUFFIXES = {".kicad_prl"}
 
-# No action type edits the board today. Deriving the flag from a set instead of
-# hardcoding False keeps the DRC gate correct the moment a PCB action is added.
-PCB_ACTION_TYPES: frozenset[ActionType] = frozenset()
+# `place_footprint` is the one action type whose entire effect is on the board:
+# it repositions a footprint the same plan's `ensure_pullup` is adding. Every
+# other action type's board effect, if any, is a side effect of the schematic
+# sync (`board_sync.changed` below already covers that case on its own).
+PCB_ACTION_TYPES: frozenset[ActionType] = frozenset({ActionType.PLACE_FOOTPRINT})
 
 
 def plan_touches_pcb(plan: ActionPlan) -> bool:

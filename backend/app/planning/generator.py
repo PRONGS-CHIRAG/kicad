@@ -12,6 +12,7 @@ from ..models import (
     ConnectPins,
     ConnectPinToNet,
     EnsurePullup,
+    PlaceFootprint,
     PlanAnswers,
     Protocol,
 )
@@ -310,6 +311,16 @@ def generate_plan(
             )
         )
         next_index += 1
+        if parsed.placement_near:
+            actions.append(
+                PlaceFootprint(
+                    id=f"action-{next_index}",
+                    net=net,
+                    near=parsed.placement_near,
+                    purpose=f"Place the {net} pull-up next to {parsed.placement_near}",
+                )
+            )
+            next_index += 1
 
     protected = sorted(set(parsed.protected_objects))
     return ActionPlan(

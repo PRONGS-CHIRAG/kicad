@@ -18,6 +18,7 @@ class ActionType(str, Enum):
     CONNECT_PINS = "connect_pins"
     CONNECT_PIN_TO_NET = "connect_pin_to_net"
     ENSURE_PULLUP = "ensure_pullup"
+    PLACE_FOOTPRINT = "place_footprint"
 
 
 class ConnectPins(BaseModel):
@@ -48,7 +49,26 @@ class EnsurePullup(BaseModel):
     purpose: str = ""
 
 
-Action = Annotated[ConnectPins | ConnectPinToNet | EnsurePullup, Field(discriminator="type")]
+class PlaceFootprint(BaseModel):
+    """A board-only edit: move a footprint this plan is adding next to an existing one.
+
+    `net` names the signal whose pull-up is being placed (e.g. "I2C_SDA"), not a
+    component reference - the resistor's own reference does not exist until the
+    executor creates it. `near` is an existing, unprotected component reference
+    to place it next to. This never repositions a component the plan did not
+    itself add, so it carries no risk to anything the user already placed.
+    """
+
+    id: str
+    type: Literal[ActionType.PLACE_FOOTPRINT] = ActionType.PLACE_FOOTPRINT
+    net: str
+    near: str
+    purpose: str = ""
+
+
+Action = Annotated[
+    ConnectPins | ConnectPinToNet | EnsurePullup | PlaceFootprint, Field(discriminator="type")
+]
 
 
 class ActionPlan(BaseModel):

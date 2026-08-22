@@ -13,7 +13,15 @@ import shlex
 import subprocess
 from pathlib import Path
 
-from ..models import ActionPlan, ConnectPins, ConnectPinToNet, EnsurePullup, ExecutionResult, ExecutionStep
+from ..models import (
+    ActionPlan,
+    ConnectPins,
+    ConnectPinToNet,
+    EnsurePullup,
+    ExecutionResult,
+    ExecutionStep,
+    PlaceFootprint,
+)
 from .base import Executor
 
 logger = logging.getLogger(__name__)
@@ -124,6 +132,19 @@ class MitosExecutor(Executor):
         steps: list[ExecutionStep] = []
         with McpStdioClient(self.command) as client:
             for action in plan.actions:
+                if isinstance(action, PlaceFootprint):
+                    # Board-only: applied locally by workflow.py after the sync,
+                    # regardless of which executor ran the schematic actions -
+                    # Mitos has no placement tool to forward this to.
+                    steps.append(
+                        ExecutionStep(
+                            action_id=action.id,
+                            tool=self.name,
+                            status="skipped",
+                            detail=f"placement near {action.near} is applied after the board sync",
+                        )
+                    )
+                    continue
                 tool, arguments = self._map_action(project_dir, action)
                 try:
                     client.call_tool(tool, arguments)

@@ -6,6 +6,7 @@ from app.models import (
     ConnectPins,
     ConnectPinToNet,
     EnsurePullup,
+    PlaceFootprint,
     PlanAnswers,
 )
 from app.planning.generator import generate_plan
@@ -28,6 +29,28 @@ def test_instruction_parsing() -> None:
     assert parsed.pullup_value == "4.7k"
     assert (parsed.sda_pin, parsed.scl_pin) == ("GPIO21", "GPIO22")
     assert parsed.protected_objects == ["J1", "USB_D+", "USB_D-", "VBUS"]
+
+
+def test_instruction_parsing_extracts_placement_near() -> None:
+    parsed = parse_instruction("Connect U1 and U2 using I2C. Add pull-ups near U1.")
+    assert parsed.placement_near == "U1"
+
+
+def test_instruction_without_near_leaves_placement_unset() -> None:
+    parsed = parse_instruction(DEMO_INSTRUCTION)
+    assert parsed.placement_near is None
+
+
+def test_plan_with_near_adds_a_placement_per_pullup(state) -> None:
+    plan = generate_plan(
+        state, ["U1", "U2"], "Connect U1 and U2 using I2C with 3.3V logic. Add pull-ups near U1."
+    )
+    assert isinstance(plan, ActionPlan)
+    pullup_nets = {a.net for a in plan.actions if isinstance(a, EnsurePullup)}
+    placements = [a for a in plan.actions if isinstance(a, PlaceFootprint)]
+    assert pullup_nets and {a.net for a in placements} == pullup_nets
+    assert all(a.near == "U1" for a in placements)
+    assert validate_plan(state, plan) == []
 
 
 def test_plan_for_demo_instruction(state) -> None:
@@ -167,3 +190,41 @@ def test_validator_rejects_pullup_to_ground(state) -> None:
         actions=[EnsurePullup(id="a1", net="I2C_SDA", to_net="GND")],
     )
     assert "a1: pull-up to ground is not valid" in validate_plan(state, plan)
+
+
+def test_validator_rejects_placement_near_nonexistent_component(state) -> None:
+    plan = ActionPlan(
+        goal="bad",
+        selected_components=["U1", "U2"],
+        actions=[
+            EnsurePullup(id="a1", net="I2C_SDA", to_net="+3V3"),
+            PlaceFootprint(id="a2", net="I2C_SDA", near="U99"),
+        ],
+    )
+    assert "a2: placement target U99 does not exist" in validate_plan(state, plan)
+
+
+def test_validator_rejects_placement_near_a_protected_component(state) -> None:
+    plan = ActionPlan(
+        goal="bad",
+        selected_components=["U1", "U2"],
+        protected_objects=["J1"],
+        actions=[
+            EnsurePullup(id="a1", net="I2C_SDA", to_net="+3V3"),
+            PlaceFootprint(id="a2", net="I2C_SDA", near="J1"),
+        ],
+    )
+    assert "a2: placement target J1 is protected" in validate_plan(state, plan)
+
+
+def test_validator_rejects_placement_with_no_matching_pullup(state) -> None:
+    """A `place_footprint` naming a net nothing is adding a pull-up on is dangling."""
+    plan = ActionPlan(
+        goal="bad",
+        selected_components=["U1", "U2"],
+        actions=[PlaceFootprint(id="a1", net="I2C_SDA", near="U1")],
+    )
+    assert (
+        "a1: no pull-up is being added on I2C_SDA for this placement to attach to"
+        in validate_plan(state, plan)
+    )

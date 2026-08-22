@@ -10,7 +10,15 @@ from pathlib import Path
 
 from ..kicad import writer
 from ..kicad.reader import ProjectState, read_project
-from ..models import ActionPlan, ConnectPins, ConnectPinToNet, EnsurePullup, ExecutionResult, ExecutionStep
+from ..models import (
+    ActionPlan,
+    ConnectPins,
+    ConnectPinToNet,
+    EnsurePullup,
+    ExecutionResult,
+    ExecutionStep,
+    PlaceFootprint,
+)
 from .base import Executor
 
 PULLUP_SPACING = 12.7
@@ -48,6 +56,15 @@ class LocalExecutor(Executor):
                     step = self._ensure_pullup(doc, state, action, project_name, pullup_slot)
                     if step.status == "applied":
                         pullup_slot += 1
+                elif isinstance(action, PlaceFootprint):
+                    # Board-only: nothing to do until the schematic write below
+                    # lands and the board is synced. workflow.py applies it.
+                    step = ExecutionStep(
+                        action_id=action.id,
+                        tool=self.name,
+                        status="skipped",
+                        detail=f"placement near {action.near} is applied after the board sync",
+                    )
                 else:  # pragma: no cover - guarded by the schema
                     raise TypeError(f"unsupported action type {action.type}")
             except Exception as exc:  # noqa: BLE001 - surfaced as a failed step

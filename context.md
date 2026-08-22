@@ -14,10 +14,12 @@ read project → plan (rules or LLM) → clarify if ambiguous → preview + appr
              → execute → re-read + ERC/DRC → deterministic decision → accept | restore
 ```
 
-The MVP scope is deliberately narrow: **I2C only**, and exactly three action types —
-`connect_pins`, `connect_pin_to_net`, `ensure_pullup` (see [models.py](backend/app/models.py)).
-Everything else in the pipeline — checkpointing, ERC diffing, the decision engine, rollback — is
-protocol-agnostic and is the part that carries the design weight.
+The MVP scope is deliberately narrow: **I2C only**, and four action types — `connect_pins`,
+`connect_pin_to_net`, `ensure_pullup` and `place_footprint` (see [models.py](backend/app/models.py)).
+Only the first three touch the schematic; `place_footprint` is board-only, and is the one action type
+that edits the board directly rather than as a side effect of the schematic sync. Everything else in
+the pipeline — checkpointing, ERC diffing, the decision engine, rollback — is protocol-agnostic and is
+the part that carries the design weight.
 
 For setup, configuration and commands, see the [README](README.md); this document is the conceptual
 map.
@@ -93,6 +95,18 @@ is unrouted by design, exactly as Pcbnew leaves it. The sync runs inside the che
 bad board write is reverted with everything else, and what it changed is reported alongside the
 executor's own steps rather than left implicit.
 
+**`place_footprint`: the one action type that edits the board directly.** Every other action type's
+board effect, if any, is a side effect of the schematic sync above. `place_footprint` is different: it
+names a net whose pull-up the same plan is adding and an existing, unprotected reference to place it
+next to (`"near U1"` in prose, parsed by [instruction.py](backend/app/planning/instruction.py)), and
+[workflow.py](backend/app/workflow.py) repositions that resistor's freshly-synthesised footprint after
+the sync, using a nearest-free-slot search in [board.py](backend/app/kicad/board.py) that never
+collides with anything already placed. It only ever moves a footprint this same run just created —
+never a component the person placed themselves — so it needs no new exception to
+`protected_objects_preserved` or `no_unauthorized_changes`. A placement that cannot be satisfied (the
+target is missing, or the board has no free room) is reported in the run's changes, not treated as a
+rejection: it is a layout nicety, not an electrical-correctness matter.
+
 **The decision engine.** [decision.py](backend/app/decision.py) — no model involvement anywhere in
 it — runs nine named checks:
 
@@ -110,6 +124,14 @@ it — runs nine named checks:
 
 Any failure ⇒ `rejected_and_restored`. All pass but ERC couldn't run ⇒ `needs_user_review`. All pass
 with conclusive ERC ⇒ `accepted`.
+
+DRC only gates a plan that actually touched the board — `plan_touches_pcb` in
+[decision.py](backend/app/decision.py), true for `place_footprint` or when the sync itself wrote
+something — so clearance and crossing regressions on the layout reject, but a schematic-only plan
+never invents a rejection from DRC output it merely reports. The one carve-out is unconnected items
+whose *every* named net was touched by this run's sync — that is the unrouted-by-design state a sync
+leaves behind, not a regression — and it is reported in the check detail rather than hidden. An
+unconnected item naming any other net still rejects, so severed copper cannot slip through.
 
 **Live rendering.** `GET /api/sessions/{id}/render?view=schematic|pcb` renders the session's working
 copy with `kicad-cli`. It renders what is *on disk*, so a proposed plan changes nothing on screen and
@@ -145,19 +167,10 @@ Stated plainly, because several of these are easy to mistake for finished featur
 - **Reading the user's live KiCAD selection is not implemented.** It needs a Mitos tool that may not
   exist; a speculative endpoint against a guessed name would be indistinguishable from a working
   feature until someone tried it. Typed references and the selection UI are both built.
-- **No action type edits the PCB directly** — `PCB_ACTION_TYPES` is still an empty frozenset. The
-  board is nonetheless written, by the sync, so a run that changed the board counts as touching it and
-  DRC becomes a genuine gate: clearance and crossing regressions on the layout now reject. The one
-  carve-out is unconnected items whose *every* named net was touched by this sync — that is the
-  unrouted-by-design state, not a regression — and it is reported in the check detail rather than
-  hidden. An unconnected item naming any other net still rejects, so severed copper cannot slip
-  through.
 - **Without `kicad-cli` the pipeline still plans and applies, but nothing can be called safe** — every
   run returns `needs_user_review`, and the UI says so in a banner rather than looking healthy.
 - **Only I2C.** SPI and UART are recognized by the parser purely so the planner can decline them
   explicitly instead of silently mis-planning.
-- **Sessions are in-memory** (`SessionStore._sessions`); only the project working copies and
-  checkpoints are on disk. A backend restart drops session state. There is no database.
 - **The demo's rejected run injects a fault at the executor boundary**, labelled as such in both the
   JSON and the HTML — no honest instruction produces a rejection organically, because a wrong-voltage
   request is caught at planning time before anything executes, and a synced board is engineered and
@@ -200,7 +213,11 @@ a state machine: `report ? "report" : plan ? "preview" : session ? "select" : "p
 
 **1. Project.** Pick a bundled fixture or upload a zipped project. `POST /api/sessions` copies it into
 a private working directory and records a baseline ERC (and DRC, if there's a board) — everything
-later is measured against that baseline, not against zero.
+later is measured against that baseline, not against zero. Session metadata (baselines, plan, report,
+history) is written to disk alongside the working copy and re-hydrated on demand
+([workflow.py](backend/app/workflow.py)), so a backend restart does not drop a session whose files are
+still there — only `ProjectState` itself is never persisted, since it is always re-derived fresh from
+the working copy rather than trusted as a stale snapshot.
 
 **2. Describe.** The schematic renders on the left; components are selectable. Choose *Words* or
 *Fields*, then plan. `POST /api/sessions/{id}/plan` returns either an `ActionPlan` with any blocking
@@ -248,7 +265,7 @@ A generic assistant asked to wire up an I2C bus produces prose, or edits a file 
 worked. The differences here are structural, not tonal — each one is enforced in code:
 
 - **The model cannot emit anything but the plan schema.** Output is parsed into the same Pydantic
-  `ActionPlan` the deterministic planner produces, with a discriminated union of three allowed action
+  `ActionPlan` the deterministic planner produces, with a discriminated union of four allowed action
   types. There is no free-text path from the model into the project.
 - **The model's plan is checked and can be thrown away.** `validate_plan` runs on it; one problem and
   the deterministic plan is used instead ([llm.py](backend/app/planning/llm.py)). The rule plan is

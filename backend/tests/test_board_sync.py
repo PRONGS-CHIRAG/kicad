@@ -208,6 +208,79 @@ def test_new_unconnected_items_are_all_attributable_to_synced_nets(
     assert not unexplained, f"new DRC errors the sync cannot account for: {unexplained}"
 
 
+# --------------------------------------------------------------- placement
+
+
+def test_footprint_on_net_finds_the_synthesised_resistor(
+    synced: tuple[Path, board.BoardSync],
+) -> None:
+    project, result = synced
+    doc = board.load(_board_of(project))
+    reference = board.footprint_on_net(doc, "I2C_SDA", result.footprints_added)
+    assert reference in result.footprints_added
+
+
+def test_footprint_on_net_returns_none_for_no_match(
+    synced: tuple[Path, board.BoardSync],
+) -> None:
+    project, result = synced
+    doc = board.load(_board_of(project))
+    assert board.footprint_on_net(doc, "NO_SUCH_NET", result.footprints_added) is None
+
+
+def test_move_footprint_near_gets_strictly_closer_to_the_target(
+    synced: tuple[Path, board.BoardSync],
+) -> None:
+    """The point of `near`: land closer to the target than the default grid scan did."""
+    project, result = synced
+    doc = board.load(_board_of(project))
+    reference = board.footprint_on_net(doc, "I2C_SDA", result.footprints_added)
+    assert reference is not None
+
+    def _center(extent: tuple[float, float, float, float]) -> tuple[float, float]:
+        return ((extent[0] + extent[2]) / 2, (extent[1] + extent[3]) / 2)
+
+    def _distance(a: tuple, b: tuple) -> float:
+        (ax, ay), (bx, by) = _center(a), _center(b)
+        return ((ax - bx) ** 2 + (ay - by) ** 2) ** 0.5
+
+    target_extent = board._footprint_extent(board.footprint_by_reference(doc, "U1"))
+    before_extent = board._footprint_extent(board.footprint_by_reference(doc, reference))
+    assert target_extent is not None and before_extent is not None
+
+    assert board.move_footprint_near(doc, reference, "U1") is True
+    after_extent = board._footprint_extent(board.footprint_by_reference(doc, reference))
+    assert after_extent is not None
+
+    assert _distance(after_extent, target_extent) < _distance(before_extent, target_extent)
+
+    min_x, min_y, max_x, max_y = board.board_outline(doc)
+    x1, y1, x2, y2 = after_extent
+    assert min_x <= x1 and x2 <= max_x
+    assert min_y <= y1 and y2 <= max_y
+
+    for footprint in sexpr.find_all(doc, "footprint"):
+        if board.footprint_reference(footprint) == reference:
+            continue
+        other = board._footprint_extent(footprint)
+        if other is None:
+            continue
+        ox1, oy1, ox2, oy2 = other
+        assert not (x1 < ox2 and x2 > ox1 and y1 < oy2 and y2 > oy1), (
+            f"moved {reference} overlaps {board.footprint_reference(footprint)}"
+        )
+
+
+def test_move_footprint_near_is_a_no_op_for_unknown_references(
+    synced: tuple[Path, board.BoardSync],
+) -> None:
+    project, result = synced
+    doc = board.load(_board_of(project))
+    reference = result.footprints_added[0]
+    assert board.move_footprint_near(doc, "R404", "U1") is False
+    assert board.move_footprint_near(doc, reference, "U404") is False
+
+
 def test_drc_diffing_is_deterministic(tmp_path: Path, requires_kicad: None) -> None:
     """KiCAD names an arbitrary representative track per unconnected cluster.
 
