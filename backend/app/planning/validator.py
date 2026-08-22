@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from ..kicad.reader import ProjectState
 from ..models import ActionPlan, ActionType, ConnectPins, ConnectPinToNet, EnsurePullup, Protocol
+from .protocols import spec_for
 
 ALLOWED_ACTION_TYPES = {ActionType.CONNECT_PINS, ActionType.CONNECT_PIN_TO_NET, ActionType.ENSURE_PULLUP}
 GROUND_NETS = {"GND", "GNDA", "VSS", "AGND"}
@@ -36,8 +37,13 @@ def validate_plan(state: ProjectState, plan: ActionPlan) -> list[str]:
     """Return a list of blocking problems; an empty list means the plan may run."""
     problems: list[str] = []
 
-    if plan.protocol != Protocol.I2C:
+    spec = spec_for(plan.protocol)
+    if spec is None:
         problems.append(f"protocol {plan.protocol} is not supported")
+    # I2C is an open-drain bus, so ANY output on a shared signal is a fault. On
+    # SPI/UART/GPIO a controller output driving a peripheral input is the normal
+    # case, and only output-against-output is a conflict.
+    shared_outputs_forbidden = spec.shared_outputs_forbidden if spec is not None else True
     if not plan.actions:
         problems.append("plan contains no actions")
 
@@ -91,8 +97,27 @@ def validate_plan(state: ProjectState, plan: ActionPlan) -> list[str]:
                     problems.append(f"{action.id}: ground pin {pin} would be tied to power net {action.net}")
                 if "GND" not in pin_obj.name.upper() and net_upper in GROUND_NETS:
                     problems.append(f"{action.id}: power pin {pin} would be tied to ground")
-            if isinstance(action, ConnectPins) and pin_obj.electrical_type == "output":
-                problems.append(f"{action.id}: {pin} is an output and cannot be shared on an I2C bus")
+            if (
+                shared_outputs_forbidden
+                and isinstance(action, ConnectPins)
+                and pin_obj.electrical_type == "output"
+            ):
+                problems.append(
+                    f"{action.id}: {pin} is an output and cannot be shared on "
+                    f"an {plan.protocol.value} bus"
+                )
+
+        if not shared_outputs_forbidden and isinstance(action, ConnectPins):
+            endpoints = []
+            for pin in pins:
+                reference, pin_key = _split_pin(pin)
+                component = state.components.get(reference)
+                endpoints.append(component.pin(pin_key) if component is not None else None)
+            if all(p is not None and p.electrical_type == "output" for p in endpoints):
+                problems.append(
+                    f"{action.id}: {action.from_pin} and {action.to_pin} are both outputs "
+                    "and cannot be connected"
+                )
 
         for net in nets:
             if not net or net.strip() != net:
@@ -102,7 +127,10 @@ def validate_plan(state: ProjectState, plan: ActionPlan) -> list[str]:
 
     signal_nets = {a.net_name for a in plan.actions if isinstance(a, ConnectPins)}
     if len(signal_nets) < len([a for a in plan.actions if isinstance(a, ConnectPins)]):
-        problems.append("SDA and SCL must not share the same net")
+        if plan.protocol is Protocol.I2C:
+            problems.append("SDA and SCL must not share the same net")
+        else:
+            problems.append(f"{plan.protocol.value} signals must not share the same net")
     for net in signal_nets:
         if _is_power_net(net):
             problems.append(f"signal net {net} collides with a power net")

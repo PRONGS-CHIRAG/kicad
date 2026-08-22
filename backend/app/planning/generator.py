@@ -1,4 +1,9 @@
-"""Turn an instruction plus real KiCAD state into a structured action plan."""
+"""Turn an instruction plus real KiCAD state into a structured action plan.
+
+One algorithm, five protocols. Everything protocol-specific lives in
+`protocols.py`; this module resolves pins, refuses to guess, and emits only the
+three existing action types.
+"""
 
 from __future__ import annotations
 
@@ -16,12 +21,10 @@ from ..models import (
     Protocol,
 )
 from .instruction import ParsedInstruction, parse_instruction
+from .protocols import SUPPORTED_PROTOCOLS, ProtocolSpec, SignalSpec, spec_for
 
-SUPPORTED_PROTOCOLS = {Protocol.I2C.value}
 CONTROLLER_LIB_HINTS = ("mcu", "esp32", "esp8266", "stm32", "atmega", "rp2040", "microcontroller", "cpu")
 CONTROLLER_PIN_HINT = re.compile(r"^(GPIO|IO|P[A-D])\d+$", re.IGNORECASE)
-SDA_NAMES = ("SDA", "SDIO", "I2C_SDA", "DATA")
-SCL_NAMES = ("SCL", "SCK", "I2C_SCL", "CLK")
 VCC_NAMES = ("VCC", "VDD", "V+", "3V3", "VIN", "VS")
 GND_NAMES = ("GND", "VSS", "AGND")
 
@@ -30,6 +33,50 @@ VOLTAGE_RAIL_ALIASES = {
     "5V": ("+5V", "5V"),
     "1.8V": ("+1V8", "1V8"),
 }
+
+#: Inclusive ohm range that counts as an acceptable I2C bus pull-up (plan §13).
+PULLUP_MIN_OHMS = 1_000.0
+PULLUP_MAX_OHMS = 10_000.0
+
+#: "4.7k", "4k7", "10k", "100k", "470", "4.7 kOhm", "470R"
+_RESISTOR_VALUE = re.compile(
+    r"^\s*(?P<whole>\d+)(?:[.,](?P<frac>\d+))?\s*(?P<mult>[rRkKmM])?(?P<tail>\d*)\s*"
+    r"(?:Ω|ω|ohms?|R)?\s*$"
+)
+_MULTIPLIERS = {"": 1.0, "r": 1.0, "k": 1e3, "m": 1e6}
+
+
+def parse_resistor_ohms(value: str) -> float | None:
+    """Parse a resistor value into ohms, or None when it is not recognisable."""
+    if not value:
+        return None
+    match = _RESISTOR_VALUE.match(value)
+    if match is None:
+        return None
+    mult_token = (match.group("mult") or "").lower()
+    multiplier = _MULTIPLIERS.get(mult_token)
+    if multiplier is None:
+        return None
+    tail, frac = match.group("tail"), match.group("frac")
+    if tail and frac:
+        # "4.7k7" is nonsense; refuse rather than pick an interpretation.
+        return None
+    if tail:
+        # RKM notation: "4k7" == 4.7k.
+        digits = f"{match.group('whole')}.{tail}"
+    elif frac:
+        digits = f"{match.group('whole')}.{frac}"
+    else:
+        digits = match.group("whole")
+    return float(digits) * multiplier
+
+
+def is_acceptable_pullup(value: str) -> bool | None:
+    """True/False if the value is in range; None when it cannot be parsed."""
+    ohms = parse_resistor_ohms(value)
+    if ohms is None:
+        return None
+    return PULLUP_MIN_OHMS <= ohms <= PULLUP_MAX_OHMS
 
 
 def _pin_by_names(component: Component, names: tuple[str, ...]) -> str | None:
@@ -106,6 +153,66 @@ def _default_voltage(state: ProjectState) -> tuple[str | None, str]:
     return None, "no power rail could be identified"
 
 
+def _selectable(state: ProjectState) -> list[str]:
+    return sorted(ref for ref, c in state.components.items() if not c.is_power)
+
+
+def _controller_answer_key(signal: str) -> str:
+    """Legacy keys for I2C's two signals, namespaced keys for everything else."""
+    if signal in ("SDA", "SCL"):
+        return f"controller_{signal.lower()}"
+    return f"controller_pin:{signal}"
+
+
+def _peripheral_answer_key(signal: str) -> str:
+    if signal in ("SDA", "SCL"):
+        return f"peripheral_{signal.lower()}"
+    return f"peripheral_pin:{signal}"
+
+
+def _answer_maps(answers: PlanAnswers) -> tuple[dict[str, str], dict[str, str]]:
+    """Fold the legacy scalar answers into the per-signal dicts."""
+    controller = dict(answers.controller_pins)
+    peripheral = dict(answers.peripheral_pins)
+    for signal, legacy in (("SDA", answers.controller_sda), ("SCL", answers.controller_scl)):
+        if legacy and signal not in controller:
+            controller[signal] = legacy
+    for signal, legacy in (("SDA", answers.peripheral_sda), ("SCL", answers.peripheral_scl)):
+        if legacy and signal not in peripheral:
+            peripheral[signal] = legacy
+    return controller, peripheral
+
+
+def _signal_net(
+    state: ProjectState,
+    spec: ProtocolSpec,
+    signal: SignalSpec,
+    peripheral_ref: str,
+    peripheral_pin_number: str,
+    controller_pin: str,
+) -> str:
+    existing = state.pin_nets.get(f"{peripheral_ref}.{peripheral_pin_number}")
+    if existing:
+        return existing
+    if spec.protocol is Protocol.GPIO:
+        # A bare GPIO connection has no bus to name it after; §8 derives the net
+        # from the controller pin instead of the protocol prefix.
+        return f"NET_{controller_pin.upper()}"
+    return f"{spec.net_prefix}_{signal.name}"
+
+
+def _power_pins(
+    peripheral: Component, peripheral_answers: dict[str, str]
+) -> tuple[str | None, str | None]:
+    vcc = _answered_pin(peripheral, peripheral_answers.get("VCC")) or _pin_by_names(
+        peripheral, VCC_NAMES
+    )
+    gnd = _answered_pin(peripheral, peripheral_answers.get("GND")) or _pin_by_names(
+        peripheral, GND_NAMES
+    )
+    return vcc, gnd
+
+
 def generate_plan(
     state: ProjectState,
     selected: list[str],
@@ -113,7 +220,7 @@ def generate_plan(
     parsed: ParsedInstruction | None = None,
     answers: PlanAnswers | None = None,
 ) -> ActionPlan | Clarification:
-    """Deterministic I2C planner. Never guesses when the schematic is ambiguous."""
+    """Deterministic protocol-driven planner. Never guesses when the schematic is ambiguous."""
     parsed = parsed or parse_instruction(instruction)
     answers = answers or PlanAnswers()
     parsed = replace(
@@ -122,6 +229,7 @@ def generate_plan(
         logic_voltage=answers.logic_voltage or parsed.logic_voltage,
         pullup_value=answers.pullup_value or parsed.pullup_value,
     )
+    controller_answers, peripheral_answers = _answer_maps(answers)
 
     unknown = [ref for ref in selected if ref not in state.components]
     if unknown:
@@ -131,14 +239,7 @@ def generate_plan(
                 "Which components did you mean?"
             ),
             reason="unknown_component",
-            options=sorted(ref for ref, c in state.components.items() if not c.is_power),
-            answer_key="selection",
-        )
-    if len(selected) < 2:
-        return Clarification(
-            question="Select at least two components to connect.",
-            reason="insufficient_selection",
-            options=sorted(ref for ref, c in state.components.items() if not c.is_power),
+            options=_selectable(state),
             answer_key="selection",
         )
 
@@ -146,31 +247,63 @@ def generate_plan(
         return Clarification(
             question="Which interface should be used to connect these components?",
             reason="protocol_not_specified",
-            options=["I2C", "SPI", "UART"],
+            options=["I2C", "SPI", "UART", "GPIO", "POWER"],
             answer_key="protocol",
         )
-    if parsed.protocol not in SUPPORTED_PROTOCOLS:
+    spec = spec_for(parsed.protocol)
+    if spec is None:
         return Clarification(
             question=f"{parsed.protocol} is not supported yet. Connect these components using I2C instead?",
             reason="unsupported_protocol",
-            options=["I2C"],
+            options=sorted(SUPPORTED_PROTOCOLS),
             answer_key="protocol",
         )
+    protocol = spec.protocol
 
-    controllers = [ref for ref in selected if _is_controller(state.components[ref])]
-    peripherals = [ref for ref in selected if ref not in controllers]
-    if len(controllers) != 1 or len(peripherals) != 1:
+    # POWER acts on one component, so it is the only protocol for which a single
+    # selection is meaningful. Every other protocol still needs two endpoints.
+    minimum = 1 if protocol is Protocol.POWER else 2
+    if len(selected) < minimum:
         return Clarification(
-            question="Which component is the I2C controller and which is the peripheral?",
-            reason="ambiguous_roles",
-            options=selected,
+            question=f"Select at least {'one component' if minimum == 1 else 'two components'} to connect.",
+            reason="insufficient_selection",
+            options=_selectable(state),
             answer_key="selection",
         )
-    controller_ref, peripheral_ref = controllers[0], peripherals[0]
-    controller, peripheral = state.components[controller_ref], state.components[peripheral_ref]
 
-    assumptions = [f"{controller_ref} is the I2C controller", f"{peripheral_ref} is the I2C peripheral"]
+    assumptions: list[str] = []
     warnings: list[str] = []
+    controller_ref: str | None = None
+    controller: Component | None = None
+
+    if protocol is Protocol.POWER:
+        candidates = [ref for ref in selected if not state.components[ref].is_power]
+        if len(candidates) != 1:
+            return Clarification(
+                question="Which component should be powered?",
+                reason="ambiguous_roles",
+                options=candidates or selected,
+                answer_key="selection",
+            )
+        peripheral_ref = candidates[0]
+        assumptions.append(f"{peripheral_ref} is the component to power")
+    else:
+        controllers = [ref for ref in selected if _is_controller(state.components[ref])]
+        peripherals = [ref for ref in selected if ref not in controllers]
+        if len(controllers) != 1 or len(peripherals) != 1:
+            return Clarification(
+                question=(
+                    f"Which component is the {protocol.value} controller and which is the peripheral?"
+                ),
+                reason="ambiguous_roles",
+                options=selected,
+                answer_key="selection",
+            )
+        controller_ref, peripheral_ref = controllers[0], peripherals[0]
+        controller = state.components[controller_ref]
+        assumptions.append(f"{controller_ref} is the {protocol.value} controller")
+        assumptions.append(f"{peripheral_ref} is the {protocol.value} peripheral")
+    peripheral = state.components[peripheral_ref]
 
     voltage = parsed.logic_voltage
     if voltage is None:
@@ -197,125 +330,184 @@ def generate_plan(
             answer_key="logic_voltage",
         )
 
-    controller_supply = _supply_net(state, controller)
-    if controller_supply and controller_supply != rail:
-        return Clarification(
-            question=(
-                f"{controller_ref} is powered from {controller_supply}, so a {voltage} bus would need level "
-                f"shifting, which this MVP does not add. Connect the bus at {controller_supply} "
-                "logic instead?"
-            ),
-            reason="incompatible_logic_voltage",
-            options=[controller_supply, "Cancel"],
-            answer_key="logic_voltage",
-        )
+    if controller is not None:
+        controller_supply = _supply_net(state, controller)
+        if controller_supply and controller_supply != rail:
+            return Clarification(
+                question=(
+                    f"{controller_ref} is powered from {controller_supply}, so a {voltage} bus would need level "
+                    f"shifting, which this MVP does not add. Connect the bus at {controller_supply} "
+                    "logic instead?"
+                ),
+                reason="incompatible_logic_voltage",
+                options=[controller_supply, "Cancel"],
+                answer_key="logic_voltage",
+            )
 
-    peripheral_sda = _answered_pin(peripheral, answers.peripheral_sda) or _pin_by_names(peripheral, SDA_NAMES)
-    peripheral_scl = _answered_pin(peripheral, answers.peripheral_scl) or _pin_by_names(peripheral, SCL_NAMES)
-    for label, signal, pin_name in (
-        ("SDA", "data", peripheral_sda),
-        ("SCL", "clock", peripheral_scl),
-    ):
+    # Peripheral side first, one question at a time, then the controller side.
+    peripheral_pins: dict[str, str] = {}
+    for signal in spec.signals:
+        pin_name = _answered_pin(peripheral, peripheral_answers.get(signal.name)) or _pin_by_names(
+            peripheral, signal.peripheral_names
+        )
         if pin_name is None:
             return Clarification(
                 question=(
-                    f"The symbol for {peripheral_ref} does not identify its SDA/SCL pins. "
-                    f"Which pin carries I2C {signal} ({label})?"
+                    f"The symbol for {peripheral_ref} does not identify its {protocol.value} pins. "
+                    f"Which pin carries {signal.purpose} ({signal.name})?"
                 ),
                 reason="unidentified_peripheral_pins",
                 options=[f"{p.number}:{p.name}" for p in peripheral.pins],
-                answer_key=f"peripheral_{label.lower()}",
+                answer_key=_peripheral_answer_key(signal.name),
             )
+        peripheral_pins[signal.name] = pin_name
 
-    controller_sda = (
-        _answered_pin(controller, answers.controller_sda)
-        or parsed.sda_pin
-        or _pin_by_names(controller, SDA_NAMES)
-    )
-    controller_scl = (
-        _answered_pin(controller, answers.controller_scl)
-        or parsed.scl_pin
-        or _pin_by_names(controller, SCL_NAMES)
-    )
-    if controller_sda is None and controller.pin("GPIO21"):
-        controller_sda = "GPIO21"
-        assumptions.append("GPIO21 used for SDA (default ESP32 I2C pin)")
-    if controller_scl is None and controller.pin("GPIO22"):
-        controller_scl = "GPIO22"
-        assumptions.append("GPIO22 used for SCL (default ESP32 I2C pin)")
-    for label, pin_name in (("SDA", controller_sda), ("SCL", controller_scl)):
+    controller_pins: dict[str, str] = {}
+    for signal in spec.signals:
+        assert controller is not None and controller_ref is not None  # POWER has no signals
+        pin_name = (
+            _answered_pin(controller, controller_answers.get(signal.name))
+            or parsed.signal_pins.get(signal.name)
+            or _pin_by_names(controller, signal.controller_names)
+        )
+        if pin_name is None and signal.default_controller_pin:
+            if controller.pin(signal.default_controller_pin):
+                pin_name = signal.default_controller_pin
+                assumptions.append(
+                    f"{pin_name} used for {signal.name} (default ESP32 {protocol.value} pin)"
+                )
         if pin_name is None or controller.pin(pin_name) is None:
             return Clarification(
-                question=f"Which {controller_ref} pin should be used for {label}?",
+                question=f"Which {controller_ref} pin should be used for {signal.name}?",
                 reason="controller_pin_unresolved",
                 options=[p.name for p in controller.pins if CONTROLLER_PIN_HINT.match(p.name)],
-                answer_key=f"controller_{label.lower()}",
+                answer_key=_controller_answer_key(signal.name),
             )
+        controller_pins[signal.name] = pin_name
 
-    peripheral_vcc = _pin_by_names(peripheral, VCC_NAMES)
-    peripheral_gnd = _pin_by_names(peripheral, GND_NAMES)
+    peripheral_vcc, peripheral_gnd = _power_pins(peripheral, peripheral_answers)
     if peripheral_vcc is None or peripheral_gnd is None:
+        if protocol is Protocol.POWER:
+            # A POWER plan is nothing but power and ground: without them there is
+            # no plan at all, and an empty plan is the wrong-shaped failure.
+            missing = "power (VCC)" if peripheral_vcc is None else "ground (GND)"
+            return Clarification(
+                question=(
+                    f"The symbol for {peripheral_ref} does not identify its {missing} pin. "
+                    "Which pin is it?"
+                ),
+                reason="unidentified_power_pins",
+                options=[f"{p.number}:{p.name}" for p in peripheral.pins],
+                answer_key=_peripheral_answer_key("VCC" if peripheral_vcc is None else "GND"),
+            )
         warnings.append(f"{peripheral_ref} has no identifiable power or ground pin; power was left unchanged")
 
-    sda_net = state.pin_nets.get(f"{peripheral_ref}.{peripheral.pin(peripheral_sda).number}") or "I2C_SDA"
-    scl_net = state.pin_nets.get(f"{peripheral_ref}.{peripheral.pin(peripheral_scl).number}") or "I2C_SCL"
     gnd_net = _ground_net(state)
     pullup_value = parsed.pullup_value or "4.7k"
+    actions: list = []
+    signal_nets: dict[str, str] = {}
 
-    actions: list = [
-        ConnectPins(
-            id="action-1",
-            **{"from": f"{peripheral_ref}.{peripheral_sda}", "to": f"{controller_ref}.{controller_sda}"},
-            net_name=sda_net,
-            purpose="I2C data",
-        ),
-        ConnectPins(
-            id="action-2",
-            **{"from": f"{peripheral_ref}.{peripheral_scl}", "to": f"{controller_ref}.{controller_scl}"},
-            net_name=scl_net,
-            purpose="I2C clock",
-        ),
-    ]
+    for signal in spec.signals:
+        peripheral_pin = peripheral_pins[signal.name]
+        controller_pin = controller_pins[signal.name]
+        net = _signal_net(
+            state,
+            spec,
+            signal,
+            peripheral_ref,
+            peripheral.pin(peripheral_pin).number,
+            controller_pin,
+        )
+        signal_nets[signal.name] = net
+        actions.append(
+            ConnectPins(
+                id=f"action-{len(actions) + 1}",
+                **{
+                    "from": f"{peripheral_ref}.{peripheral_pin}",
+                    "to": f"{controller_ref}.{controller_pin}",
+                },
+                net_name=net,
+                purpose=signal.purpose,
+            )
+        )
+
     if peripheral_vcc:
         actions.append(
             ConnectPinToNet(
-                id="action-3", pin=f"{peripheral_ref}.{peripheral_vcc}", net=rail, purpose="Power"
+                id=f"action-{len(actions) + 1}",
+                pin=f"{peripheral_ref}.{peripheral_vcc}",
+                net=rail,
+                purpose="Power",
             )
         )
     if peripheral_gnd:
         actions.append(
             ConnectPinToNet(
-                id="action-4", pin=f"{peripheral_ref}.{peripheral_gnd}", net=gnd_net, purpose="Ground"
+                id=f"action-{len(actions) + 1}",
+                pin=f"{peripheral_ref}.{peripheral_gnd}",
+                net=gnd_net,
+                purpose="Ground",
             )
         )
 
-    next_index = len(actions) + 1
-    for net in (sda_net, scl_net):
+    for signal_name in spec.pullup_signals:
+        net = signal_nets.get(signal_name)
+        if net is None:
+            continue
         existing = _existing_pullup(state, net, rail)
+        out_of_range: tuple[str, str] | None = None
         if existing:
-            assumptions.append(
-                f"{net} already has pull-up {existing[0]} ({existing[1]}) to {rail}; none added"
-            )
-            continue
+            reference, value = existing
+            acceptable = is_acceptable_pullup(value)
+            if acceptable is not False:
+                if acceptable is None:
+                    warnings.append(
+                        f"{net} already has pull-up {reference} whose value {value!r} could not be "
+                        "read; it was left in place and no resistor was added"
+                    )
+                assumptions.append(
+                    f"{net} already has pull-up {reference} ({value}) to {rail}; none added"
+                )
+                continue
+            out_of_range = existing
         if not parsed.allow_new_components:
-            warnings.append(f"{net} has no pull-up to {rail} but adding components was not allowed")
+            if out_of_range:
+                warnings.append(
+                    f"{net} pull-up {out_of_range[0]} ({out_of_range[1]}) is outside the 1k-10k "
+                    "range but adding components was not allowed"
+                )
+            else:
+                warnings.append(
+                    f"{net} has no pull-up to {rail} but adding components was not allowed"
+                )
             continue
+        if out_of_range:
+            # §13: never silently replace or delete their part; add a correct one.
+            warnings.append(
+                f"{net} already has pull-up {out_of_range[0]} ({out_of_range[1]}) to {rail}, which "
+                f"is outside the 1k-10k range for an I2C pull-up; {out_of_range[0]} was left "
+                f"unchanged and a {pullup_value} pull-up was added alongside it"
+            )
         actions.append(
             EnsurePullup(
-                id=f"action-{next_index}",
+                id=f"action-{len(actions) + 1}",
                 net=net,
                 to_net=rail,
                 value=pullup_value,
                 purpose="Bus pull-up",
             )
         )
-        next_index += 1
+
+    if protocol is Protocol.POWER:
+        goal = f"Power {peripheral_ref} from {rail} and {gnd_net}"
+    else:
+        goal = f"Connect {peripheral_ref} to {controller_ref} using {protocol.value} with {voltage} logic"
 
     protected = sorted(set(parsed.protected_objects))
     return ActionPlan(
-        goal=f"Connect {peripheral_ref} to {controller_ref} using I2C with {voltage} logic",
+        goal=goal,
         selected_components=selected,
-        protocol=Protocol.I2C,
+        protocol=protocol,
         logic_voltage=voltage,
         assumptions=assumptions,
         warnings=warnings,

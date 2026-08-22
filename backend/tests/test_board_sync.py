@@ -200,7 +200,10 @@ def test_new_unconnected_items_are_all_attributable_to_synced_nets(
     project, result = synced
     cli = KicadCli()
     pristine = _project(tmp_path / "pristine")
-    before = cli.run_drc(_board_of(pristine))
+    # A union baseline, for the same reason production uses one: a single pristine
+    # run that under-reports would make its own missed clearance violations look
+    # like errors this sync introduced.
+    before = cli.run_drc_baseline(_board_of(pristine), passes=3)
     after = cli.run_drc(_board_of(project))
 
     new_errors = [v for v in diff_violations(before, after).new if v.severity == "error"]

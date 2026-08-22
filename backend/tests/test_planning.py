@@ -56,8 +56,21 @@ def test_missing_protocol_asks_for_clarification(state) -> None:
     assert result.reason == "protocol_not_specified"
 
 
-def test_unsupported_protocol_is_refused(state) -> None:
+def test_spi_on_an_i2c_only_part_asks_rather_than_guessing(state) -> None:
+    """SPI is supported since §7, so this is no longer an unsupported-protocol refusal.
+
+    The TMP102 in this fixture has no SPI pins at all, so the interesting
+    behaviour is that the planner asks which pin carries the signal instead of
+    pressing SDA/SCL into service as MOSI/MISO.
+    """
     result = generate_plan(state, ["U1", "U2"], "Connect U1 and U2 over SPI at 3.3V.")
+    assert isinstance(result, Clarification)
+    assert result.reason == "unidentified_peripheral_pins"
+
+
+def test_a_protocol_with_no_spec_is_still_refused(state) -> None:
+    """The unsupported-protocol guard, reached through an answer the parser cannot produce."""
+    result = generate_plan(state, ["U1", "U2"], "Connect U1 and U2.", answers=PlanAnswers(protocol="CAN"))
     assert isinstance(result, Clarification)
     assert result.reason == "unsupported_protocol"
 

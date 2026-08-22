@@ -77,7 +77,10 @@ def plan_from_instruction(
 ) -> tuple[ActionPlan | Clarification, str]:
     """Return (plan_or_clarification, source) where source is 'llm' or 'rules'."""
     fallback = generate_plan(state, selected, instruction, parse_instruction(instruction), answers)
-    if not settings.llm_enabled or (answers and answers.model_dump(exclude_none=True)):
+    # `exclude_defaults` (not just `exclude_none`) because PlanAnswers now carries
+    # dict fields whose default is `{}`, which is not None: without it every API
+    # request, which always sends an empty PlanAnswers, would look "answered".
+    if not settings.llm_enabled or (answers and answers.model_dump(exclude_defaults=True)):
         return fallback, "rules"
 
     try:

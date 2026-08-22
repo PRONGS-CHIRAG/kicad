@@ -12,6 +12,10 @@ SCHEMA_VERSION = "1.0"
 
 class Protocol(str, Enum):
     I2C = "I2C"
+    SPI = "SPI"
+    UART = "UART"
+    GPIO = "GPIO"
+    POWER = "POWER"
 
 
 class ActionType(str, Enum):
@@ -73,6 +77,11 @@ class PlanAnswers(BaseModel):
     controller_sda: str | None = None
     controller_scl: str | None = None
     pullup_value: str | None = None
+    #: Signal name -> pin, for every protocol beyond I2C's four legacy scalars.
+    #: The generator folds the scalars above into these dicts before using them,
+    #: so old clients that only know `controller_sda` keep working unchanged.
+    controller_pins: dict[str, str] = Field(default_factory=dict)
+    peripheral_pins: dict[str, str] = Field(default_factory=dict)
 
 
 class Clarification(BaseModel):
