@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.10.2",
+  "checkpoint_id": "01M0NJ0QKP40K189V8NRK0C8PY",
+  "strategy": "manual-commit",
+  "branch": "devin/1787413084-kicad-mitos-mvp",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "context.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 468,
+    "cache_creation_tokens": 364539,
+    "cache_read_tokens": 54075733,
+    "output_tokens": 209706,
+    "api_call_count": 230
+  }
+}

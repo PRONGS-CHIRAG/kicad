@@ -1,0 +1,135 @@
+{
+  "cli_version": "0.10.2",
+  "checkpoint_id": "01M0NJ0QKP40K189V8NRK0C8PY",
+  "session_id": "24829249-5fc7-4939-be1b-ba6da88425c5",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-22T20:18:57.520177Z",
+  "branch": "devin/1787413084-kicad-mitos-mvp",
+  "checkpoints_count": 7,
+  "save_step_count": 1,
+  "files_touched": [
+    "context.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5",
+  "turn_id": "9bc20c9cd06b",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 468,
+    "cache_creation_tokens": 364539,
+    "cache_read_tokens": 54075733,
+    "output_tokens": 209706,
+    "api_call_count": 230
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01HkEoEebt91ydgkCQMUFGkE",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "frontend-design:frontend-design"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "9bc20c9cd06b",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 44,
+        "end": 45,
+        "entry_ids": [
+          "bfe51c78-e3bc-4582-92d7-531cc03d5c39"
+        ],
+        "tool_use_id": "toolu_01HkEoEebt91ydgkCQMUFGkE"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01HkEoEebt91ydgkCQMUFGkE"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: frontend-design:frontend-design",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01MUP1uyvEPFEU8DWtkTjDsL",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "playwright-skill:playwright-skill"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "9bc20c9cd06b",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 172,
+        "end": 173,
+        "entry_ids": [
+          "f20a6fa6-82fc-418b-8258-1dae38369190"
+        ],
+        "tool_use_id": "toolu_01MUP1uyvEPFEU8DWtkTjDsL"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01MUP1uyvEPFEU8DWtkTjDsL"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: playwright-skill:playwright-skill",
+        "default_collapsed": true
+      }
+    },
+    {
+      "id": "claude-skill-toolu_01JLfHM6kg7Mp45SX4hrs6nb",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "run"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "9bc20c9cd06b",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 514,
+        "end": 515,
+        "entry_ids": [
+          "9f9eb65a-7a7d-4457-8c81-db9157cd4c51"
+        ],
+        "tool_use_id": "toolu_01JLfHM6kg7Mp45SX4hrs6nb"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01JLfHM6kg7Mp45SX4hrs6nb"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: run",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-22T20:18:57.291653Z",
+    "agent_lines": 261,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 261,
+    "total_lines_changed": 261,
+    "agent_percentage": 100,
+    "metric_version": 2
+  }
+}
