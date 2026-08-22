@@ -95,6 +95,47 @@ but the decision engine refuses to accept a change it could not verify — every
 | `KICAD_MITOS_MITOS_COMMAND` | – | Command that starts the Mitos MCP server (stdio) |
 | `KICAD_MITOS_CORS_ORIGINS` | `["http://localhost:3000"]` | JSON array of allowed browser origins |
 | `OPENAI_API_KEY` | – | Enables LLM planning; falls back to the rule planner on any failure |
+| `KICAD_MITOS_DEVIN_API_KEY` | – | Devin service-user key (`cog_…`); `DEVIN_API_KEY` also works |
+| `KICAD_MITOS_AUTO_RESOLVE` | `false` | Let the Devin agent answer an ambiguity instead of asking you |
+| `KICAD_MITOS_DEVIN_BASE_URL` | `https://api.devin.ai/v1` | Override for an enterprise tenant |
+| `KICAD_MITOS_DEVIN_TIMEOUT_SECONDS` | `120` | Ceiling before falling back to asking |
+| `KICAD_MITOS_DEVIN_POLL_SECONDS` | `5` | Poll interval while the session runs |
+| `KICAD_MITOS_DEVIN_MAX_ACU` | `5` | ACU ceiling per session |
+
+Copy `backend/.env.example` to `backend/.env` (git-ignored) and paste the key there, or export it in
+the shell.
+
+## The Devin agent: thinking instead of asking
+
+By default the planner refuses to guess — no SDA pin named on the symbol means a question, not an
+assumption. Set a Devin key **and** `KICAD_MITOS_AUTO_RESOLVE=true` and a *resolvable* ambiguity goes
+to a Devin session instead, so planning continues on its own. The result is a mixture, and the split
+is the point:
+
+| | does |
+| --- | --- |
+| Devin agent | answers one missing detail, from the real pin table and the part's datasheet |
+| Deterministic rules | build the plan, validate it, run ERC/DRC, decide, roll back |
+
+The agent never writes an action, never sees the validator, and has no say in accept/reject. Every
+answer it gives must be one of the options the planner itself offered — anything else is discarded —
+and each one is recorded as a visible assumption on the plan, so the preview says *"3:P3 chosen … by
+the Devin agent: the datasheet says pin 3 is SDA"* rather than presenting it as fact. `source` on the
+plan response reads `agent+rules` when the agent contributed.
+
+**Three clarifications are never auto-resolved**, because they are refusals rather than ambiguities:
+`incompatible_voltage`, `incompatible_logic_voltage` and `unsupported_protocol`. Asking for 5 V must
+not quietly become a 3.3 V bus (plan §21: better to reject an uncertain instruction than silently
+produce a wrong connection). Neither are the three that pick *which* components get connected. The
+resolvable set is an allowlist, so a reason code added later is unresolvable until someone says
+otherwise.
+
+If the session times out, errors, or answers something that was not on the list, the question comes
+back to you — the agent degrades to the old behaviour rather than to a dead screen.
+
+**This sends your schematic to a third party.** The prompt carries the selected components, their pin
+tables and the project's net names to `api.devin.ai` so the agent can reason about the real design.
+That data flow does not exist unless you set the key and the opt-in.
 
 ## Projects
 

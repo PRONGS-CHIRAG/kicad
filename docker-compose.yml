@@ -14,6 +14,12 @@ services:
       KICAD_MITOS_EXECUTOR: ${KICAD_MITOS_EXECUTOR:-local}
       # Set to enable LLM planning; the rule planner is used either way on failure.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Devin agent. The key alone changes nothing - KICAD_MITOS_AUTO_RESOLVE
+      # is the opt-in that lets it answer an ambiguity instead of asking you.
+      KICAD_MITOS_DEVIN_API_KEY: ${KICAD_MITOS_DEVIN_API_KEY:-${DEVIN_API_KEY:-}}
+      KICAD_MITOS_AUTO_RESOLVE: ${KICAD_MITOS_AUTO_RESOLVE:-false}
+      KICAD_MITOS_DEVIN_MAX_ACU: ${KICAD_MITOS_DEVIN_MAX_ACU:-5}
+      KICAD_MITOS_DEVIN_TIMEOUT_SECONDS: ${KICAD_MITOS_DEVIN_TIMEOUT_SECONDS:-120}
     volumes:
       # Uploaded projects and checkpoints survive a container restart.
       - workspace:/workspace

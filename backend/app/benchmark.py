@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .config import settings
 from .execution.base import Executor
 from .execution.local import LocalExecutor
 from .kicad.reader import ProjectState
@@ -284,6 +285,16 @@ def run_benchmark(benchmark: Benchmark, store: SessionStore) -> BenchmarkOutcome
     return outcome
 
 
+def _pin_deterministic_planning() -> None:
+    """Measure the deterministic planner, whatever is in the environment.
+
+    Scenarios 3, 4, 9 and 10 expect a clarification. With agent auto-resolution
+    on, the agent would answer them and the suite would be scoring a different
+    system - and a Devin session would also blow §21's 60-second target.
+    """
+    settings.auto_resolve = False
+
+
 def run_all(store: SessionStore | None = None) -> list[BenchmarkOutcome]:
     store = store or SessionStore()
     return [run_benchmark(benchmark, store) for benchmark in BENCHMARKS]
@@ -375,6 +386,7 @@ def main() -> int:
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
 
+    _pin_deterministic_planning()
     outcomes = run_all()
     summary = summarize(outcomes)
     (args.out / "benchmark.json").write_text(json.dumps(summary, indent=2))

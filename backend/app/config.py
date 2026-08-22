@@ -29,6 +29,24 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4o-mini"
     llm_timeout_seconds: float = 60.0
 
+    # --- Devin agent -------------------------------------------------------
+    devin_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("KICAD_MITOS_DEVIN_API_KEY", "DEVIN_API_KEY"),
+    )
+    devin_base_url: str = "https://api.devin.ai/v1"
+    devin_timeout_seconds: float = 120.0
+    devin_poll_seconds: float = 5.0
+    devin_max_acu: int = 5
+    auto_resolve: bool = Field(
+        default=False,
+        description=(
+            "Let the Devin agent answer a resolvable ambiguity instead of asking the user. "
+            "Off by default: the benchmark measures the deterministic planner, and four of its "
+            "ten scenarios expect a clarification."
+        ),
+    )
+
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
     log_level: str = "INFO"
 
@@ -37,6 +55,15 @@ class Settings(BaseSettings):
     @property
     def llm_enabled(self) -> bool:
         return bool(self.openai_api_key)
+
+    @property
+    def devin_enabled(self) -> bool:
+        return bool(self.devin_api_key)
+
+    @property
+    def agent_resolves_ambiguity(self) -> bool:
+        """Both a key and the opt-in: a key alone must not change planning."""
+        return self.devin_enabled and self.auto_resolve
 
     @property
     def checkpoints_dir(self) -> Path:

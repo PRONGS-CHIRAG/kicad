@@ -16,6 +16,7 @@ from pydantic import ValidationError
 from ..config import settings
 from ..kicad.reader import ProjectState
 from ..models import ActionPlan, Clarification, PlanAnswers
+from .devin import resolve_and_plan
 from .generator import generate_plan
 from .instruction import parse_instruction
 from .validator import validate_plan
@@ -69,14 +70,40 @@ def _call_openai(payload: dict) -> dict:
     return json.loads(response.json()["choices"][0]["message"]["content"])
 
 
+def _auto_resolve(
+    state: ProjectState,
+    selected: list[str],
+    instruction: str,
+    answers: PlanAnswers | None,
+    clarification: Clarification,
+) -> tuple[ActionPlan | Clarification, str]:
+    """Hand a resolvable ambiguity to the Devin agent instead of asking the user.
+
+    The agent only fills in the blank the planner named. The plan is still built
+    and validated by the deterministic planner, so this changes who answers the
+    question, not who decides whether the result is acceptable.
+    """
+    parsed = parse_instruction(instruction)
+
+    def replan(updated: PlanAnswers) -> ActionPlan | Clarification:
+        return generate_plan(state, selected, instruction, parsed, updated)
+
+    result, _, notes = resolve_and_plan(
+        state, selected, instruction, answers or PlanAnswers(), clarification, replan
+    )
+    return result, ("agent+rules" if notes else "rules")
+
+
 def plan_from_instruction(
     state: ProjectState,
     selected: list[str],
     instruction: str,
     answers: PlanAnswers | None = None,
 ) -> tuple[ActionPlan | Clarification, str]:
-    """Return (plan_or_clarification, source) where source is 'llm' or 'rules'."""
+    """Return (plan_or_clarification, source): 'rules', 'llm' or 'agent+rules'."""
     fallback = generate_plan(state, selected, instruction, parse_instruction(instruction), answers)
+    if isinstance(fallback, Clarification) and settings.agent_resolves_ambiguity:
+        return _auto_resolve(state, selected, instruction, answers, fallback)
     # `exclude_defaults` (not just `exclude_none`) because PlanAnswers now carries
     # dict fields whose default is `{}`, which is not None: without it every API
     # request, which always sends an empty PlanAnswers, would look "answered".
