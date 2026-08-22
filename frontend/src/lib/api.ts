@@ -99,7 +99,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   health: () => request<{ status: string; kicad_cli: string | null; executor: string; llm_enabled: boolean }>("/api/health"),
-  projects: () => request<{ projects: { name: string; schematic: string; components: number }[] }>("/api/projects"),
+  projects: () => request<{ projects: { name: string; path: string }[] }>("/api/projects"),
   createSession: (project: string) =>
     request<SessionResponse>("/api/sessions", { method: "POST", body: JSON.stringify({ project }) }),
   plan: (sessionId: string, selected: string[], instruction: string) =>

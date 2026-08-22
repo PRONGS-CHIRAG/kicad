@@ -18,7 +18,7 @@ Do not modify the USB circuit.`;
 type Stage = "project" | "select" | "preview" | "report";
 
 export default function Home() {
-  const [projects, setProjects] = useState<{ name: string; components: number }[]>([]);
+  const [projects, setProjects] = useState<{ name: string; path: string }[]>([]);
   const [session, setSession] = useState<SessionResponse | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [instruction, setInstruction] = useState(DEFAULT_INSTRUCTION);
