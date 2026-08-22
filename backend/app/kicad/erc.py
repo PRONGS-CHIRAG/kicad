@@ -78,6 +78,7 @@ class KicadCli:
                     layers,
                     "--page-size-mode",
                     "2",
+                    "--exclude-drawing-sheet",
                     "-o",
                     str(out),
                     str(board),
