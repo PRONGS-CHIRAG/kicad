@@ -185,6 +185,7 @@ class Project:
     connect_sensor: bool = False
     existing_pullups: bool = False
     sensor_value: str = "TMP102"
+    board: bool = False
 
 
 def build_schematic(project: Project) -> str:
@@ -278,6 +279,117 @@ def build_schematic(project: Project) -> str:
 """
 
 
+def pcb_pad(number: str, x: float, y: float, net: tuple[int, str] | None = None) -> str:
+    net_clause = f' (net {net[0]} "{net[1]}")' if net else ""
+    return (
+        f'    (pad "{number}" smd roundrect (at {x} {y}) (size 2.4 1.6)'
+        f' (layers "F.Cu" "F.Paste" "F.Mask") (roundrect_rratio 0.2){net_clause})'
+    )
+
+
+def pcb_footprint(
+    name: str,
+    reference: str,
+    value: str,
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    pads: list[str],
+) -> str:
+    return f"""  (footprint "Mitos:{name}" (layer "F.Cu") (at {x} {y})
+    (attr smd)
+    (fp_text reference "{reference}" (at 0 {-height / 2 - 2}) (layer "F.SilkS")
+      (effects (font (size 1.2 1.2) (thickness 0.2))))
+    (fp_text value "{value}" (at 0 {height / 2 + 2}) (layer "F.Fab")
+      (effects (font (size 1 1) (thickness 0.15))))
+    (fp_rect (start {-width / 2} {-height / 2}) (end {width / 2} {height / 2})
+      (stroke (width 0.3) (type default)) (fill none) (layer "F.SilkS"))
+{chr(10).join(pads)}
+  )"""
+
+
+def build_board(project: Project) -> str:
+    """Build a small, self-contained KiCad 8 board for the render fixture."""
+    nets = {
+        "+3V3": (1, "+3V3"),
+        "GND": (2, "GND"),
+        "USB_D+": (3, "USB_D+"),
+        "USB_D-": (4, "USB_D-"),
+        "VBUS": (5, "VBUS"),
+    }
+    u1_pads = [
+        pcb_pad("1", -6, -3.81, nets["+3V3"]),
+        pcb_pad("2", -6, -1.27, nets["GND"]),
+        pcb_pad("3", -6, 1.27),
+        pcb_pad("4", -6, 3.81),
+        pcb_pad("5", 6, 3.81),
+        pcb_pad("6", 6, 1.27, nets["USB_D+"]),
+        pcb_pad("7", 6, -1.27, nets["USB_D-"]),
+        pcb_pad("8", 6, -3.81, nets["+3V3"]),
+    ]
+    u2_pads = [
+        pcb_pad("1", -4, -5),
+        pcb_pad("2", -4, -2.5),
+        pcb_pad("3", -4, 0),
+        pcb_pad("4", -4, 2.5),
+        pcb_pad("5", -4, 5, nets["GND"]),
+    ]
+    j1_pads = [
+        pcb_pad("1", -5, -3.81, nets["VBUS"]),
+        pcb_pad("2", -5, -1.27, nets["USB_D-"]),
+        pcb_pad("3", -5, 1.27, nets["USB_D+"]),
+        pcb_pad("4", -5, 3.81, nets["GND"]),
+    ]
+    return f"""(kicad_pcb (version 20240108) (generator "pcbnew")
+  (general (thickness 1.6))
+  (paper "A4")
+  (layers
+    (0 "F.Cu" signal)
+    (31 "B.Cu" signal)
+    (36 "B.SilkS" user "b.silkscreen")
+    (37 "F.SilkS" user "f.silkscreen")
+    (44 "Edge.Cuts" user)
+  )
+  (setup
+    (pad_to_mask_clearance 0)
+    (allow_soldermask_bridges_in_footprints no)
+  )
+  (net 0 "")
+  (net 1 "+3V3")
+  (net 2 "GND")
+  (net 3 "USB_D+")
+  (net 4 "USB_D-")
+  (net 5 "VBUS")
+{pcb_footprint("ESP32-WROOM-32", "U1", "ESP32-WROOM-32", 65, 65, 18, 13, u1_pads)}
+{pcb_footprint("TMP102", "U2", project.sensor_value, 95, 55, 12, 14, u2_pads)}
+{pcb_footprint("USB_B_Micro", "J1", "USB_B_Micro", 120, 75, 14, 12, j1_pads)}
+  (segment (start 71 66.27) (end 105 66.27) (width 0.5) (layer "F.Cu") (net 3))
+  (segment (start 105 66.27) (end 105 76.27) (width 0.5) (layer "F.Cu") (net 3))
+  (segment (start 105 76.27) (end 115 76.27) (width 0.5) (layer "F.Cu") (net 3))
+  (segment (start 71 63.73) (end 101 63.73) (width 0.5) (layer "F.Cu") (net 4))
+  (segment (start 101 63.73) (end 101 73.73) (width 0.5) (layer "F.Cu") (net 4))
+  (segment (start 101 73.73) (end 115 73.73) (width 0.5) (layer "F.Cu") (net 4))
+  (segment (start 59 61.19) (end 53 55) (width 0.5) (layer "F.Cu") (net 1))
+  (segment (start 53 55) (end 71 55) (width 0.5) (layer "F.Cu") (net 1))
+  (segment (start 71 55) (end 71 61.19) (width 0.5) (layer "F.Cu") (net 1))
+  (segment (start 59 63.73) (end 53 63.73) (width 0.5) (layer "F.Cu") (net 2))
+  (segment (start 53 63.73) (end 53 60) (width 0.5) (layer "F.Cu") (net 2))
+  (segment (start 53 60) (end 91 60) (width 0.5) (layer "F.Cu") (net 2))
+  (segment (start 115 78.81) (end 110 83) (width 0.5) (layer "F.Cu") (net 2))
+  (segment (start 110 83) (end 53 83) (width 0.5) (layer "F.Cu") (net 2))
+  (gr_line (start 35 35) (end 145 35) (stroke (width 0.4) (type default)) (layer "Edge.Cuts"))
+  (gr_line (start 145 35) (end 145 100) (stroke (width 0.4) (type default)) (layer "Edge.Cuts"))
+  (gr_line (start 145 100) (end 35 100) (stroke (width 0.4) (type default)) (layer "Edge.Cuts"))
+  (gr_line (start 35 100) (end 35 35) (stroke (width 0.4) (type default)) (layer "Edge.Cuts"))
+  (gr_text "ESP32 I2C DEMO" (at 90 40) (layer "F.SilkS")
+    (effects (font (size 2 2) (thickness 0.35))))
+  (gr_text "USB" (at 120 87) (layer "F.SilkS")
+    (effects (font (size 1.2 1.2) (thickness 0.2))))
+)
+"""
+
+
 PRO_TEMPLATE = """{
   "board": {},
   "boards": [],
@@ -312,6 +424,7 @@ PROJECTS = [
     Project(name="esp32_i2c_existing_pullups", sensor_pins=SENSOR_PINS, existing_pullups=True),
     Project(name="esp32_i2c_unnamed_pins", sensor_pins=SENSOR_PINS_UNNAMED),
     Project(name="esp32_i2c_connected", sensor_pins=SENSOR_PINS, connect_sensor=True, existing_pullups=True),
+    Project(name="esp32_i2c_board", sensor_pins=SENSOR_PINS, board=True),
 ]
 
 
@@ -322,15 +435,19 @@ def write_project(project: Project, out_dir: Path) -> Path:
     target.mkdir(parents=True)
     (target / f"{project.name}.kicad_sch").write_text(build_schematic(project))
     (target / f"{project.name}.kicad_pro").write_text(PRO_TEMPLATE % {"name": project.name})
+    if project.board:
+        (target / f"{project.name}.kicad_pcb").write_text(build_board(project))
     return target
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=FIXTURES / "projects")
+    parser.add_argument("--project", choices=[project.name for project in PROJECTS])
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    for project in PROJECTS:
+    projects = [project for project in PROJECTS if args.project is None or project.name == args.project]
+    for project in projects:
         path = write_project(project, args.out)
         print(f"wrote {path}")
 

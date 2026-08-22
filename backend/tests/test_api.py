@@ -72,6 +72,21 @@ def test_render_follows_the_working_copy(client: TestClient) -> None:
     assert client.get(f"/api/sessions/{session_id}/render", params={"view": "3d"}).status_code == 400
 
 
+def test_pcb_fixture_renders_board(client: TestClient) -> None:
+    session = client.post("/api/sessions", json={"project": "esp32_i2c_board"})
+    assert session.status_code == 200
+    session_data = session.json()
+    assert session_data["has_pcb"] is True
+
+    rendered = client.get(
+        f"/api/sessions/{session_data['session_id']}/render",
+        params={"view": "pcb"},
+    )
+    assert rendered.status_code == 200
+    assert rendered.headers["content-type"].startswith("image/svg+xml")
+    assert "<path" in rendered.text or "<line" in rendered.text
+
+
 def test_execution_requires_approval(client: TestClient) -> None:
     session = client.post("/api/sessions", json={"project": "esp32_i2c_demo"}).json()
     response = client.post(f"/api/sessions/{session['session_id']}/execute", json={"approved": False})
