@@ -11,7 +11,20 @@ KiCAD 9 — the board half of the demo silently does nothing there, with no erro
 `:3001` runs current code against KiCAD 10.0.5. Verified: the browser on `:3001` calls the backend on
 `127.0.0.1:8001`.
 
-One command to confirm you are live:
+**Restart both dev servers before you start, even if they look fine.** A long-running server
+serves the code it was started with; one left up from an earlier session will happily answer
+requests with pre-SPI behaviour and no error to explain why. This bit me during testing.
+
+```bash
+# backend — the CORS origin is required, or the browser on :3001 is blocked
+cd backend && KICAD_MITOS_CORS_ORIGINS='["http://localhost:3001"]' \
+  python3 -m uvicorn app.main:app --reload --port 8001
+
+# frontend, in a second terminal
+cd frontend && NEXT_PUBLIC_API_BASE=http://127.0.0.1:8001 npx next dev --port 3001
+```
+
+Then confirm you are live:
 
 ```bash
 curl -sS http://127.0.0.1:8001/api/health
@@ -177,10 +190,11 @@ hookup, and the schematic must be at the archive root.
 
 | Symptom | Fix |
 | --- | --- |
-| Page won't load on :3001 | `cd frontend && NEXT_PUBLIC_API_BASE=http://127.0.0.1:8001 npm run dev -- --port 3001` |
-| "Request failed" in the UI | Backend is down: `cd backend && python3 -m uvicorn app.main:app --port 8001` |
+| Page won't load on :3001 | `cd frontend && NEXT_PUBLIC_API_BASE=http://127.0.0.1:8001 npx next dev --port 3001` |
+| "Request failed" in the UI | Backend down, or CORS: `cd backend && KICAD_MITOS_CORS_ORIGINS='["http://localhost:3001"]' python3 -m uvicorn app.main:app --port 8001` |
 | Top bar shows no KiCAD version | `kicad-cli` fell off `PATH`; expect "needs your review" until fixed |
-| Numbers don't match this sheet | You're on :3000 (stale Docker). Switch to :3001 |
+| Numbers don't match this sheet | You're on :3000 (stale Docker), or a server predates the code. Switch to :3001 and restart both |
+| SPI/UART refused as "not supported" | The backend predates §7. Restart it |
 | You must use Docker | `docker compose up --build` — minutes, not live. Then :3000 is current |
 
 ## Don't
