@@ -2,7 +2,7 @@
 
 The adapter speaks MCP over stdio and only ever forwards schema-validated
 actions. Tool names are configurable because the Mitos capability matrix has to
-be confirmed against a running server (see docs/mitos-capabilities.md).
+be confirmed against a running server (see docs/mitos.md).
 """
 
 from __future__ import annotations

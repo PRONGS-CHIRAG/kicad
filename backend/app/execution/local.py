@@ -1,20 +1,18 @@
 """Executor that edits the KiCAD schematic files directly.
 
-Connections are made with global labels placed on the pin connection points,
-which is what KiCAD's own netlist and ERC engine resolve into nets.
+The edits themselves live in `app.kicad.edits`, shared with the MCP server, so
+the two execution paths cannot drift into two behaviours. This one batches a
+whole plan into a single load/save.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from ..kicad import writer
+from ..kicad import edits, writer
 from ..kicad.reader import ProjectState, read_project
 from ..models import ActionPlan, ConnectPins, ConnectPinToNet, EnsurePullup, ExecutionResult, ExecutionStep
 from .base import Executor
-
-PULLUP_SPACING = 12.7
-
 
 class LocalExecutor(Executor):
     name = "local"
@@ -61,27 +59,20 @@ class LocalExecutor(Executor):
         writer.save(doc, state.schematic_path)
         return ExecutionResult(completed=True, steps=steps)
 
-    def _label_pin(self, doc: list, state: ProjectState, pin_ref: str, net: str) -> str:
-        reference, _, pin_key = pin_ref.partition(".")
-        position = state.pin_position(reference, pin_key)
-        if position is None:
-            raise ValueError(f"pin {pin_ref} not found in schematic")
-        added = writer.add_global_label(doc, net, position[0], position[1])
-        return f"labelled {pin_ref} as {net}" if added else f"{pin_ref} already on {net}"
-
     def _connect_pins(self, doc: list, state: ProjectState, action: ConnectPins) -> ExecutionStep:
-        details = [
-            self._label_pin(doc, state, action.from_pin, action.net_name),
-            self._label_pin(doc, state, action.to_pin, action.net_name),
-        ]
-        return ExecutionStep(action_id=action.id, tool=self.name, status="applied", detail="; ".join(details))
+        return ExecutionStep(
+            action_id=action.id,
+            tool=self.name,
+            status="applied",
+            detail=edits.connect_pins(doc, state, action.from_pin, action.to_pin, action.net_name),
+        )
 
     def _connect_pin_to_net(self, doc: list, state: ProjectState, action: ConnectPinToNet) -> ExecutionStep:
         return ExecutionStep(
             action_id=action.id,
             tool=self.name,
             status="applied",
-            detail=self._label_pin(doc, state, action.pin, action.net),
+            detail=edits.connect_pin_to_net(doc, state, action.pin, action.net),
         )
 
     def _ensure_pullup(
@@ -100,26 +91,16 @@ class LocalExecutor(Executor):
                 status="skipped",
                 detail=f"{existing} already pulls {action.net} up to {action.to_net}",
             )
-        writer.ensure_lib_symbol(doc, "Device:R", writer.R_LIB_SYMBOL)
-        reference = writer.next_reference(doc, "R")
-        base_x, base_y = writer.free_area(doc)
-        x = base_x + slot * PULLUP_SPACING
-        writer.add_symbol_instance(doc, "Device:R", reference, action.value, x, base_y, project_name)
-        writer.add_global_label(doc, action.to_net, x, base_y - 3.81)
-        writer.add_global_label(doc, action.net, x, base_y + 3.81)
         return ExecutionStep(
             action_id=action.id,
             tool=self.name,
             status="applied",
-            detail=f"added {reference} ({action.value}) between {action.net} and {action.to_net}",
+            detail=edits.place_pullup(
+                doc, action.net, action.to_net, action.value, project_name, slot=slot
+            ),
         )
 
     @staticmethod
     def _find_pullup(state: ProjectState, net: str, rail: str) -> str | None:
-        for reference, component in state.components.items():
-            if component.is_power or not reference.startswith("R"):
-                continue
-            nets = {state.pin_nets.get(f"{reference}.{pin.number}") for pin in component.pins}
-            if net in nets and rail in nets:
-                return reference
-        return None
+        """A seam on purpose: tests subclass this to be blind and force a duplicate."""
+        return edits.find_pullup(state, net, rail)

@@ -138,9 +138,23 @@ instruction.
 
 ## Mitos integration
 
-`backend/app/execution/mitos.py` speaks MCP over stdio and forwards only validated actions. The tool
-names in `DEFAULT_TOOL_MAP` are placeholders: no Mitos MCP server was reachable in this environment,
-so the mapping has not been verified against a live server. See `docs/mitos.md`.
+`backend/app/execution/mitos.py` speaks MCP over stdio and forwards only validated actions, and
+`backend/app/mcp_server.py` is a real MCP server implementing the four tools it calls. So the MCP
+path is not decorative — it runs the whole pipeline for real:
+
+```bash
+KICAD_MITOS_EXECUTOR=mitos KICAD_MITOS_MITOS_COMMAND="python3 -m app.mcp_server" \
+  python -m app.benchmark --out reports        # 10/10, every edit over JSON-RPC
+```
+
+Both executors call the same edit primitives (`app/kicad/edits.py`), so the local and MCP paths
+cannot drift: driving the golden plan through either leaves byte-identical pin-to-net state, and a
+tool failure mid-batch still rolls the whole project back, hash-verified.
+
+What this does *not* claim: the third-party Mitos server is still unconfirmed — nothing reachable
+here speaks for it, and searching turns up no public Mitos. `DEFAULT_TOOL_MAP` is configurable
+precisely so its real names can be dropped in. See `docs/mitos.md`, which is generated from a live
+`tools/list` and says which server it was generated from.
 
 Point the probe at a running server and it writes the capability matrix from what the server actually
 advertises, including each tool's input schema:

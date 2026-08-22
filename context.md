@@ -137,12 +137,14 @@ live server's advertised tools and input schemas.
 
 Stated plainly, because several of these are easy to mistake for finished features:
 
-- **The Mitos tool names are unverified placeholders.** No Mitos MCP server was reachable while this
-  was built, so `DEFAULT_TOOL_MAP` records what the backend *expects*. The adapter is tested against
-  [mitos_stub.py](backend/tests/mitos_stub.py), a stdio MCP test double — that proves the JSON-RPC
-  client, the action-to-tool mapping and the probe work, and proves nothing about the real server.
-  `probe_mitos` exits non-zero and writes nothing when no server answers, so an unverified matrix
-  can't masquerade as a verified one. See [docs/mitos.md](docs/mitos.md).
+- **The MCP path is real, but the third-party Mitos server is still unconfirmed.**
+  [mcp_server.py](backend/app/mcp_server.py) is a genuine stdio MCP server implementing the four
+  tools the adapter calls, against real files and sharing
+  [edits.py](backend/app/kicad/edits.py) with the local executor. `KICAD_MITOS_EXECUTOR=mitos` runs
+  the full pipeline — checkpoint, execute over JSON-RPC, KiCAD ERC, decision, rollback — and the
+  benchmark passes 10/10 through it. What remains unconfirmed is *Mitos itself*: no such server was
+  ever reachable and no public one appears to exist, so `DEFAULT_TOOL_MAP` stays configurable and
+  [docs/mitos.md](docs/mitos.md) records which server it was generated from.
 - **Reading the user's live KiCAD selection is not implemented.** It needs a Mitos tool that may not
   exist; a speculative endpoint against a guessed name would be indistinguishable from a working
   feature until someone tried it. Typed references and the selection UI are both built.
