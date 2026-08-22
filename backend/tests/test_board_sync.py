@@ -11,7 +11,7 @@ from app.decision import _awaiting_routing
 from app.kicad import board, sexpr
 from app.kicad.erc import KicadCli, diff_violations
 from app.kicad.reader import read_project
-from app.models import Violation
+from app.models import ErcReport, Violation
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "projects"
 WITH_BOARD = "esp32_i2c_board"
@@ -208,15 +208,75 @@ def test_new_unconnected_items_are_all_attributable_to_synced_nets(
     assert not unexplained, f"new DRC errors the sync cannot account for: {unexplained}"
 
 
-def test_drc_diffing_is_deterministic(tmp_path: Path, requires_kicad: None) -> None:
+def test_unconnected_signatures_are_net_keyed(tmp_path: Path, requires_kicad: None) -> None:
     """KiCAD names an arbitrary representative track per unconnected cluster.
 
-    Violation.signature() keys those on nets for exactly this reason; without it a
-    DRC gate would reject valid changes at random.
+    Violation.signature() keys those on nets so the representative it happens to
+    pick cannot make an unchanged cluster look like a different violation.
     """
     pcb = _board_of(_project(tmp_path))
     cli = KicadCli()
-    reports = [cli.run_drc(pcb) for _ in range(4)]
-    for earlier, later in zip(reports, reports[1:], strict=False):
-        diff = diff_violations(earlier, later)
-        assert not diff.new and not diff.resolved, "DRC diff flapped on an unchanged board"
+    runs = [cli.run_drc(pcb) for _ in range(3)]
+    unconnected = [
+        {v.signature() for v in r.violations if v.type.endswith("unconnected_items")} for r in runs
+    ]
+    assert unconnected[0], "fixture should report unconnected items to make this meaningful"
+    assert unconnected[0] == unconnected[1] == unconnected[2]
+
+
+def test_a_union_baseline_absorbs_kicads_own_drc_nondeterminism(
+    tmp_path: Path, requires_kicad: None
+) -> None:
+    """The production guarantee, and the reason `run_drc_baseline` exists.
+
+    KiCAD's DRC is NOT deterministic: on a byte-identical board it intermittently
+    reports one or two fewer clearance violations (measured: 20 violations on 38 of
+    40 runs, 19 once, 18 once). This test used to assert the opposite, and failed
+    about one full-suite run in three.
+
+    What must hold is not that single runs agree, but that nothing a single pass
+    finds can look *new* against the baseline - otherwise the DRC gate rejects
+    valid work at random.
+    """
+    pcb = _board_of(_project(tmp_path))
+    cli = KicadCli()
+    baseline = cli.run_drc_baseline(pcb, passes=3)
+    for _ in range(4):
+        single = cli.run_drc(pcb)
+        assert single.ran
+        spurious = diff_violations(baseline, single).new
+        assert not spurious, f"union baseline still let a violation look new: {spurious}"
+
+
+def test_run_drc_baseline_unions_its_passes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Union semantics, pinned without depending on hitting a real flap."""
+    shared = _unconnected("GND")
+    only_first = Violation(severity="error", type="clearance", description="a", items=["x"], nets=["A"])
+    only_second = Violation(severity="warning", type="clearance", description="b", items=["y"], nets=["B"])
+    passes = [
+        ErcReport(ran=True, violations=[shared, only_first]),
+        ErcReport(ran=True, violations=[shared, only_second]),
+    ]
+
+    cli = KicadCli()
+    monkeypatch.setattr(cli, "run_drc", lambda board: passes.pop(0))
+    merged = cli.run_drc_baseline(Path("unused.kicad_pcb"), passes=2)
+
+    assert {v.signature() for v in merged.violations} == {
+        shared.signature(),
+        only_first.signature(),
+        only_second.signature(),
+    }
+    assert (merged.errors, merged.warnings) == (2, 1)
+
+
+def test_run_drc_baseline_keeps_a_single_pass_when_a_later_one_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pass that did not run must not silently shrink the baseline."""
+    real = _unconnected("GND")
+    passes = [ErcReport(ran=True, violations=[real]), ErcReport(ran=False)]
+    cli = KicadCli()
+    monkeypatch.setattr(cli, "run_drc", lambda board: passes.pop(0))
+    merged = cli.run_drc_baseline(Path("unused.kicad_pcb"), passes=2)
+    assert [v.signature() for v in merged.violations] == [real.signature()]

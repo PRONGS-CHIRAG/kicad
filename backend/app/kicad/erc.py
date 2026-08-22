@@ -139,6 +139,46 @@ class KicadCli:
         # a symbol added to the schematic with no matching footprint on the board.
         return self._run_check(["pcb", "drc"], board, extra=["--schematic-parity"])
 
+    def run_drc_baseline(self, board: Path, passes: int = 2) -> ErcReport:
+        """A DRC baseline that is a conservative superset of any single run.
+
+        KiCAD's DRC is not fully deterministic. On a byte-identical board it
+        intermittently reports one or two fewer violations - measured here as 20
+        violations on 38 of 40 runs, 19 once and 18 once, with kicad-cli's own
+        output saying "Found 8 violations" one run and "Found 7" the next. The
+        ones that come and go are clearance violations, which `_awaiting_routing`
+        does not exempt.
+
+        That matters because whichever run happens to become the baseline decides
+        whether a later, normal run looks like it introduced new errors. A
+        single-run baseline therefore makes the DRC gate reject valid work at
+        random, roughly one time in twenty. Unioning a couple of passes fixes the
+        dangerous direction: a violation KiCAD reported on the original board is
+        pre-existing no matter which pass found it, so it can never be counted as
+        new later. It cannot hide a real regression either - a violation the
+        original board does not have cannot appear in any pass over it.
+        """
+        report = self.run_drc(board)
+        if not report.ran or passes < 2:
+            return report
+        seen = {v.signature() for v in report.violations}
+        merged = list(report.violations)
+        for _ in range(passes - 1):
+            extra_pass = self.run_drc(board)
+            if not extra_pass.ran:
+                continue
+            for violation in extra_pass.violations:
+                if violation.signature() not in seen:
+                    seen.add(violation.signature())
+                    merged.append(violation)
+        return report.model_copy(
+            update={
+                "violations": merged,
+                "errors": sum(1 for v in merged if v.severity == "error"),
+                "warnings": sum(1 for v in merged if v.severity == "warning"),
+            }
+        )
+
     def _run_check(self, subcommand: list[str], target: Path, extra: list[str] | None = None) -> ErcReport:
         if not self.available:
             return ErcReport(ran=False, raw_output=f"{self.executable} not found on PATH")

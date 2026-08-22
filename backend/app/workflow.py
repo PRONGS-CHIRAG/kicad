@@ -114,7 +114,7 @@ class SessionStore:
             state=state,
         )
         board = session.board_path
-        session.baseline_drc = self.cli.run_drc(board) if board else None
+        session.baseline_drc = self.cli.run_drc_baseline(board) if board else None
         self._sessions[session_id] = session
         return session
 
@@ -254,7 +254,12 @@ class SessionStore:
         session.revision += 1
         if decision == Decision.ACCEPTED:
             session.baseline_erc = erc_after or session.baseline_erc
-            session.baseline_drc = drc_after or session.baseline_drc
+            # Re-baselined from a fresh superset rather than from `drc_after`:
+            # a single run that happened to under-report would make the next run
+            # look like it introduced the violations it missed.
+            session.baseline_drc = (
+                self.cli.run_drc_baseline(board) if board else session.baseline_drc
+            )
         self.refresh(session)
         return report
 
