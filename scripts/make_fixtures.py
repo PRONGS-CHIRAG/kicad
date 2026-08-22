@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import shutil
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
@@ -592,9 +591,12 @@ ALL_PROJECTS: list = [*PROJECTS, *PROTOCOL_PROJECTS]
 
 def write_project(project: Project | ProtocolProject, out_dir: Path) -> Path:
     target = out_dir / project.name
-    if target.exists():
-        shutil.rmtree(target)
-    target.mkdir(parents=True)
+    # Overwrite only what this generator owns. A blanket rmtree also deleted the
+    # committed `.kicad_pcb` that four schematic fixtures carry: those boards came
+    # from the board-sync work rather than from `build_board`, so a plain regen
+    # removed them and nothing here put them back - which silently broke both the
+    # demo and the board-sync tests.
+    target.mkdir(parents=True, exist_ok=True)
     if isinstance(project, ProtocolProject):
         (target / f"{project.name}.kicad_sch").write_text(build_protocol_schematic(project))
         (target / f"{project.name}.kicad_pro").write_text(PRO_TEMPLATE % {"name": project.name})
