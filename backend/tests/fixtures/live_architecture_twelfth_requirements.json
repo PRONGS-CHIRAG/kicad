@@ -1,0 +1,431 @@
+{
+  "acceptance_tests": [
+    "TEST-001: ERC clean - 0 errors, 0 warnings (from 10 errors / 8 warnings baseline)",
+    "TEST-002: DRC clean against generic_two_layer - 0 errors, 0 warnings (from 5 errors / 13 warnings baseline)",
+    "TEST-003: Netlist has zero unconnected pins and zero single-pin nets (VBUS no longer orphaned)",
+    "TEST-004: TMP102 VCC/GND/SDA/SCL connected and ADD0 strap separated from the ESP32 GND power-pin miswire",
+    "TEST-005: Measured +3V3 within 3.135-3.465 V at ESP32 and TMP102 supply pins under full load",
+    "TEST-006: I2C scan finds exactly one device at 0x48; 1 Hz temperature reads for 10 min with no bus errors",
+    "TEST-007: Reported temperature within +/-1.0 C of a reference thermometer after 15 min soak",
+    "TEST-008: Manufacturability review passes trace/space, drill, annular ring, edge clearance; full fabrication output set produced",
+    "TEST-009: Board outline verified at 110 x 65 mm with all copper inside 35,35-145,100",
+    "TEST-010: Protected objects confirmed empty and unmodified at hand-back"
+  ],
+  "constraints": [
+    "Manufacturer profile generic_two_layer: 2 copper layers, 1.6 mm FR4, min trace/space 0.2 mm, min drill 0.3 mm, min annular ring 0.15 mm, min edge clearance 0.5 mm",
+    "Board outline fixed at 110 x 65 mm (35,35 to 145,100); no copper or components outside the outline",
+    "USB-C receptacle must sit on a board edge; ESP32-WROOM-32 antenna must overhang the edge with a >=15 x 10 mm copper-free keepout on both layers",
+    "TMP102 must be >=20 mm from the LDO and thermally necked from the ground pour",
+    "Single-sided SMD assembly, 0402 minimum passive size, <=20 distinct BOM lines",
+    "Only one PWR_FLAG per power source net (VBUS, GND); +3V3 must be driven by the regulator power_out pin",
+    "USB_B_Micro (J1) must be replaced by a USB-C receptacle; TMP102 ADD0 must not share the ESP32 GND power-pin net",
+    "Ambient operating range -10 to +60 C; measurement accuracy budget +/-1.0 C including self-heating",
+    "Propose-only stage: no project files, schematic, or layout modified; protected_objects list is empty and must stay untouched",
+    "Cost ceiling 15 USD bare board and 20 USD BOM per unit at quantity 10"
+  ],
+  "interfaces": [
+    {
+      "devices": 1,
+      "type": "I2C",
+      "voltage": "3.3 V"
+    },
+    {
+      "devices": 1,
+      "type": "USB 2.0 full-speed (USB-C receptacle, D+/D-, 90 Ohm differential)",
+      "voltage": "3.3 V signaling / 5 V VBUS"
+    },
+    {
+      "devices": 2,
+      "type": "GPIO strap (EN reset RC, TMP102 ADD0 address strap)",
+      "voltage": "3.3 V"
+    }
+  ],
+  "mechanical": {
+    "layers": 2,
+    "maximum_height_mm": 65.0,
+    "maximum_width_mm": 110.0
+  },
+  "power": {
+    "input": "USB-C VBUS, 5 V nominal (4.75-5.25 V), 500 mA max sink, CC1/CC2 terminated with 5.1 kOhm pull-downs",
+    "logic_voltage": "3.3 V from a 5 V-to-3V3 LDO (>=600 mA capability), regulated to +/-5%",
+    "maximum_current_ma": 500.0
+  },
+  "requirements": [
+    {
+      "category": "power",
+      "id": "PWR-001",
+      "source": "project request: USB-C power",
+      "statement": "Board shall be powered from a USB-C receptacle VBUS input of 5 V nominal (4.75-5.25 V).",
+      "unit": "V",
+      "value": "5"
+    },
+    {
+      "category": "power",
+      "id": "PWR-002",
+      "source": "ESP32-WROOM-32 peak RF current",
+      "statement": "A 5 V to 3.3 V LDO regulator shall generate the +3V3 logic rail with at least 600 mA continuous output capability.",
+      "unit": "mA",
+      "value": 600
+    },
+    {
+      "category": "power",
+      "id": "PWR-003",
+      "source": "USB 2.0 default current limit",
+      "statement": "Total board current draw from VBUS shall not exceed 500 mA so the design stays inside USB default sink limits.",
+      "unit": "mA",
+      "value": 500
+    },
+    {
+      "category": "power",
+      "id": "PWR-004",
+      "source": "ESP32-WROOM-32 datasheet supply range",
+      "statement": "+3V3 rail shall stay within +/-5% (3.135-3.465 V) under all load steps including ESP32 Wi-Fi TX bursts.",
+      "unit": "V",
+      "value": "3.3 +/- 5%"
+    },
+    {
+      "category": "power",
+      "id": "PWR-005",
+      "source": "typical LDO stability requirement",
+      "statement": "LDO input shall have a 10 uF bulk capacitor and the output a 22 uF bulk capacitor, both X5R/X7R ceramic.",
+      "unit": "uF",
+      "value": "10 / 22"
+    },
+    {
+      "category": "power",
+      "id": "PWR-006",
+      "source": "ESP32 hardware design guidelines",
+      "statement": "ESP32-WROOM-32 3V3 pin shall have a 100 nF decoupling capacitor placed within 3 mm of the pin, plus a 10 uF local bulk capacitor.",
+      "unit": "uF",
+      "value": "0.1"
+    },
+    {
+      "category": "power",
+      "id": "PWR-007",
+      "source": "TMP102 datasheet",
+      "statement": "TMP102 VCC pin shall have a dedicated 100 nF decoupling capacitor within 2 mm of the pin.",
+      "unit": "uF",
+      "value": "0.1"
+    },
+    {
+      "category": "power",
+      "id": "PWR-008",
+      "source": "ERC baseline: conflicting power_out flags, power_in not driven",
+      "statement": "Exactly one PWR_FLAG shall be attached to VBUS and one to GND; the +3V3 net shall be driven by the regulator output (power_out) so no power_in pin is left undriven.",
+      "unit": "flags",
+      "value": 2
+    },
+    {
+      "category": "interface",
+      "id": "IF-001",
+      "source": "project request: I2C sensor",
+      "statement": "One I2C bus at 3.3 V logic shall connect ESP32 GPIO21 (SDA) and GPIO22 (SCL) to TMP102 SDA/SCL.",
+      "unit": "bus",
+      "value": 1
+    },
+    {
+      "category": "interface",
+      "id": "IF-002",
+      "source": "TMP102 datasheet",
+      "statement": "I2C bus shall support standard/fast mode up to 400 kHz.",
+      "unit": "kHz",
+      "value": 400
+    },
+    {
+      "category": "interface",
+      "id": "IF-003",
+      "source": "I2C bus design practice",
+      "statement": "SDA and SCL shall each have a 4.7 kOhm pull-up resistor to +3V3.",
+      "unit": "kOhm",
+      "value": 4.7
+    },
+    {
+      "category": "interface",
+      "id": "IF-004",
+      "source": "TMP102 datasheet",
+      "statement": "Exactly one I2C target device (TMP102) shall be on the bus, with ADD0 strapped to GND for address 0x48.",
+      "unit": "address",
+      "value": "0x48"
+    },
+    {
+      "category": "interface",
+      "id": "IF-005",
+      "source": "baseline netlist GND: J1.4, U1.2, U2.5 miswire",
+      "statement": "TMP102 ADD0 shall be tied to GND through its own strap net and shall NOT be merged with the ESP32 GND power pin net miswire present in the baseline netlist.",
+      "unit": "",
+      "value": null
+    },
+    {
+      "category": "interface",
+      "id": "IF-006",
+      "source": "USB Type-C spec, sink CC termination",
+      "statement": "USB-C receptacle shall replace the USB_B_Micro footprint and provide VBUS, GND, D+, D- to the ESP32 USB pins, with CC1/CC2 5.1 kOhm pull-down resistors to advertise a 5 V sink.",
+      "unit": "kOhm",
+      "value": 5.1
+    },
+    {
+      "category": "interface",
+      "id": "IF-007",
+      "source": "USB 2.0 full-speed impedance",
+      "statement": "USB D+/D- shall be routed as a 90 Ohm differential pair, length-matched within 2.5 mm.",
+      "unit": "Ohm",
+      "value": 90
+    },
+    {
+      "category": "interface",
+      "id": "IF-008",
+      "source": "ESP32 hardware design guidelines",
+      "statement": "ESP32 EN pin shall be held high by a 10 kOhm pull-up to +3V3 with a 1 uF RC capacitor to GND for power-on reset.",
+      "unit": "Ohm / uF",
+      "value": "10k / 1u"
+    },
+    {
+      "category": "interface",
+      "id": "IF-009",
+      "source": "ERC baseline: missing net labels",
+      "statement": "All power and signal nets shall carry explicit net labels (VBUS, +3V3, GND, SDA, SCL, USB_D+, USB_D-, EN) in the schematic.",
+      "unit": "nets",
+      "value": 8
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-001",
+      "source": "design context board outline",
+      "statement": "Board outline shall be 110 x 65 mm, spanning 35,35 to 145,100 in project coordinates.",
+      "unit": "mm",
+      "value": "110 x 65"
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-002",
+      "source": "manufacturer_profile generic_two_layer",
+      "statement": "Stackup shall be 2 copper layers, 1.6 mm FR4 thickness.",
+      "unit": "layers",
+      "value": 2
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-003",
+      "source": "connector accessibility",
+      "statement": "USB-C receptacle shall be placed on a board edge with its mating face flush to the outline.",
+      "unit": "",
+      "value": null
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-004",
+      "source": "ESP32-WROOM-32 antenna keepout guidance",
+      "statement": "ESP32-WROOM-32 antenna region shall overhang the board edge with a copper- and component-free keepout of at least 15 mm x 10 mm on both layers.",
+      "unit": "mm",
+      "value": 15
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-005",
+      "source": "temperature measurement accuracy",
+      "statement": "TMP102 shall be placed at least 20 mm from the LDO and its ground pour thermally necked so regulator self-heating does not bias the reading.",
+      "unit": "mm",
+      "value": 20
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-006",
+      "source": "generic_two_layer edge clearance",
+      "statement": "All copper and components shall keep at least 0.5 mm clearance from the board edge.",
+      "unit": "mm",
+      "value": 0.5
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-007",
+      "source": "DRC baseline courtyard/silkscreen warnings",
+      "statement": "No component courtyards shall overlap and no silkscreen shall overlap exposed pads.",
+      "unit": "overlaps",
+      "value": 0
+    },
+    {
+      "category": "manufacturing",
+      "id": "MFG-001",
+      "source": "generic_two_layer profile",
+      "statement": "Minimum trace width and minimum copper-to-copper clearance shall be 0.2 mm.",
+      "unit": "mm",
+      "value": 0.2
+    },
+    {
+      "category": "manufacturing",
+      "id": "MFG-002",
+      "source": "generic_two_layer profile",
+      "statement": "Minimum drill diameter shall be 0.3 mm with a minimum annular ring of 0.15 mm (via 0.3/0.6 mm).",
+      "unit": "mm",
+      "value": 0.3
+    },
+    {
+      "category": "manufacturing",
+      "id": "MFG-003",
+      "source": "IPC-2221 current capacity",
+      "statement": "Power traces (VBUS, +3V3) shall be at least 0.5 mm wide to carry 500 mA with under 10 C rise.",
+      "unit": "mm",
+      "value": 0.5
+    },
+    {
+      "category": "manufacturing",
+      "id": "MFG-004",
+      "source": "EMC / return path practice",
+      "statement": "A continuous GND pour shall be present on the bottom layer with stitching vias no more than 10 mm apart.",
+      "unit": "mm",
+      "value": 10
+    },
+    {
+      "category": "manufacturing",
+      "id": "MFG-005",
+      "source": "manufacturability review stage",
+      "statement": "Fabrication outputs (Gerber X2, drill, IPC-356 netlist, BOM, centroid) shall be generated and reviewed against the generic two-layer profile.",
+      "unit": "",
+      "value": null
+    },
+    {
+      "category": "manufacturing",
+      "id": "MFG-006",
+      "source": "assembly cost/complexity",
+      "statement": "All components shall be SMD on the top layer, 0402 or larger passives, for single-side reflow assembly.",
+      "unit": "package",
+      "value": "0402"
+    },
+    {
+      "category": "cost",
+      "id": "COST-001",
+      "source": "budget assumption for two-layer prototype",
+      "statement": "Bare-board fabrication cost shall not exceed 15 USD per unit at quantity 10 on the generic two-layer profile.",
+      "unit": "USD",
+      "value": 15
+    },
+    {
+      "category": "cost",
+      "id": "COST-002",
+      "source": "budget assumption",
+      "statement": "Total BOM cost shall not exceed 20 USD per unit at quantity 10.",
+      "unit": "USD",
+      "value": 20
+    },
+    {
+      "category": "cost",
+      "id": "COST-003",
+      "source": "assembly cost control",
+      "statement": "Distinct BOM line items shall be no more than 20 to limit assembly setup cost.",
+      "unit": "line items",
+      "value": 20
+    },
+    {
+      "category": "temperature",
+      "id": "TEMP-001",
+      "source": "indoor temperature monitoring use case",
+      "statement": "Board shall operate over an ambient range of -10 to +60 C.",
+      "unit": "C",
+      "value": "-10 to +60"
+    },
+    {
+      "category": "temperature",
+      "id": "TEMP-002",
+      "source": "TMP102 +/-0.5 C plus self-heating margin",
+      "statement": "End-to-end temperature measurement accuracy shall be within +/-1.0 C over 0 to +50 C ambient, including board self-heating.",
+      "unit": "C",
+      "value": 1.0
+    },
+    {
+      "category": "temperature",
+      "id": "TEMP-003",
+      "source": "LDO derating",
+      "statement": "LDO junction temperature rise shall be limited so that its case stays under 85 C at maximum load and 60 C ambient.",
+      "unit": "C",
+      "value": 85
+    },
+    {
+      "category": "temperature",
+      "id": "TEMP-004",
+      "source": "sensor thermal isolation requirement",
+      "statement": "Local temperature rise at the TMP102 caused by on-board dissipation shall not exceed 2 C above ambient.",
+      "unit": "C",
+      "value": 2
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-001",
+      "source": "ERC baseline 10/8",
+      "statement": "ERC shall report 0 errors and 0 warnings, down from the baseline of 10 errors and 8 warnings.",
+      "unit": "errors",
+      "value": 0
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-002",
+      "source": "DRC baseline 5/13",
+      "statement": "DRC shall report 0 errors and 0 warnings against the generic_two_layer rules, down from the baseline of 5 errors and 13 warnings.",
+      "unit": "errors",
+      "value": 0
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-003",
+      "source": "baseline net VBUS: J1.1 only",
+      "statement": "Netlist review shall confirm zero unconnected pins and zero single-pin nets (baseline VBUS has only J1.1).",
+      "unit": "unconnected pins",
+      "value": 0
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-004",
+      "source": "baseline GND net miswire",
+      "statement": "Netlist review shall confirm TMP102 ADD0 is no longer merged into the ESP32 GND power-pin net and that VCC/GND/SDA/SCL of U2 are connected.",
+      "unit": "",
+      "value": null
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-005",
+      "source": "PWR-004",
+      "statement": "Powered bring-up shall show +3V3 within 3.135-3.465 V at both the ESP32 and TMP102 supply pins.",
+      "unit": "V",
+      "value": "3.135-3.465"
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-006",
+      "source": "IF-004",
+      "statement": "Firmware I2C scan shall detect exactly one device at address 0x48 and read plausible temperature values at 1 Hz for 10 minutes without bus errors.",
+      "unit": "address",
+      "value": "0x48"
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-007",
+      "source": "TEMP-002",
+      "statement": "Reported temperature shall match a reference thermometer within +/-1.0 C at room ambient after 15 minutes of powered soak.",
+      "unit": "C",
+      "value": 1.0
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-008",
+      "source": "MFG-001..005",
+      "statement": "Manufacturability review shall report no violations of minimum trace/space, drill, annular ring, or edge clearance rules and produce a complete fabrication output set.",
+      "unit": "violations",
+      "value": 0
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-009",
+      "source": "MECH-001",
+      "statement": "Board outline shall be verified as 110 x 65 mm with all copper inside the 35,35-145,100 outline.",
+      "unit": "mm",
+      "value": "110 x 65"
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-010",
+      "source": "project spec protected_objects []",
+      "statement": "Protected objects list shall be confirmed empty and unmodified at hand-back.",
+      "unit": "objects",
+      "value": 0
+    }
+  ]
+}

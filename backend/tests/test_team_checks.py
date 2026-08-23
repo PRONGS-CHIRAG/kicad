@@ -320,7 +320,7 @@ def test_captured_live_architecture_passes_connectivity_and_budget_gate() -> Non
     assert result.passed, result.findings
 
 
-def test_fourth_live_architecture_passes_global_nets_and_constraints() -> None:
+def test_fourth_live_architecture_reports_real_converter_overload() -> None:
     requirements = RequirementsDoc.model_validate(
         json.loads(
             (Path(__file__).parent / "fixtures" / "live_architecture_fourth_requirements.json").read_text()
@@ -330,7 +330,8 @@ def test_fourth_live_architecture_passes_global_nets_and_constraints() -> None:
         json.loads((Path(__file__).parent / "fixtures" / "live_architecture_fourth.json").read_text())
     )
     result = check_architecture(requirements, architecture, "fourth-live-architecture-rev")
-    assert result.passed, result.findings
+    assert not result.passed
+    assert any(finding.rule == "power budget" and finding.severity == "error" for finding in result.findings)
 
 
 def test_fifth_live_architecture_passes_identifier_connectivity_gate() -> None:
@@ -357,7 +358,7 @@ def test_seventh_live_architecture_passes_voltage_annotated_nets() -> None:
     assert result.passed, result.findings
 
 
-def test_eighth_live_architecture_keeps_temperature_mapping_error_explicit() -> None:
+def test_eighth_live_architecture_treats_temperature_mapping_as_advisory() -> None:
     requirements = RequirementsDoc.model_validate(
         json.loads(
             (Path(__file__).parent / "fixtures" / "live_architecture_eighth_requirements.json").read_text()
@@ -367,7 +368,7 @@ def test_eighth_live_architecture_keeps_temperature_mapping_error_explicit() -> 
         json.loads((Path(__file__).parent / "fixtures" / "live_architecture_eighth.json").read_text())
     )
     result = check_architecture(requirements, architecture, "eighth-live-architecture-rev")
-    assert not result.passed
+    assert result.passed, result.findings
     assert any(
         finding.rule == "required input connectivity" and finding.severity == "warning"
         for finding in result.findings
@@ -379,8 +380,24 @@ def test_eighth_live_architecture_keeps_temperature_mapping_error_explicit() -> 
     assert any(
         finding.rule == "requirements map to blocks"
         and finding.actual == "TEMP-001"
-        and finding.severity == "error"
+        and finding.severity == "warning"
         for finding in result.findings
+    )
+
+
+def test_twelfth_live_architecture_passes_per_rail_budget_and_temperature_mapping() -> None:
+    requirements = RequirementsDoc.model_validate(
+        json.loads(
+            (Path(__file__).parent / "fixtures" / "live_architecture_twelfth_requirements.json").read_text()
+        )
+    )
+    architecture = Architecture.model_validate(
+        json.loads((Path(__file__).parent / "fixtures" / "live_architecture_twelfth.json").read_text())
+    )
+    result = check_architecture(requirements, architecture, "twelfth-live-architecture-rev")
+    assert result.passed, result.findings
+    assert all(
+        finding.severity != "error" for finding in result.findings if finding.rule.startswith("power budget")
     )
 
 
@@ -479,6 +496,29 @@ def test_architecture_identifier_matching_rejects_spurious_token_overlap() -> No
     )
 
 
+def test_architecture_unmatched_power_rail_is_only_a_warning() -> None:
+    architecture = Architecture(
+        blocks=[
+            {
+                "id": "load",
+                "type": "load",
+                "power_required_ma": 10,
+                "required_inputs": ["AUX_RAIL"],
+                "requirement_ids": ["PWR-001"],
+            },
+        ],
+        connections=[],
+    )
+    result = check_architecture(_requirements(), architecture, "rev-1")
+    assert result.passed
+    assert any(
+        finding.rule == "power budget rail supplier"
+        and finding.actual == "AUX_RAIL"
+        and finding.severity == "warning"
+        for finding in result.findings
+    )
+
+
 def test_architecture_non_converter_voltage_mismatch_fails() -> None:
     architecture = Architecture(
         blocks=[
@@ -514,8 +554,20 @@ def test_architecture_total_power_draw_exceeding_rail_capacity_fails() -> None:
     )
     architecture = Architecture(
         blocks=[
-            {"id": "first", "type": "load", "power_required_ma": 300, "requirement_ids": ["PWR-003"]},
-            {"id": "second", "type": "load", "power_required_ma": 350},
+            {
+                "id": "source",
+                "type": "source",
+                "power_available_ma": 500,
+                "required_outputs": ["VBUS"],
+                "requirement_ids": ["PWR-003"],
+            },
+            {
+                "id": "first",
+                "type": "load",
+                "power_required_ma": 300,
+                "required_inputs": ["VBUS"],
+            },
+            {"id": "second", "type": "load", "power_required_ma": 350, "required_inputs": ["VBUS"]},
         ],
         connections=[],
     )
@@ -536,7 +588,19 @@ def test_architecture_marginal_power_overshoot_is_a_warning() -> None:
     )
     architecture = Architecture(
         blocks=[
-            {"id": "load", "type": "load", "power_required_ma": 602.74, "requirement_ids": ["PWR-003"]},
+            {
+                "id": "source",
+                "type": "source",
+                "power_available_ma": 600,
+                "required_outputs": ["VBUS"],
+            },
+            {
+                "id": "load",
+                "type": "load",
+                "power_required_ma": 602.74,
+                "required_inputs": ["VBUS"],
+                "requirement_ids": ["PWR-003"],
+            },
         ],
         connections=[],
     )

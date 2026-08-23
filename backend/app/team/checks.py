@@ -470,6 +470,35 @@ def _is_converter(block: ArchitectureBlock) -> bool:
     return bool(input_voltage and output_voltage and not _measurements_equal(input_voltage, output_voltage))
 
 
+def _power_rail_identifiers(value: str) -> set[str]:
+    rails: set[str] = set()
+    for identifier in _signal_identifiers(value):
+        if identifier in {"GND", "GROUND", "VSS", "RETURN"}:
+            continue
+        if identifier in {"+3V3", "3V3"}:
+            rails.add("3V3")
+        elif (
+            identifier == "VBUS"
+            or identifier.startswith("VBUS_")
+            or identifier in {"VCC", "VDD", "VBAT", "VIN", "VOUT"}
+        ) or identifier.endswith("_RAIL"):
+            rails.add(identifier)
+    return rails
+
+
+def _is_transparent_power_path(block: ArchitectureBlock) -> bool:
+    if block.power_required_ma is None or block.power_required_ma <= 0 or _is_converter(block):
+        return False
+    input_rails = _power_rail_identifiers(" ".join(block.required_inputs or []))
+    output_rails = _power_rail_identifiers(" ".join(block.required_outputs or []))
+    if not input_rails or not output_rails:
+        return False
+    block_type = block.type.lower()
+    return bool(input_rails & output_rails) or any(
+        marker in block_type for marker in ("filter", "protection", "pass-through", "pass through")
+    )
+
+
 def check_architecture(
     document: RequirementsDoc,
     architecture: Architecture,
@@ -480,7 +509,7 @@ def check_architecture(
     mapped = {
         requirement_id for block in architecture.blocks for requirement_id in block.requirement_ids or []
     }
-    functional_categories = {"power", "interface", "temperature"}
+    functional_categories = {"power", "interface"}
     for requirement in document.requirements:
         if requirement.id not in mapped:
             category = _canonical_category(requirement.category)
@@ -581,45 +610,60 @@ def check_architecture(
                         "warning",
                     )
                 )
-    total_required_ma = sum(
-        block.power_required_ma
-        for block in architecture.blocks
-        if block.power_required_ma is not None and not _is_converter(block)
-    )
-    capacities = [
-        quantity[0]
-        for requirement in document.requirements
-        if _canonical_category(requirement.category) == "power"
-        for quantity in _quantities(requirement.value, requirement.unit)
-        if quantity[1] == "ma"
-    ]
-    if document.power.maximum_current_ma is not None:
-        capacities.append(document.power.maximum_current_ma)
-    capacity = max(capacities, default=None)
-    if capacity is None:
-        if total_required_ma:
+    rail_suppliers: dict[str, list[float | None]] = {}
+    for block in architecture.blocks:
+        for rail in _power_rail_identifiers(" ".join(block.required_outputs or [])):
+            rail_suppliers.setdefault(rail, []).append(block.power_available_ma)
+
+    rail_loads: dict[str, float] = {}
+    for block in architecture.blocks:
+        if block.power_required_ma is None or _is_transparent_power_path(block):
+            continue
+        input_rails = _power_rail_identifiers(" ".join(block.required_inputs or []))
+        for rail in input_rails:
+            rail_loads[rail] = rail_loads.get(rail, 0.0) + block.power_required_ma
+
+    for rail, required_ma in rail_loads.items():
+        suppliers = rail_suppliers.get(rail)
+        if not suppliers:
             findings.append(
                 finding(
-                    "power budget capacity established",
-                    total_required_ma,
-                    "power requirement rail capability",
+                    "power budget rail supplier",
+                    rail,
+                    "supplying block with declared capability",
+                    rail,
                     "architecture",
-                    "requirements",
                     "warning",
                 )
             )
-    elif total_required_ma > capacity:
-        marginal = total_required_ma <= capacity * 1.1
-        findings.append(
-            finding(
-                "power budget",
-                total_required_ma,
-                f"{capacity} mA rail capacity" + (" (marginal overshoot within 10%)" if marginal else ""),
-                "architecture",
-                "requirements",
-                "warning" if marginal else "error",
+            continue
+        capacities = [capacity for capacity in suppliers if capacity is not None]
+        if not capacities:
+            findings.append(
+                finding(
+                    "power budget capacity established",
+                    rail,
+                    "supplying block with declared capability",
+                    rail,
+                    "architecture",
+                    "warning",
+                )
             )
-        )
+            continue
+        capacity = max(capacities)
+        if required_ma > capacity:
+            marginal = required_ma <= capacity * 1.1
+            findings.append(
+                finding(
+                    "power budget",
+                    required_ma,
+                    f"{capacity} mA {rail} rail capacity"
+                    + (" (marginal overshoot within 10%)" if marginal else ""),
+                    rail,
+                    "architecture",
+                    "warning" if marginal else "error",
+                )
+            )
     return _check("architecture", findings, project_version, "architecture checker")
 
 
