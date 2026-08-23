@@ -262,3 +262,23 @@ worked. The differences here are structural, not tonal — each one is enforced 
 - **It works with no model at all.** Set no API key, or use the Fields form, and the entire pipeline
   runs deterministically end to end. The LLM is a convenience for parsing intent — never a dependency
   for correctness.
+
+## Ten-agent team
+
+The team adds project management, requirements, architecture, components, schematic design, PCB
+layout, simulation, verification, manufacturing, and QA/release roles. It follows that canonical
+order, with layout and simulation overlapping when enabled. Failed gates route to the responsible
+agent and replay every downstream stage; two return trips end in human review.
+
+The Devin runner returns validated structured output from real sessions. The explicitly labelled
+`STUB` runner is deterministic and offline for keyless development. Agents never directly mutate
+design files or open pull requests. Team runs are available through the background
+`/api/team/runs` endpoints and `python -m app.team.cli --project <fixture> "<request>"`.
+Stage outputs, gate evidence, events, and checkpoints are written outside the worktree under
+`settings.workspace_dir/team/<run_id>/`. The existing `fixtures/projects/esp32_i2c_demo` fixture
+supports the ESP32/I²C temperature-monitoring and USB-C demonstration request.
+
+The MVP does not route copper or run ngspice. Simulation uses closed-form arithmetic only, and
+layout checks use footprint extents only where the parser exposes trustworthy geometry. A release
+marked `ready for engineering review` is not guaranteed to work; physical prototyping and lab
+validation remain necessary.
