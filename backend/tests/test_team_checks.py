@@ -290,6 +290,19 @@ def test_fourth_live_architecture_passes_global_nets_and_constraints() -> None:
     assert result.passed, result.findings
 
 
+def test_fifth_live_architecture_passes_identifier_connectivity_gate() -> None:
+    requirements = RequirementsDoc.model_validate(
+        json.loads(
+            (Path(__file__).parent / "fixtures" / "live_architecture_fifth_requirements.json").read_text()
+        )
+    )
+    architecture = Architecture.model_validate(
+        json.loads((Path(__file__).parent / "fixtures" / "live_architecture_fifth.json").read_text())
+    )
+    result = check_architecture(requirements, architecture, "fifth-live-architecture-rev")
+    assert result.passed, result.findings
+
+
 def test_architecture_global_nets_do_not_require_point_to_point_edges() -> None:
     architecture = Architecture(
         blocks=[
@@ -313,7 +326,10 @@ def test_architecture_global_nets_do_not_require_point_to_point_edges() -> None:
                 "required_outputs": ["USB-C edge placement zone"],
             },
         ],
-        connections=[{"from": "source", "to": "distribution", "signal": "GND return"}],
+        connections=[
+            {"from": "source", "to": "distribution", "signal": "GND return"},
+            {"from": "distribution", "to": "consumer", "signal": "+3V3 rail"},
+        ],
     )
     result = check_architecture(_requirements(), architecture, "rev-1")
     assert result.passed, result.findings
@@ -325,11 +341,28 @@ def test_architecture_missing_required_input_fails() -> None:
             {
                 "id": "load",
                 "type": "sensor",
-                "required_inputs": ["MISSING_RAIL"],
+                "required_inputs": ["I2C_SDA"],
                 "requirement_ids": ["PWR-001"],
             }
         ],
         connections=[],
+    )
+    result = check_architecture(_requirements(), architecture, "rev-1")
+    assert not result.passed
+    assert any(finding.rule == "required input connectivity" for finding in result.findings)
+
+
+def test_architecture_identifier_matching_rejects_spurious_token_overlap() -> None:
+    architecture = Architecture(
+        blocks=[
+            {
+                "id": "source",
+                "type": "source",
+                "requirement_ids": ["PWR-001"],
+            },
+            {"id": "load", "type": "load", "required_inputs": ["POWER_GOOD"]},
+        ],
+        connections=[{"from": "source", "to": "load", "signal": "USB_POWER"}],
     )
     result = check_architecture(_requirements(), architecture, "rev-1")
     assert not result.passed

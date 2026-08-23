@@ -375,54 +375,41 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
     return _check("requirements", findings, project_version, "requirements parser")
 
 
-_SIGNAL_TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
-_SIGNAL_GENERIC_TOKENS = {
-    "a",
-    "an",
-    "and",
-    "cable",
-    "common",
-    "continuous",
-    "data",
-    "differential",
-    "external",
-    "for",
-    "from",
-    "input",
-    "idle",
-    "of",
-    "on",
-    "output",
-    "over",
-    "pair",
-    "passive",
-    "plane",
-    "power",
-    "rail",
-    "signal",
-    "the",
-    "to",
-    "via",
-    "with",
-}
+_SIGNAL_IDENTIFIER_RE = re.compile(
+    r"(?<![A-Za-z0-9])(?:\+?3V3|VBUS(?:_[A-Z0-9]+)?|GND|GROUND|VSS|RETURN|"
+    r"GPIO\d+|IO\d+|D[+-]|SDA|SCL|EN|ADD0|"
+    r"(?:I2C|UART|USB)_[A-Z0-9]+[+-]?)(?![A-Za-z0-9])",
+    re.IGNORECASE,
+)
+_SHAPED_IDENTIFIER_RE = re.compile(r"^[A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+(?:[+-])?$")
 
 
-def _signal_tokens(value: str) -> set[str]:
-    without_annotations = re.sub(r"\([^)]*\)", " ", value)
-    return {
-        token.lower()
-        for token in _SIGNAL_TOKEN_RE.findall(without_annotations)
-        if token.lower() not in _SIGNAL_GENERIC_TOKENS
-    }
+def _signal_identifiers(value: str) -> set[str]:
+    identifiers = {token.upper().replace("-", "_") for token in _SIGNAL_IDENTIFIER_RE.findall(value)}
+    without_annotations = re.sub(r"\([^)]*\)", " ", value).strip()
+    if not identifiers and _SHAPED_IDENTIFIER_RE.fullmatch(without_annotations):
+        identifiers.add(without_annotations.upper())
+    aliases = set(identifiers)
+    for identifier in identifiers:
+        if identifier.startswith(("I2C_", "USB_")):
+            suffix = identifier.split("_", 1)[1]
+            if suffix in {"D+", "D_", "SDA", "SCL"}:
+                aliases.add(suffix)
+    return aliases
+
+
+def _is_signal_item(value: str) -> bool:
+    without_annotations = re.sub(r"\([^)]*\)", " ", value).strip()
+    if _SHAPED_IDENTIFIER_RE.fullmatch(without_annotations):
+        return True
+    parts = re.split(r"\s*(?:/|,|;|\band\b)\s*", without_annotations, flags=re.IGNORECASE)
+    return bool(parts) and all(_SIGNAL_IDENTIFIER_RE.fullmatch(part.strip()) for part in parts)
 
 
 def _signal_matches(required: str, signal: str) -> bool:
-    return bool(_signal_tokens(required) & _signal_tokens(signal))
-
-
-def _signal_is_confident(required: str) -> bool:
-    without_annotations = re.sub(r"\([^)]*\)", " ", required)
-    return bool(re.search(r"\b[A-Za-z0-9]+[_/+*-][A-Za-z0-9_/+*-]*\b", without_annotations))
+    required_identifiers = _signal_identifiers(required)
+    signal_identifiers = _signal_identifiers(signal)
+    return bool(required_identifiers and required_identifiers & signal_identifiers)
 
 
 def _global_net_names(document: RequirementsDoc, architecture: Architecture) -> set[str]:
@@ -455,48 +442,6 @@ def _named_global_nets(value: str) -> set[str]:
     if re.search(r"(?:\+?3v3|3\.3\s*v)", lowered):
         result.add("3v3")
     return result
-
-
-def _is_constraint_item(value: str) -> bool:
-    lowered = value.lower()
-    return any(
-        marker in lowered
-        for marker in (
-            "clearance",
-            "constraint",
-            "courtyard",
-            "documentation",
-            "keep-out",
-            "keepout",
-            "layer",
-            "outline",
-            "placement zone",
-            "stackup",
-            "zone",
-        )
-    )
-
-
-def _unmatched_signal_severity(required: str, block: ArchitectureBlock) -> str:
-    lowered = required.lower()
-    if _is_constraint_item(required):
-        return "info"
-    if any(
-        marker in lowered
-        for marker in (
-            "cable",
-            "external",
-            "spare",
-            "passive",
-            "declaration",
-            "strap",
-            "temperature data",
-        )
-    ):
-        return "warning"
-    if _signal_tokens(required) & _signal_tokens(block.type):
-        return "warning"
-    return "error" if _signal_is_confident(required) else "warning"
 
 
 def _is_power_signal(signal: str) -> bool:
@@ -579,9 +524,13 @@ def check_architecture(
             required_global_nets = _named_global_nets(item) & global_nets
             if required_global_nets and required_global_nets & global_nets_present:
                 continue
-            if _is_constraint_item(item):
+            if not _is_signal_item(item):
                 continue
             if not any(_signal_matches(item, signal) for signal in incoming[block.id]):
+                if ("pullup" in block.type.lower() or "pull-up" in block.type.lower()) and any(
+                    _signal_matches(item, signal) for signal in outgoing[block.id]
+                ):
+                    continue
                 findings.append(
                     finding(
                         "required input connectivity",
@@ -589,16 +538,20 @@ def check_architecture(
                         "incoming connection",
                         block.id,
                         "architecture",
-                        _unmatched_signal_severity(item, block),
+                        "error",
                     )
                 )
         for item in block.required_outputs or []:
             required_global_nets = _named_global_nets(item) & global_nets
             if required_global_nets and required_global_nets & global_nets_present:
                 continue
-            if _is_constraint_item(item):
+            if not _is_signal_item(item):
                 continue
-            if not any(_signal_matches(item, signal) for signal in outgoing[block.id]):
+            outgoing_match = any(_signal_matches(item, signal) for signal in outgoing[block.id])
+            annotated_input_match = "(from" in item.lower() and any(
+                _signal_matches(item, signal) for signal in incoming[block.id]
+            )
+            if not outgoing_match and not annotated_input_match:
                 findings.append(
                     finding(
                         "required output connectivity",
@@ -606,7 +559,7 @@ def check_architecture(
                         "outgoing connection",
                         block.id,
                         "architecture",
-                        _unmatched_signal_severity(item, block),
+                        "error",
                     )
                 )
     total_required_ma = sum(

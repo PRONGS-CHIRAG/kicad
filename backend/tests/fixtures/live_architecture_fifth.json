@@ -1,0 +1,429 @@
+{
+  "blocks": [
+    {
+      "id": "B1_USB_C_INTERFACE",
+      "input_voltage": "USB-C VBUS 4.75-5.25 V; USB 2.0 electrical signaling",
+      "output_voltage": "Raw VBUS 4.75-5.25 V; USB 2.0 D+/D- signaling",
+      "power_available_ma": null,
+      "power_required_ma": null,
+      "required_inputs": [
+        "USB-C source VBUS and GND",
+        "Optional USB 2.0 host data channel"
+      ],
+      "required_outputs": [
+        "Raw VBUS",
+        "USB2 differential data pair",
+        "CC1 and CC2 sink advertisement through independent 5.1 kOhm pulldowns",
+        "Ground reference"
+      ],
+      "requirement_ids": [
+        "PWR-001",
+        "PWR-002",
+        "PWR-007",
+        "IF-001",
+        "IF-002",
+        "MECH-005",
+        "TEST-005"
+      ],
+      "type": "USB-C 2.0 sink receptacle and source-attachment interface"
+    },
+    {
+      "id": "B2_VBUS_PROTECTION",
+      "input_voltage": "4.75-5.25 V raw VBUS",
+      "output_voltage": "Protected 4.75-5.25 V VBUS",
+      "power_available_ma": null,
+      "power_required_ma": null,
+      "required_inputs": [
+        "Raw VBUS",
+        "Ground reference"
+      ],
+      "required_outputs": [
+        "Protected VBUS",
+        "Protected ground-referenced USB power domain"
+      ],
+      "requirement_ids": [
+        "PWR-008",
+        "MFG-003",
+        "TEST-005"
+      ],
+      "type": "VBUS ESD, reverse-current, and overcurrent protection"
+    },
+    {
+      "id": "B3_3V3_REGULATOR",
+      "input_voltage": "Protected VBUS 4.75-5.25 V",
+      "output_voltage": "3.3 V nominal, 3.135-3.465 V under specified loads",
+      "power_available_ma": 600.0,
+      "power_required_ma": null,
+      "required_inputs": [
+        "Protected VBUS",
+        "Ground reference"
+      ],
+      "required_outputs": [
+        "Regulated +3V3 rail",
+        "Power-good operating point across 0-600 mA load"
+      ],
+      "requirement_ids": [
+        "PWR-003",
+        "PWR-004",
+        "PWR-005",
+        "MFG-003",
+        "TEMP-004",
+        "TEST-004"
+      ],
+      "type": "Efficient 5 V-to-3.3 V regulator sized for ESP32 load transients"
+    },
+    {
+      "id": "B4_POWER_INTEGRITY",
+      "input_voltage": "Protected VBUS and regulated 3.3 V",
+      "output_voltage": "Locally decoupled VBUS and +3V3 with common 0 V reference",
+      "power_available_ma": 600.0,
+      "power_required_ma": null,
+      "required_inputs": [
+        "Protected VBUS",
+        "Regulated +3V3",
+        "Ground reference"
+      ],
+      "required_outputs": [
+        "At least 10 uF bulk support on VBUS",
+        "At least 10 uF bulk support on +3V3",
+        "100 nF local decoupling at each IC supply pin",
+        "Exactly one ERC power-source declaration on VBUS, +3V3, and GND",
+        "Distributed +3V3 and GND domains"
+      ],
+      "requirement_ids": [
+        "PWR-006",
+        "PWR-009",
+        "MFG-004",
+        "TEST-001"
+      ],
+      "type": "Power distribution, bulk/local decoupling, ground reference, and ERC power declaration"
+    },
+    {
+      "id": "B5_ESP32_CONTROLLER",
+      "input_voltage": "3.3 V power and 3.3 V logic",
+      "output_voltage": "3.3 V digital logic",
+      "power_available_ma": null,
+      "power_required_ma": 600.0,
+      "required_inputs": [
+        "Decoupled +3V3 and GND",
+        "EN reset control",
+        "IO0 boot-mode control",
+        "3.3 V UART programming channel",
+        "3.3 V open-drain I2C bus"
+      ],
+      "required_outputs": [
+        "GPIO21 SDA participation",
+        "GPIO22 SCL drive",
+        "UART programming responses",
+        "Wi-Fi radio function",
+        "Temperature-monitoring firmware output"
+      ],
+      "requirement_ids": [
+        "PWR-003",
+        "PWR-004",
+        "IF-003",
+        "IF-005",
+        "IF-008",
+        "IF-009",
+        "MECH-004",
+        "TEMP-001",
+        "TEST-006",
+        "TEST-007"
+      ],
+      "type": "ESP32-WROOM-32 processing, Wi-Fi, I2C control, and firmware execution"
+    },
+    {
+      "id": "B6_USB_PROGRAMMING_BRIDGE",
+      "input_voltage": "USB 2.0 electrical signaling and 3.3 V local power",
+      "output_voltage": "3.3 V UART and programming-control logic",
+      "power_available_ma": null,
+      "power_required_ma": null,
+      "required_inputs": [
+        "USB2 differential data pair",
+        "Decoupled +3V3 and GND"
+      ],
+      "required_outputs": [
+        "3.3 V UART transmit/receive channel",
+        "Automatic reset and boot-mode control signals"
+      ],
+      "requirement_ids": [
+        "IF-002",
+        "IF-009"
+      ],
+      "type": "USB 2.0-to-3.3 V UART programming bridge"
+    },
+    {
+      "id": "B7_RESET_BOOT_CONTROL",
+      "input_voltage": "3.3 V logic",
+      "output_voltage": "3.3 V EN and IO0 control",
+      "power_available_ma": null,
+      "power_required_ma": null,
+      "required_inputs": [
+        "Decoupled +3V3 and GND",
+        "Manual reset and boot commands",
+        "Optional automatic programming controls"
+      ],
+      "required_outputs": [
+        "EN with 10 kOhm pull-up and 100 nF delay capacitor",
+        "IO0 boot-mode control",
+        "Manual or automatic entry into firmware-download mode"
+      ],
+      "requirement_ids": [
+        "IF-008",
+        "IF-009"
+      ],
+      "type": "ESP32 EN reset timing and IO0 boot-mode control"
+    },
+    {
+      "id": "B8_I2C_BIAS_ADDRESS",
+      "input_voltage": "3.3 V power and open-drain logic",
+      "output_voltage": "3.3 V open-drain I2C bus",
+      "power_available_ma": null,
+      "power_required_ma": null,
+      "required_inputs": [
+        "Decoupled +3V3 and GND",
+        "ESP32 GPIO21 SDA and GPIO22 SCL bus participation"
+      ],
+      "required_outputs": [
+        "SDA bus with 4.7 kOhm pull-up to +3V3",
+        "SCL bus with 4.7 kOhm pull-up to +3V3",
+        "TMP102 ADD0 low configuration for address 0x48",
+        "Bidirectional I2C signaling up to 400 kHz"
+      ],
+      "requirement_ids": [
+        "IF-003",
+        "IF-004",
+        "IF-005",
+        "IF-006",
+        "TEST-003"
+      ],
+      "type": "3.3 V I2C bus biasing and TMP102 address configuration"
+    },
+    {
+      "id": "B9_TMP102_SENSOR",
+      "input_voltage": "3.3 V power and 3.3 V open-drain logic",
+      "output_voltage": "3.3 V open-drain I2C data",
+      "power_available_ma": null,
+      "power_required_ma": null,
+      "required_inputs": [
+        "Decoupled +3V3 at VCC",
+        "Ground at GND",
+        "I2C SDA and SCL bus",
+        "ADD0 low address strap"
+      ],
+      "required_outputs": [
+        "TMP102 temperature data at I2C address 0x48"
+      ],
+      "requirement_ids": [
+        "IF-003",
+        "IF-005",
+        "IF-006",
+        "IF-007",
+        "TEMP-001",
+        "TEMP-002",
+        "TEMP-003",
+        "TEST-003",
+        "TEST-006"
+      ],
+      "type": "Digitally addressed ambient-temperature sensing endpoint"
+    },
+    {
+      "id": "B10_PHYSICAL_IMPLEMENTATION",
+      "input_voltage": null,
+      "output_voltage": null,
+      "power_available_ma": null,
+      "power_required_ma": null,
+      "required_inputs": [
+        "Completed functional netlist",
+        "USB differential-pair geometry target",
+        "Power-current requirements",
+        "ESP32 antenna keepout",
+        "TMP102 thermal-isolation constraint"
+      ],
+      "required_outputs": [
+        "Board no larger than 110 x 65 mm on two copper layers",
+        "Components and courtyards within the outline with at least 0.5 mm clearance",
+        "USB-C mating face at a board edge",
+        "Copper-free ESP32 antenna keepout on both layers",
+        "TMP102 at least 15 mm from ESP32 and regulator with thermally isolated copper treatment",
+        "At least 0.2 mm signal trace width and clearance",
+        "At least 0.6 mm via pad with 0.3 mm drill",
+        "At least 0.4 mm VBUS and +3V3 routing",
+        "Solid bottom-layer ground return with stitching except defined keepouts",
+        "Readable silkscreen without pad overlap"
+      ],
+      "requirement_ids": [
+        "MECH-001",
+        "MECH-002",
+        "MECH-003",
+        "MECH-004",
+        "MECH-005",
+        "MECH-006",
+        "MFG-001",
+        "MFG-002",
+        "MFG-003",
+        "MFG-004",
+        "MFG-006",
+        "TEMP-003",
+        "TEST-002",
+        "TEST-007",
+        "TEST-008"
+      ],
+      "type": "Two-layer PCB placement, routing, RF, thermal, and manufacturing-rule implementation"
+    },
+    {
+      "id": "B11_RELEASE_VALIDATION",
+      "input_voltage": null,
+      "output_voltage": null,
+      "power_available_ma": null,
+      "power_required_ma": null,
+      "required_inputs": [
+        "Completed schematic and PCB",
+        "Final BOM and distributor availability",
+        "Firmware test image",
+        "Fabrication and assembly data"
+      ],
+      "required_outputs": [
+        "Zero unresolved ERC errors and warnings",
+        "Zero unresolved DRC errors and warnings",
+        "Reviewed Gerber X2, drill, IPC-356, BOM, and pick-and-place outputs",
+        "Verified I2C and power netlist",
+        "3.3 V load-test result through 600 mA",
+        "USB-C attachment and 5 V power result",
+        "TMP102 functional comparison result",
+        "Wi-Fi antenna performance result",
+        "Dimension and layer-count confirmation",
+        "Cost compliance evidence"
+      ],
+      "requirement_ids": [
+        "MFG-005",
+        "COST-001",
+        "COST-002",
+        "COST-003",
+        "TEST-001",
+        "TEST-002",
+        "TEST-003",
+        "TEST-004",
+        "TEST-005",
+        "TEST-006",
+        "TEST-007",
+        "TEST-008"
+      ],
+      "type": "ERC, DRC, netlist, bench, cost, and fabrication-output validation boundary"
+    }
+  ],
+  "connections": [
+    {
+      "from_block": "B1_USB_C_INTERFACE",
+      "signal": "Raw VBUS power domain, 4.75-5.25 V",
+      "to_block": "B2_VBUS_PROTECTION"
+    },
+    {
+      "from_block": "B1_USB_C_INTERFACE",
+      "signal": "USB 2.0 D+/D- differential channel, 90 Ohm geometry target",
+      "to_block": "B6_USB_PROGRAMMING_BRIDGE"
+    },
+    {
+      "from_block": "B1_USB_C_INTERFACE",
+      "signal": "Common GND reference",
+      "to_block": "B4_POWER_INTEGRITY"
+    },
+    {
+      "from_block": "B2_VBUS_PROTECTION",
+      "signal": "Protected VBUS power domain, 4.75-5.25 V",
+      "to_block": "B3_3V3_REGULATOR"
+    },
+    {
+      "from_block": "B2_VBUS_PROTECTION",
+      "signal": "Protected VBUS for bulk energy storage and distribution",
+      "to_block": "B4_POWER_INTEGRITY"
+    },
+    {
+      "from_block": "B3_3V3_REGULATOR",
+      "signal": "Regulated +3V3 rail, at least 600 mA available",
+      "to_block": "B4_POWER_INTEGRITY"
+    },
+    {
+      "from_block": "B4_POWER_INTEGRITY",
+      "signal": "Decoupled +3V3 and GND power domain",
+      "to_block": "B5_ESP32_CONTROLLER"
+    },
+    {
+      "from_block": "B4_POWER_INTEGRITY",
+      "signal": "Decoupled +3V3 and GND power domain",
+      "to_block": "B6_USB_PROGRAMMING_BRIDGE"
+    },
+    {
+      "from_block": "B4_POWER_INTEGRITY",
+      "signal": "Decoupled +3V3 and GND power domain",
+      "to_block": "B7_RESET_BOOT_CONTROL"
+    },
+    {
+      "from_block": "B4_POWER_INTEGRITY",
+      "signal": "Decoupled +3V3 and GND bias domain",
+      "to_block": "B8_I2C_BIAS_ADDRESS"
+    },
+    {
+      "from_block": "B4_POWER_INTEGRITY",
+      "signal": "Locally decoupled +3V3 and GND power domain",
+      "to_block": "B9_TMP102_SENSOR"
+    },
+    {
+      "from_block": "B6_USB_PROGRAMMING_BRIDGE",
+      "signal": "3.3 V UART programming channel",
+      "to_block": "B5_ESP32_CONTROLLER"
+    },
+    {
+      "from_block": "B6_USB_PROGRAMMING_BRIDGE",
+      "signal": "Automatic reset and boot-mode control channel",
+      "to_block": "B7_RESET_BOOT_CONTROL"
+    },
+    {
+      "from_block": "B7_RESET_BOOT_CONTROL",
+      "signal": "EN reset and IO0 boot-mode controls, 3.3 V logic",
+      "to_block": "B5_ESP32_CONTROLLER"
+    },
+    {
+      "from_block": "B5_ESP32_CONTROLLER",
+      "signal": "Bidirectional SDA and SCL open-drain bus, 3.3 V, up to 400 kHz",
+      "to_block": "B8_I2C_BIAS_ADDRESS"
+    },
+    {
+      "from_block": "B8_I2C_BIAS_ADDRESS",
+      "signal": "Biased 3.3 V I2C bus and ADD0-low address configuration",
+      "to_block": "B9_TMP102_SENSOR"
+    },
+    {
+      "from_block": "B1_USB_C_INTERFACE",
+      "signal": "USB-C edge-placement and differential-routing constraints",
+      "to_block": "B10_PHYSICAL_IMPLEMENTATION"
+    },
+    {
+      "from_block": "B5_ESP32_CONTROLLER",
+      "signal": "ESP32 antenna edge-placement and copper-keepout constraints",
+      "to_block": "B10_PHYSICAL_IMPLEMENTATION"
+    },
+    {
+      "from_block": "B9_TMP102_SENSOR",
+      "signal": "Ambient-sensing thermal-isolation constraint",
+      "to_block": "B10_PHYSICAL_IMPLEMENTATION"
+    },
+    {
+      "from_block": "B4_POWER_INTEGRITY",
+      "signal": "Power-width, ground-pour, stitching, and decoupling-placement constraints",
+      "to_block": "B10_PHYSICAL_IMPLEMENTATION"
+    },
+    {
+      "from_block": "B10_PHYSICAL_IMPLEMENTATION",
+      "signal": "Final PCB database, netlist, BOM, and fabrication data",
+      "to_block": "B11_RELEASE_VALIDATION"
+    }
+  ],
+  "unresolved_questions": [
+    "Confirm that a USB-to-UART bridge is the intended programming path. The specified ESP32-WROOM-32 does not provide native USB, so USB D+/D- are not compatible with direct connection to that module; the alternative is changing to a native-USB ESP32 variant.",
+    "Select and validate the exact regulator and VBUS protection devices, including efficiency and thermal margin at 4.75 V input, 600 mA output, and 85 degC ambient.",
+    "Confirm whether the assumed BOM and bare-board cost limits are binding before component and distributor selection.",
+    "Define the layout-approved TMP102 thermal-isolation geometry that interrupts heat-spreading copper while preserving a short, controlled electrical ground return.",
+    "Choose the exact 16-pin or 24-pin USB-C receptacle footprint and confirm distributor stock and board-edge mechanical fit."
+  ]
+}
