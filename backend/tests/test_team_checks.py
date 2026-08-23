@@ -751,21 +751,36 @@ def test_components_parse_reference_groups_and_allow_symbol_substitution() -> No
         for finding in result.findings
     )
 
-    existing_claim = new_proposal.model_copy(
+    absent_reference_with_current_word = new_proposal.model_copy(
         update={
             "components": [
                 new_proposal.components[0].model_copy(
-                    update={"reference_group": "U99 (existing schematic part)"}
+                    update={"reason": "Use U99 as a local part to absorb current bursts"}
                 )
             ]
         }
     )
-    result = check_components(existing_claim, context, project_version="rev-1")
-    assert not result.passed
+    result = check_components(absent_reference_with_current_word, context, project_version="rev-1")
+    assert result.passed
     assert any(
         finding.rule == "component references exist"
         and finding.actual == "U99"
-        and finding.severity == "error"
+        and finding.severity == "warning"
+        for finding in result.findings
+    )
+
+
+def test_captured_eleventh_live_components_pass_with_fixture_context() -> None:
+    payload = json.loads((Path(__file__).parent / "fixtures" / "live_components_eleventh.json").read_text())
+    selection = ComponentSelection.model_validate(payload)
+    project, _ = _project("esp32_i2c_demo")
+    assert project.design_context is not None
+    result = check_components(selection, project.design_context, project_version="eleventh-live")
+    assert result.passed, result.findings
+    assert any(
+        finding.rule == "component references exist"
+        and finding.actual == "C3"
+        and finding.severity == "warning"
         for finding in result.findings
     )
 

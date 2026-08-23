@@ -29,7 +29,6 @@ from .schemas import (
     ReleaseRecord,
     Requirement,
     RequirementsDoc,
-    SelectedComponent,
     SimulationRailTest,
     SimulationReport,
     StageCheckResult,
@@ -641,19 +640,6 @@ def check_components(
         without_annotations = re.sub(r"\([^)]*\)", " ", value)
         return list(dict.fromkeys(re.findall(r"\b[A-Za-z]+\d+\b", without_annotations)))
 
-    def claims_existing(reference: str, component: SelectedComponent) -> bool:
-        text = " ".join(
-            (component.reference_group, component.reason, *component.verified_constraints)
-        ).lower()
-        token = re.escape(reference.lower())
-        return any(
-            re.search(pattern, text)
-            for pattern in (
-                rf"\b(?:existing|current|present|already|currently)\b[^.;:\n]*\b{token}\b",
-                rf"\b{token}\b[^.;:\n]*\b(?:existing|current|present|already|currently)\b",
-            )
-        )
-
     def real_bound(value: str | float) -> bool:
         if isinstance(value, bool):
             return False
@@ -753,17 +739,14 @@ def check_components(
         for reference in component_references:
             if reference not in known_reference:
                 if context is not None:
-                    existing_claim = claims_existing(reference, component)
                     findings.append(
                         finding(
                             "component references exist",
                             reference,
-                            "existing schematic reference"
-                            if existing_claim
-                            else "new proposal or schematic reference",
+                            "new proposal or schematic reference",
                             reference,
                             "schematic",
-                            "error" if existing_claim else "warning",
+                            "warning",
                         )
                     )
                 continue

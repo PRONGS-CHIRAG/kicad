@@ -1,0 +1,1024 @@
+{
+  "components": [
+    {
+      "footprint": "Connector_USB:USB_C_Receptacle_GCT_USB4105-GF-A_16P_TopMnt_Horizontal",
+      "manufacturer_part": "GCT USB4105-GF-A",
+      "quantity": 1,
+      "reason": "Replaces the Micro-B J1 with a 16-pin USB 2.0-only USB-C receptacle (VBUS x2, GND x2, D+/D- pairs, CC1, CC2, SBU1/2, shield). 16P is the smallest variant that still exposes CC1 and CC2 separately, which is mandatory for the 5.1 kOhm Rd sink advertisement (IF-001); USB 2.0-only variant avoids unused SS pairs and keeps routing simple on two layers. Through-hole shield tabs give mechanical retention for a repeatedly mated programming port. Horizontal top-mount lets the receptacle sit on the board edge opposite the ESP32 antenna keep-out.",
+      "reference_group": "J1",
+      "specifications": [
+        {
+          "maximum": 20.0,
+          "minimum": "",
+          "page_or_section": "Electrical Performance",
+          "parameter": "Rated voltage",
+          "source": "GCT USB4105 series datasheet",
+          "typical": "",
+          "unit": "V"
+        },
+        {
+          "maximum": 3.0,
+          "minimum": "",
+          "page_or_section": "Electrical Performance",
+          "parameter": "Rated current per power contact",
+          "source": "GCT USB4105 series datasheet",
+          "typical": "",
+          "unit": "A"
+        },
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Mechanical / drawing",
+          "parameter": "Contact pitch",
+          "source": "GCT USB4105 series datasheet",
+          "typical": 0.5,
+          "unit": "mm"
+        },
+        {
+          "maximum": "",
+          "minimum": 10000.0,
+          "page_or_section": "Mechanical Performance",
+          "parameter": "Mating durability",
+          "source": "GCT USB4105 series datasheet",
+          "typical": "",
+          "unit": "cycles"
+        }
+      ],
+      "symbol": "Connector:USB_C_Receptacle_USB2.0_16P",
+      "verified_constraints": [
+        "IF-001: separate CC1/CC2 pins available for independent 5.1 kOhm Rd terminations (UFP sink)",
+        "PWR-001: VBUS rated well above USB 2.0 default 5 V / 500 mA sink load",
+        "PWR-003: connector current rating (3 A per power contact) exceeds the 500 mA budget",
+        "MFG-001: SMD signal pins on 0.5 mm pitch plus plated through-hole shield legs; no blind/buried vias required",
+        "USB 2.0-only pinout keeps D+/D- pair short and matched to the bridge"
+      ]
+    },
+    {
+      "footprint": "Fuse:Fuse_1206_3216Metric",
+      "manufacturer_part": "Bourns MF-MSMF075-2",
+      "quantity": 1,
+      "reason": "Resettable PPTC in series with VBUS for the input_power_protection block. 750 mA hold current is chosen above the 500 mA design load (PWR-003) so the fuse does not trip during ESP32 Wi-Fi TX peaks, while still limiting fault current from the host below typical USB port protection limits. Self-resetting avoids field-servicing a fuse on a USB-powered board.",
+      "reference_group": "F1",
+      "specifications": [
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Specifications table",
+          "parameter": "Hold current at 23 C",
+          "source": "Bourns MF-MSMF series datasheet",
+          "typical": 0.75,
+          "unit": "A"
+        },
+        {
+          "maximum": "",
+          "minimum": 1.5,
+          "page_or_section": "Specifications table",
+          "parameter": "Trip current at 23 C",
+          "source": "Bourns MF-MSMF series datasheet",
+          "typical": "",
+          "unit": "A"
+        },
+        {
+          "maximum": 6.0,
+          "minimum": "",
+          "page_or_section": "Specifications table",
+          "parameter": "Maximum voltage",
+          "source": "Bourns MF-MSMF series datasheet",
+          "typical": "",
+          "unit": "V"
+        },
+        {
+          "maximum": 0.19,
+          "minimum": "",
+          "page_or_section": "Specifications table",
+          "parameter": "Initial resistance",
+          "source": "Bourns MF-MSMF series datasheet",
+          "typical": 0.1,
+          "unit": "ohm"
+        }
+      ],
+      "symbol": "Device:Polyfuse",
+      "verified_constraints": [
+        "PWR-003: hold current 0.75 A > 0.5 A continuous requirement, so no nuisance trip at full load",
+        "PWR-001: rated voltage 6 V covers the 5 V VBUS rail",
+        "MFG-001: standard 1206 SMD chip, two-layer compatible"
+      ]
+    },
+    {
+      "footprint": "Diode_SMD:D_SOD-123F",
+      "manufacturer_part": "Littelfuse SMF5.0A",
+      "quantity": 1,
+      "reason": "Unidirectional TVS across VBUS (after F1) to clamp inductive/hot-plug transients on the 5 V input, completing the input_power_protection block. 5.0 V standoff sits above nominal VBUS with reverse leakage low enough not to load a USB port, and the clamp level stays below the 6 V absolute maximum of the AMS1117 pass element margin and the CP2102N VREGIN rating.",
+      "reference_group": "D2",
+      "specifications": [
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Electrical characteristics table",
+          "parameter": "Reverse standoff voltage",
+          "source": "Littelfuse SMF series TVS diode datasheet",
+          "typical": 5.0,
+          "unit": "V"
+        },
+        {
+          "maximum": 7.07,
+          "minimum": 6.4,
+          "page_or_section": "Electrical characteristics table",
+          "parameter": "Breakdown voltage at 10 mA",
+          "source": "Littelfuse SMF series TVS diode datasheet",
+          "typical": "",
+          "unit": "V"
+        },
+        {
+          "maximum": 9.2,
+          "minimum": "",
+          "page_or_section": "Electrical characteristics table",
+          "parameter": "Clamping voltage at Ipp",
+          "source": "Littelfuse SMF series TVS diode datasheet",
+          "typical": "",
+          "unit": "V"
+        },
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Maximum ratings",
+          "parameter": "Peak pulse power (8/20 us)",
+          "source": "Littelfuse SMF series TVS diode datasheet",
+          "typical": 200.0,
+          "unit": "W"
+        }
+      ],
+      "symbol": "Device:D_TVS",
+      "verified_constraints": [
+        "PWR-001: 5.0 V standoff voltage does not conduct at nominal 5 V VBUS",
+        "Clamping voltage 9.2 V max protects downstream 5 V-rated inputs against surge",
+        "MFG-001: SOD-123F SMD, two-layer compatible"
+      ]
+    },
+    {
+      "footprint": "Package_TO_SOT_SMD:SOT-23-6",
+      "manufacturer_part": "STMicroelectronics USBLC6-2SC6",
+      "quantity": 1,
+      "reason": "Dedicated dual-line ESD array on the USB-C D+/D- pair between J1 and the CP2102N. Very low line capacitance keeps USB 2.0 full-speed eye compliance intact while giving IEC 61000-4-2 level protection at the connector, the mandatory practice for an exposed user-accessible port. Placed at the connector so surge current returns to the shield/GND without crossing the bridge.",
+      "reference_group": "D1",
+      "specifications": [
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Electrical characteristics",
+          "parameter": "Line capacitance",
+          "source": "STMicroelectronics USBLC6-2 datasheet",
+          "typical": 1.5,
+          "unit": "pF"
+        },
+        {
+          "maximum": 15.0,
+          "minimum": "",
+          "page_or_section": "Absolute maximum ratings",
+          "parameter": "ESD immunity (IEC 61000-4-2 air discharge)",
+          "source": "STMicroelectronics USBLC6-2 datasheet",
+          "typical": "",
+          "unit": "kV"
+        },
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Electrical characteristics",
+          "parameter": "Working voltage",
+          "source": "STMicroelectronics USBLC6-2 datasheet",
+          "typical": 5.0,
+          "unit": "V"
+        },
+        {
+          "maximum": "",
+          "minimum": 6.0,
+          "page_or_section": "Electrical characteristics",
+          "parameter": "Breakdown voltage at 1 mA",
+          "source": "STMicroelectronics USBLC6-2 datasheet",
+          "typical": "",
+          "unit": "V"
+        }
+      ],
+      "symbol": "Power_Protection:USBLC6-2SC6",
+      "verified_constraints": [
+        "IF-002: rated for USB 2.0 data-line protection with low capacitance, does not degrade full-speed signalling",
+        "Protects two data lines with one part, keeping the differential pair symmetric and short",
+        "MFG-001: SOT-23-6 SMD, two-layer compatible"
+      ]
+    },
+    {
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "manufacturer_part": "Yageo RC0603FR-075K1L",
+      "quantity": 2,
+      "reason": "Two independent 5.1 kOhm Rd pull-downs, one on CC1 and one on CC2, advertising a UFP sink so any USB-C source (including C-to-C cables) enables 5 V default power. 1% tolerance keeps Rd inside the USB Type-C spec window; separate resistors (never a single shared one) are required so the sink is detected in either cable orientation.",
+      "reference_group": "R1,R2",
+      "specifications": [
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Ordering / specification table",
+          "parameter": "Resistance",
+          "source": "Yageo RC-L series chip resistor datasheet",
+          "typical": 5.1,
+          "unit": "kohm"
+        },
+        {
+          "maximum": 1.0,
+          "minimum": -1.0,
+          "page_or_section": "Ordering / specification table",
+          "parameter": "Tolerance",
+          "source": "Yageo RC-L series chip resistor datasheet",
+          "typical": "",
+          "unit": "%"
+        },
+        {
+          "maximum": 0.1,
+          "minimum": "",
+          "page_or_section": "Specification table (0603)",
+          "parameter": "Power rating at 70 C",
+          "source": "Yageo RC-L series chip resistor datasheet",
+          "typical": "",
+          "unit": "W"
+        }
+      ],
+      "symbol": "Device:R",
+      "verified_constraints": [
+        "IF-001: 5.1 kOhm +/-1% on each of CC1 and CC2 implements the Rd sink termination",
+        "TEST-004: enables 5 V VBUS from a standard USB-C source in both plug orientations",
+        "0603 size and 100 mW rating are far above the microwatt CC dissipation",
+        "MFG-001: standard 0603 chip resistor"
+      ]
+    },
+    {
+      "footprint": "Package_TO_SOT_SMD:SOT-223-3_TabPin2",
+      "manufacturer_part": "AMS1117-3.3 (SOT-223)",
+      "quantity": 1,
+      "reason": "Fixed 3.3 V linear regulator for the regulator_3v3 block. Rated 1 A output gives 2x margin over the 500 mA requirement, and dropout at 500 mA is far below the 1.7 V available from 5 V VBUS. The decisive factor is thermal: dissipation is (5 V - 3.3 V) x 0.5 A = 0.85 W, which a SOT-223 tab soldered to a copper pour handles with roughly a 50 C rise, whereas SOT-23-5 LDOs (e.g. AP2112K) would exceed their junction limit at this current. Linear rather than switching also avoids switching noise near the ESP32 antenna and needs no inductor on a two-layer board.",
+      "reference_group": "U3",
+      "specifications": [
+        {
+          "maximum": 3.365,
+          "minimum": 3.235,
+          "page_or_section": "Electrical characteristics, AMS1117-3.3",
+          "parameter": "Output voltage",
+          "source": "AMS1117 datasheet (Advanced Monolithic Systems)",
+          "typical": 3.3,
+          "unit": "V"
+        },
+        {
+          "maximum": 1.0,
+          "minimum": "",
+          "page_or_section": "Absolute maximum ratings / features",
+          "parameter": "Output current",
+          "source": "AMS1117 datasheet (Advanced Monolithic Systems)",
+          "typical": "",
+          "unit": "A"
+        },
+        {
+          "maximum": 1.3,
+          "minimum": "",
+          "page_or_section": "Electrical characteristics",
+          "parameter": "Dropout voltage at 1 A",
+          "source": "AMS1117 datasheet (Advanced Monolithic Systems)",
+          "typical": 1.1,
+          "unit": "V"
+        },
+        {
+          "maximum": 15.0,
+          "minimum": "",
+          "page_or_section": "Absolute maximum ratings",
+          "parameter": "Input voltage",
+          "source": "AMS1117 datasheet (Advanced Monolithic Systems)",
+          "typical": 5.0,
+          "unit": "V"
+        },
+        {
+          "maximum": 10.0,
+          "minimum": "",
+          "page_or_section": "Electrical characteristics",
+          "parameter": "Quiescent current",
+          "source": "AMS1117 datasheet (Advanced Monolithic Systems)",
+          "typical": 5.0,
+          "unit": "mA"
+        },
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Thermal characteristics",
+          "parameter": "Junction-to-ambient thermal resistance (SOT-223 on PCB)",
+          "source": "AMS1117 datasheet (Advanced Monolithic Systems)",
+          "typical": 60.0,
+          "unit": "C/W"
+        }
+      ],
+      "symbol": "Regulator_Linear:AMS1117-3.3",
+      "verified_constraints": [
+        "PWR-002: fixed 3.3 V output from 5 V VBUS input",
+        "PWR-003: 1 A rated output current covers 500 mA continuous plus ESP32 Wi-Fi TX peaks",
+        "PWR-003 thermal: 0.85 W at 500 mA within SOT-223 capability on a copper pour (requires >= 100 mm2 tab pour)",
+        "Dropout at 500 mA is below the 1.7 V headroom from 5 V, so regulation holds at minimum USB VBUS (4.75 V)",
+        "MFG-001: SOT-223 SMD package, two-layer compatible"
+      ]
+    },
+    {
+      "footprint": "Package_DFN_QFN:QFN-28-1EP_5x5mm_P0.5mm_EP3.35x3.35mm",
+      "manufacturer_part": "Silicon Labs CP2102N-A01-GQFN28",
+      "quantity": 1,
+      "reason": "USB 2.0 full-speed to UART bridge resolving the ESP32-WROOM-32 lack of a native USB peripheral (IF-002). Chosen over CH340 because it needs no external crystal, integrates USB pull-ups and a 3.3 V regulator, has in-box drivers on all major OSes, and the 28-pin variant exposes the full modem-control set so DTR and RTS are available for the auto-program circuit. VIO is tied to the 3.3 V rail so UART, DTR and RTS levels match the ESP32 directly with no level shifter.",
+      "reference_group": "U4",
+      "specifications": [
+        {
+          "maximum": 5.25,
+          "minimum": 4.0,
+          "page_or_section": "Electrical specifications, recommended operating conditions",
+          "parameter": "VREGIN supply voltage (USB bus powered)",
+          "source": "Silicon Labs CP2102N datasheet",
+          "typical": 5.0,
+          "unit": "V"
+        },
+        {
+          "maximum": 3.6,
+          "minimum": 1.8,
+          "page_or_section": "Electrical specifications, recommended operating conditions",
+          "parameter": "VIO supply voltage",
+          "source": "Silicon Labs CP2102N datasheet",
+          "typical": 3.3,
+          "unit": "V"
+        },
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Features / USB function controller",
+          "parameter": "USB data rate",
+          "source": "Silicon Labs CP2102N datasheet",
+          "typical": 12.0,
+          "unit": "Mbit/s"
+        },
+        {
+          "maximum": 3.0,
+          "minimum": "",
+          "page_or_section": "Features / UART interface",
+          "parameter": "Maximum UART baud rate",
+          "source": "Silicon Labs CP2102N datasheet",
+          "typical": "",
+          "unit": "Mbit/s"
+        },
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Electrical characteristics",
+          "parameter": "Supply current, normal operation",
+          "source": "Silicon Labs CP2102N datasheet",
+          "typical": 9.5,
+          "unit": "mA"
+        },
+        {
+          "maximum": 85.0,
+          "minimum": -40.0,
+          "page_or_section": "Absolute maximum ratings",
+          "parameter": "Operating temperature",
+          "source": "Silicon Labs CP2102N datasheet",
+          "typical": "",
+          "unit": "C"
+        }
+      ],
+      "symbol": "Interface_USB:CP2102N-A01-GQFN28",
+      "verified_constraints": [
+        "IF-002: USB 2.0 full-speed device with UART plus DTR/RTS modem control for auto-program",
+        "IF-002: VIO pin allows 3.3 V I/O referenced to the regulated rail, matching ESP32 logic levels",
+        "PWR-003: bus-powered operation draws well under the 500 mA budget",
+        "Internal oscillator removes the crystal, saving area toward MECH-001",
+        "MFG-001: QFN-28 5x5 mm 0.5 mm pitch with thermal pad, standard two-layer assembly"
+      ]
+    },
+    {
+      "footprint": "RF_Module:ESP32-WROOM-32",
+      "manufacturer_part": "Espressif ESP32-WROOM-32E-N4",
+      "quantity": 1,
+      "reason": "Keeps the specified ESP32-WROOM-32 module family but moves to the current production -32E variant with 4 MB flash. Critically, this symbol exposes the real module pinout including TXD0/RXD0, GPIO0, EN and the full GPIO set, which the placeholder MCU:ESP32-WROOM-32 symbol in the baseline schematic does not; this unblocks the UART programming path (IF-002) and boot strapping (IF-004) that the architecture flagged as an open question. Certified module with integrated PCB antenna avoids RF qualification on a two-layer board.",
+      "reference_group": "U1",
+      "specifications": [
+        {
+          "maximum": 3.6,
+          "minimum": 3.0,
+          "page_or_section": "Recommended operating conditions",
+          "parameter": "Supply voltage",
+          "source": "ESP32-WROOM-32E/32UE datasheet",
+          "typical": 3.3,
+          "unit": "V"
+        },
+        {
+          "maximum": "",
+          "minimum": 0.5,
+          "page_or_section": "Recommended operating conditions",
+          "parameter": "Recommended supply current capability",
+          "source": "ESP32-WROOM-32E/32UE datasheet",
+          "typical": "",
+          "unit": "A"
+        },
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Current consumption / RF power consumption",
+          "parameter": "Peak current, Wi-Fi transmit",
+          "source": "ESP32-WROOM-32E/32UE datasheet",
+          "typical": 240.0,
+          "unit": "mA"
+        },
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Physical dimensions",
+          "parameter": "Module dimensions",
+          "source": "ESP32-WROOM-32E/32UE datasheet",
+          "typical": "18.0 x 25.5 x 3.1",
+          "unit": "mm"
+        },
+        {
+          "maximum": 85.0,
+          "minimum": -40.0,
+          "page_or_section": "Recommended operating conditions",
+          "parameter": "Operating temperature",
+          "source": "ESP32-WROOM-32E/32UE datasheet",
+          "typical": "",
+          "unit": "C"
+        },
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Ordering information (N4)",
+          "parameter": "Integrated SPI flash",
+          "source": "ESP32-WROOM-32E/32UE datasheet",
+          "typical": 4.0,
+          "unit": "MB"
+        }
+      ],
+      "symbol": "RF_Module:ESP32-WROOM-32E",
+      "verified_constraints": [
+        "IF-002/IF-004: symbol exposes TXD0, RXD0, GPIO0 and EN, so the bridge and reset/boot circuits can be fully connected",
+        "IF-003: GPIO21 and GPIO22 available as the default I2C SDA/SCL pair",
+        "PWR-002: 3.3 V single-supply module fed directly from U3",
+        "PWR-003: peak Wi-Fi TX current within the 500 mA rail budget with the specified bulk capacitance",
+        "MECH-003: 18 x 25.5 mm module with integrated antenna at one end, placed at the board edge with an all-layer keep-out",
+        "MECH-001: module footprint fits inside the 60 x 45 mm outline"
+      ]
+    },
+    {
+      "footprint": "Package_TO_SOT_SMD:SOT-563",
+      "manufacturer_part": "Texas Instruments TMP102AIDRLR",
+      "quantity": 1,
+      "reason": "The specified digital I2C temperature sensor, in its only production package (SOT-563, 6-lead). Directly satisfies TEMP-001 accuracy and range, runs from the same 3.3 V rail with no analog conditioning, and with ADD0 tied to GND responds at address 0x48 as required by IF-003. Small package supports placing the sensor away from the regulator and module for a representative ambient reading.",
+      "reference_group": "U2",
+      "specifications": [
+        {
+          "maximum": 3.6,
+          "minimum": 1.4,
+          "page_or_section": "Recommended operating conditions",
+          "parameter": "Supply voltage",
+          "source": "TI TMP102 datasheet",
+          "typical": 3.3,
+          "unit": "V"
+        },
+        {
+          "maximum": 2.0,
+          "minimum": -0.5,
+          "page_or_section": "Electrical characteristics",
+          "parameter": "Temperature accuracy (-25 C to +85 C)",
+          "source": "TI TMP102 datasheet",
+          "typical": 0.5,
+          "unit": "C"
+        },
+        {
+          "maximum": 125.0,
+          "minimum": -40.0,
+          "page_or_section": "Electrical characteristics",
+          "parameter": "Measurement range",
+          "source": "TI TMP102 datasheet",
+          "typical": "",
+          "unit": "C"
+        },
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Electrical characteristics",
+          "parameter": "Resolution",
+          "source": "TI TMP102 datasheet",
+          "typical": 0.0625,
+          "unit": "C"
+        },
+        {
+          "maximum": 26.0,
+          "minimum": "",
+          "page_or_section": "Electrical characteristics",
+          "parameter": "Quiescent current, serial bus inactive",
+          "source": "TI TMP102 datasheet",
+          "typical": 10.0,
+          "unit": "uA"
+        },
+        {
+          "maximum": 3.4,
+          "minimum": 0.001,
+          "page_or_section": "Electrical characteristics / I2C timing",
+          "parameter": "SCL frequency",
+          "source": "TI TMP102 datasheet",
+          "typical": 0.1,
+          "unit": "MHz"
+        },
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Serial bus address table",
+          "parameter": "I2C slave address with ADD0 tied to GND",
+          "source": "TI TMP102 datasheet",
+          "typical": "0x48",
+          "unit": "hex"
+        }
+      ],
+      "symbol": "Sensor_Temperature:TMP102",
+      "verified_constraints": [
+        "TEMP-001: +/-0.5 C typical accuracy over -25 C to +85 C, range extends to -40 C..+125 C",
+        "IF-003: I2C interface up to 3.4 MHz, so 100 kHz standard mode is well supported; ADD0 low selects 0x48",
+        "PWR-004: 1.4-3.6 V supply range includes the 3.3 V rail; VCC and GND must be explicitly netted",
+        "MFG-001: SOT-563 SMD, 0.5 mm pitch, two-layer compatible"
+      ]
+    },
+    {
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "manufacturer_part": "Yageo RC0603FR-074K7L",
+      "quantity": 2,
+      "reason": "I2C bus pull-ups on SDA (GPIO21) and SCL (GPIO22) to the 3.3 V rail. 4.7 kOhm sits mid-range of the 2.2-10 kOhm requirement: it gives a rise time well inside the 1 us standard-mode limit for the few tens of pF of a single short on-board slave, while sinking only about 0.7 mA per line, far below the TMP102 and ESP32 low-level sink capability.",
+      "reference_group": "R3,R4",
+      "specifications": [
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Ordering / specification table",
+          "parameter": "Resistance",
+          "source": "Yageo RC-L series chip resistor datasheet",
+          "typical": 4.7,
+          "unit": "kohm"
+        },
+        {
+          "maximum": 1.0,
+          "minimum": -1.0,
+          "page_or_section": "Ordering / specification table",
+          "parameter": "Tolerance",
+          "source": "Yageo RC-L series chip resistor datasheet",
+          "typical": "",
+          "unit": "%"
+        },
+        {
+          "maximum": 0.1,
+          "minimum": "",
+          "page_or_section": "Specification table (0603)",
+          "parameter": "Power rating at 70 C",
+          "source": "Yageo RC-L series chip resistor datasheet",
+          "typical": "",
+          "unit": "W"
+        }
+      ],
+      "symbol": "Device:R",
+      "verified_constraints": [
+        "IF-003: 4.7 kOhm is inside the required 2.2-10 kOhm range for both SDA and SCL",
+        "IF-003: RC rise time with a single slave on a short two-layer bus meets 100 kHz standard-mode timing",
+        "Sink current per line under 1 mA, within TMP102 VOL specification",
+        "MFG-001: standard 0603 chip resistor"
+      ]
+    },
+    {
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "manufacturer_part": "Yageo RC0603FR-0710KL",
+      "quantity": 4,
+      "reason": "Four 10 kOhm resistors for the reset_boot_control block: EN pull-up to 3.3 V (with C9 forming the power-on RC delay), GPIO0 pull-up to 3.3 V to default to normal boot, and two base series resistors for the DTR/RTS auto-program transistors Q1/Q2. 10 kOhm is the value called out by the Espressif hardware design guidelines for EN and the strapping pins.",
+      "reference_group": "R5,R6,R7,R8",
+      "specifications": [
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Ordering / specification table",
+          "parameter": "Resistance",
+          "source": "Yageo RC-L series chip resistor datasheet",
+          "typical": 10.0,
+          "unit": "kohm"
+        },
+        {
+          "maximum": 1.0,
+          "minimum": -1.0,
+          "page_or_section": "Ordering / specification table",
+          "parameter": "Tolerance",
+          "source": "Yageo RC-L series chip resistor datasheet",
+          "typical": "",
+          "unit": "%"
+        },
+        {
+          "maximum": 0.1,
+          "minimum": "",
+          "page_or_section": "Specification table (0603)",
+          "parameter": "Power rating at 70 C",
+          "source": "Yageo RC-L series chip resistor datasheet",
+          "typical": "",
+          "unit": "W"
+        }
+      ],
+      "symbol": "Device:R",
+      "verified_constraints": [
+        "IF-004: 10 kOhm EN pull-up as specified, and 10 kOhm GPIO0 pull-up so the module boots from flash by default",
+        "IF-002: base resistors limit transistor base current from the CP2102N DTR/RTS outputs while still saturating Q1/Q2",
+        "MFG-001: standard 0603 chip resistor"
+      ]
+    },
+    {
+      "footprint": "Package_TO_SOT_SMD:SOT-23",
+      "manufacturer_part": "onsemi MMBT3904",
+      "quantity": 2,
+      "reason": "Two small-signal NPN transistors implementing the standard Espressif/esptool auto-program cross-coupled circuit: DTR and RTS from the CP2102N drive EN and GPIO0 low in the correct sequence so esptool can enter download mode without pressing buttons, and neither line is pulled low when only one of DTR/RTS is asserted. NPN open-collector drive keeps EN and GPIO0 high-impedance in normal operation so the pull-ups dominate.",
+      "reference_group": "Q1,Q2",
+      "specifications": [
+        {
+          "maximum": "",
+          "minimum": 40.0,
+          "page_or_section": "Maximum ratings",
+          "parameter": "Collector-emitter breakdown voltage",
+          "source": "onsemi MMBT3904 datasheet",
+          "typical": "",
+          "unit": "V"
+        },
+        {
+          "maximum": 200.0,
+          "minimum": "",
+          "page_or_section": "Maximum ratings",
+          "parameter": "Continuous collector current",
+          "source": "onsemi MMBT3904 datasheet",
+          "typical": "",
+          "unit": "mA"
+        },
+        {
+          "maximum": 300.0,
+          "minimum": 100.0,
+          "page_or_section": "Electrical characteristics (hFE)",
+          "parameter": "DC current gain at Ic = 10 mA",
+          "source": "onsemi MMBT3904 datasheet",
+          "typical": "",
+          "unit": "unitless"
+        },
+        {
+          "maximum": 0.2,
+          "minimum": "",
+          "page_or_section": "Electrical characteristics",
+          "parameter": "Collector-emitter saturation voltage at Ic = 10 mA",
+          "source": "onsemi MMBT3904 datasheet",
+          "typical": "",
+          "unit": "V"
+        }
+      ],
+      "symbol": "Transistor_BJT:MMBT3904",
+      "verified_constraints": [
+        "IF-002: provides the DTR/RTS to EN/GPIO0 auto-program function required by TEST-005",
+        "IF-004: collectors only pull down, leaving the 10 kOhm pull-ups and EN RC intact during normal boot",
+        "Vceo 40 V and Ic 200 mA hugely exceed the 3.3 V logic-level switching duty",
+        "MFG-001: SOT-23 SMD, two-layer compatible"
+      ]
+    },
+    {
+      "footprint": "Capacitor_SMD:C_0805_2012Metric",
+      "manufacturer_part": "Murata GRM21BR61E106KA73L",
+      "quantity": 3,
+      "reason": "10 uF X5R bulk capacitors: C1 on protected VBUS at the regulator input, C2 on the 3.3 V regulator output, and C3 as local bulk at the ESP32 3V3 pin to absorb Wi-Fi TX current bursts. 25 V rating on a 5 V/3.3 V application leaves large DC-bias derating margin, so effective capacitance stays near nominal, which matters because the AMS1117 requires real output capacitance for stability.",
+      "reference_group": "C1,C2,C3",
+      "specifications": [
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Part specification",
+          "parameter": "Capacitance",
+          "source": "Murata GRM21BR61E106KA73L datasheet",
+          "typical": 10.0,
+          "unit": "uF"
+        },
+        {
+          "maximum": 10.0,
+          "minimum": -10.0,
+          "page_or_section": "Part specification",
+          "parameter": "Capacitance tolerance",
+          "source": "Murata GRM21BR61E106KA73L datasheet",
+          "typical": "",
+          "unit": "%"
+        },
+        {
+          "maximum": 25.0,
+          "minimum": "",
+          "page_or_section": "Part specification",
+          "parameter": "Rated voltage",
+          "source": "Murata GRM21BR61E106KA73L datasheet",
+          "typical": "",
+          "unit": "V"
+        },
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Part specification",
+          "parameter": "Dielectric / temperature characteristic",
+          "source": "Murata GRM21BR61E106KA73L datasheet",
+          "typical": "X5R, -55 to +85 C, +/-15%",
+          "unit": "text"
+        }
+      ],
+      "symbol": "Device:C",
+      "verified_constraints": [
+        "PWR-002: satisfies the AMS1117 input/output decoupling requirement",
+        "PWR-003: bulk energy storage at the module supports Wi-Fi TX current peaks without rail collapse",
+        "25 V rating on 5 V and 3.3 V rails keeps DC-bias capacitance loss small",
+        "MFG-001: standard 0805 MLCC, two-layer compatible"
+      ]
+    },
+    {
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "manufacturer_part": "Murata GRM188R71H104KA93D",
+      "quantity": 5,
+      "reason": "100 nF X7R high-frequency decoupling, one per supply pin: regulator input, ESP32 3V3, TMP102 VCC, CP2102N VREGIN and CP2102N VIO/VDD. X7R keeps capacitance stable over temperature, and 50 V rating means negligible DC-bias loss. These are the parts that make the TMP102 and bridge supplies quiet enough for reliable I2C and USB operation.",
+      "reference_group": "C4,C5,C6,C7,C8",
+      "specifications": [
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Part specification",
+          "parameter": "Capacitance",
+          "source": "Murata GRM188R71H104KA93D datasheet",
+          "typical": 100.0,
+          "unit": "nF"
+        },
+        {
+          "maximum": 10.0,
+          "minimum": -10.0,
+          "page_or_section": "Part specification",
+          "parameter": "Capacitance tolerance",
+          "source": "Murata GRM188R71H104KA93D datasheet",
+          "typical": "",
+          "unit": "%"
+        },
+        {
+          "maximum": 50.0,
+          "minimum": "",
+          "page_or_section": "Part specification",
+          "parameter": "Rated voltage",
+          "source": "Murata GRM188R71H104KA93D datasheet",
+          "typical": "",
+          "unit": "V"
+        },
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Part specification",
+          "parameter": "Dielectric / temperature characteristic",
+          "source": "Murata GRM188R71H104KA93D datasheet",
+          "typical": "X7R, -55 to +125 C, +/-15%",
+          "unit": "text"
+        }
+      ],
+      "symbol": "Device:C",
+      "verified_constraints": [
+        "PWR-002/PWR-004: local decoupling on every power_in pin in the netlist (U1, U2, U3, U4)",
+        "TEST-001: pairing each power pin with a decoupling cap supports a clean ERC/netlist audit of supply connectivity",
+        "MFG-001: standard 0603 MLCC, two-layer compatible"
+      ]
+    },
+    {
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "manufacturer_part": "Samsung CL10B105KO8NNNC",
+      "quantity": 1,
+      "reason": "1 uF X7R from EN to GND, forming the power-on reset RC delay with the 10 kOhm EN pull-up (R5). 1 uF is the value used in the Espressif reference design and gives roughly a 10 ms time constant, comfortably above the >=100 nF floor in IF-004, so EN releases only after the 3.3 V rail is stable; it also debounces the EN pushbutton and the DTR-driven reset.",
+      "reference_group": "C9",
+      "specifications": [
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Part specification",
+          "parameter": "Capacitance",
+          "source": "Samsung CL10B105KO8NNNC datasheet",
+          "typical": 1.0,
+          "unit": "uF"
+        },
+        {
+          "maximum": 10.0,
+          "minimum": -10.0,
+          "page_or_section": "Part specification",
+          "parameter": "Capacitance tolerance",
+          "source": "Samsung CL10B105KO8NNNC datasheet",
+          "typical": "",
+          "unit": "%"
+        },
+        {
+          "maximum": 16.0,
+          "minimum": "",
+          "page_or_section": "Part specification",
+          "parameter": "Rated voltage",
+          "source": "Samsung CL10B105KO8NNNC datasheet",
+          "typical": "",
+          "unit": "V"
+        },
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Part specification",
+          "parameter": "Dielectric / temperature characteristic",
+          "source": "Samsung CL10B105KO8NNNC datasheet",
+          "typical": "X7R, -55 to +125 C, +/-15%",
+          "unit": "text"
+        }
+      ],
+      "symbol": "Device:C",
+      "verified_constraints": [
+        "IF-004: >= 100 nF on EN with a 10 kOhm pull-up, per the requirement and Espressif guidelines",
+        "16 V X7R rating on a 3.3 V node keeps effective capacitance close to nominal",
+        "MFG-001: standard 0603 MLCC, two-layer compatible"
+      ]
+    },
+    {
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "manufacturer_part": "Murata GRM188R61A475KE15D",
+      "quantity": 1,
+      "reason": "4.7 uF X5R on the CP2102N VDD/regulator output node. The CP2102N datasheet requires a bulk capacitor on VDD when its internal regulator is used in bus-powered mode; this part provides it alongside the 100 nF from the C4-C8 group.",
+      "reference_group": "C10",
+      "specifications": [
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Part specification",
+          "parameter": "Capacitance",
+          "source": "Murata GRM188R61A475KE15D datasheet",
+          "typical": 4.7,
+          "unit": "uF"
+        },
+        {
+          "maximum": 10.0,
+          "minimum": -10.0,
+          "page_or_section": "Part specification",
+          "parameter": "Capacitance tolerance",
+          "source": "Murata GRM188R61A475KE15D datasheet",
+          "typical": "",
+          "unit": "%"
+        },
+        {
+          "maximum": 10.0,
+          "minimum": "",
+          "page_or_section": "Part specification",
+          "parameter": "Rated voltage",
+          "source": "Murata GRM188R61A475KE15D datasheet",
+          "typical": "",
+          "unit": "V"
+        },
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Part specification",
+          "parameter": "Dielectric / temperature characteristic",
+          "source": "Murata GRM188R61A475KE15D datasheet",
+          "typical": "X5R, -55 to +85 C, +/-15%",
+          "unit": "text"
+        }
+      ],
+      "symbol": "Device:C",
+      "verified_constraints": [
+        "IF-002: satisfies the CP2102N VDD bulk decoupling requirement for bus-powered operation",
+        "10 V rating on a 3.3 V node keeps DC-bias derating modest",
+        "MFG-001: standard 0603 MLCC, two-layer compatible"
+      ]
+    },
+    {
+      "footprint": "Button_Switch_SMD:SW_SPST_PTS645",
+      "manufacturer_part": "C&K PTS645SM43SMTR92LFS",
+      "quantity": 2,
+      "reason": "Two SMD tactile switches: SW1 pulls EN low (manual reset) and SW2 pulls GPIO0 low (manual boot-mode entry). These provide a fallback if the DTR/RTS auto-program handshake fails on a given host, which is the usual failure mode when validating TEST-005, and they cost almost no board area on a 60 x 45 mm outline.",
+      "reference_group": "SW1,SW2",
+      "specifications": [
+        {
+          "maximum": 50.0,
+          "minimum": "",
+          "page_or_section": "Electrical specifications",
+          "parameter": "Contact rating",
+          "source": "C&K PTS645 series datasheet",
+          "typical": "",
+          "unit": "mA at 12 VDC"
+        },
+        {
+          "maximum": 100.0,
+          "minimum": "",
+          "page_or_section": "Electrical specifications",
+          "parameter": "Contact resistance",
+          "source": "C&K PTS645 series datasheet",
+          "typical": "",
+          "unit": "mohm"
+        },
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Mechanical specifications",
+          "parameter": "Operating force",
+          "source": "C&K PTS645 series datasheet",
+          "typical": 1.6,
+          "unit": "N"
+        },
+        {
+          "maximum": "",
+          "minimum": 100000.0,
+          "page_or_section": "Mechanical specifications",
+          "parameter": "Operating life",
+          "source": "C&K PTS645 series datasheet",
+          "typical": "",
+          "unit": "cycles"
+        }
+      ],
+      "symbol": "Switch:SW_Push",
+      "verified_constraints": [
+        "IF-004: allows manual EN reset and GPIO0 boot strapping in addition to the automatic circuit",
+        "Contacts only short EN/GPIO0 to GND, so they cannot fight the 10 kOhm pull-ups in normal operation",
+        "MFG-001: SMD tactile switch, two-layer compatible",
+        "MECH-001: 6 x 6 mm footprints fit within the compact outline"
+      ]
+    },
+    {
+      "footprint": "LED_SMD:LED_0603_1608Metric",
+      "manufacturer_part": "Lite-On LTST-C191KGKT",
+      "quantity": 1,
+      "reason": "Green 0603 power indicator on the 3.3 V rail, giving immediate visual confirmation that the USB-C sink negotiation and the 5 V to 3.3 V regulator path work during TEST-004 bring-up without instrumentation.",
+      "reference_group": "D3",
+      "specifications": [
+        {
+          "maximum": 2.6,
+          "minimum": 1.8,
+          "page_or_section": "Electrical / optical characteristics",
+          "parameter": "Forward voltage at 20 mA",
+          "source": "Lite-On LTST-C191KGKT datasheet",
+          "typical": 2.1,
+          "unit": "V"
+        },
+        {
+          "maximum": 30.0,
+          "minimum": "",
+          "page_or_section": "Absolute maximum ratings",
+          "parameter": "Continuous forward current",
+          "source": "Lite-On LTST-C191KGKT datasheet",
+          "typical": "",
+          "unit": "mA"
+        },
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Electrical / optical characteristics",
+          "parameter": "Dominant wavelength",
+          "source": "Lite-On LTST-C191KGKT datasheet",
+          "typical": 571.0,
+          "unit": "nm"
+        }
+      ],
+      "symbol": "Device:LED",
+      "verified_constraints": [
+        "TEST-004: visual indication that VBUS is present and the 3.3 V rail is up",
+        "Operating current about 1.2 mA with R9, negligible against the 500 mA budget (PWR-003)",
+        "MFG-001: standard 0603 SMD LED"
+      ]
+    },
+    {
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "manufacturer_part": "Yageo RC0603FR-071KL",
+      "quantity": 1,
+      "reason": "Series limiting resistor for the D3 power LED. With a 3.3 V rail and roughly 2.1 V LED forward voltage, 1 kOhm sets about 1.2 mA, bright enough for indication while keeping the constant draw on the regulated rail negligible.",
+      "reference_group": "R9",
+      "specifications": [
+        {
+          "maximum": "",
+          "minimum": "",
+          "page_or_section": "Ordering / specification table",
+          "parameter": "Resistance",
+          "source": "Yageo RC-L series chip resistor datasheet",
+          "typical": 1.0,
+          "unit": "kohm"
+        },
+        {
+          "maximum": 1.0,
+          "minimum": -1.0,
+          "page_or_section": "Ordering / specification table",
+          "parameter": "Tolerance",
+          "source": "Yageo RC-L series chip resistor datasheet",
+          "typical": "",
+          "unit": "%"
+        },
+        {
+          "maximum": 0.1,
+          "minimum": "",
+          "page_or_section": "Specification table (0603)",
+          "parameter": "Power rating at 70 C",
+          "source": "Yageo RC-L series chip resistor datasheet",
+          "typical": "",
+          "unit": "W"
+        }
+      ],
+      "symbol": "Device:R",
+      "verified_constraints": [
+        "PWR-003: about 1.2 mA indicator current is negligible within the 500 mA budget",
+        "Dissipation far below the 0603 100 mW rating",
+        "MFG-001: standard 0603 chip resistor"
+      ]
+    }
+  ]
+}
