@@ -477,17 +477,19 @@ def _power_rail_identifiers(value: str) -> set[str]:
             continue
         if identifier in {"+3V3", "3V3"}:
             rails.add("3V3")
+        elif identifier == "VBUS" or identifier in {"VBUS_RAW", "VBUS_PROT", "VBUS_PROTECTED"}:
+            rails.add("VBUS")
         elif (
-            identifier == "VBUS"
-            or identifier.startswith("VBUS_")
+            identifier.startswith("VBUS_")
             or identifier in {"VCC", "VDD", "VBAT", "VIN", "VOUT"}
-        ) or identifier.endswith("_RAIL"):
+            or identifier.endswith("_RAIL")
+        ):
             rails.add(identifier)
     return rails
 
 
 def _is_transparent_power_path(block: ArchitectureBlock) -> bool:
-    if block.power_required_ma is None or block.power_required_ma <= 0 or _is_converter(block):
+    if _is_converter(block):
         return False
     input_rails = _power_rail_identifiers(" ".join(block.required_inputs or []))
     output_rails = _power_rail_identifiers(" ".join(block.required_outputs or []))
@@ -612,18 +614,24 @@ def check_architecture(
                 )
     rail_suppliers: dict[str, list[float | None]] = {}
     for block in architecture.blocks:
+        if block.power_required_ma and _is_transparent_power_path(block):
+            continue
         for rail in _power_rail_identifiers(" ".join(block.required_outputs or [])):
             rail_suppliers.setdefault(rail, []).append(block.power_available_ma)
 
-    rail_loads: dict[str, float] = {}
+    rail_loads: set[str] = set()
+    rail_converter_loads: dict[str, float] = {}
+    rail_leaf_loads: dict[str, float] = {}
     for block in architecture.blocks:
         if block.power_required_ma is None or _is_transparent_power_path(block):
             continue
         input_rails = _power_rail_identifiers(" ".join(block.required_inputs or []))
         for rail in input_rails:
-            rail_loads[rail] = rail_loads.get(rail, 0.0) + block.power_required_ma
+            rail_loads.add(rail)
+            loads = rail_converter_loads if _is_converter(block) else rail_leaf_loads
+            loads[rail] = loads.get(rail, 0.0) + block.power_required_ma
 
-    for rail, required_ma in rail_loads.items():
+    for rail in rail_loads:
         suppliers = rail_suppliers.get(rail)
         if not suppliers:
             findings.append(
@@ -651,12 +659,25 @@ def check_architecture(
             )
             continue
         capacity = max(capacities)
-        if required_ma > capacity:
-            marginal = required_ma <= capacity * 1.1
+        converter_ma = rail_converter_loads.get(rail, 0.0)
+        leaf_ma = rail_leaf_loads.get(rail, 0.0)
+        if converter_ma > capacity:
             findings.append(
                 finding(
                     "power budget",
-                    required_ma,
+                    converter_ma,
+                    f"{capacity} mA {rail} rail capacity (converter declaration is advisory)",
+                    rail,
+                    "architecture",
+                    "warning",
+                )
+            )
+        if leaf_ma > capacity:
+            marginal = leaf_ma <= capacity * 1.1
+            findings.append(
+                finding(
+                    "power budget",
+                    leaf_ma,
                     f"{capacity} mA {rail} rail capacity"
                     + (" (marginal overshoot within 10%)" if marginal else ""),
                     rail,

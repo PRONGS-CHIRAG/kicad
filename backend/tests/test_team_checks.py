@@ -320,7 +320,7 @@ def test_captured_live_architecture_passes_connectivity_and_budget_gate() -> Non
     assert result.passed, result.findings
 
 
-def test_fourth_live_architecture_reports_real_converter_overload() -> None:
+def test_fourth_live_architecture_treats_converter_overload_as_advisory() -> None:
     requirements = RequirementsDoc.model_validate(
         json.loads(
             (Path(__file__).parent / "fixtures" / "live_architecture_fourth_requirements.json").read_text()
@@ -330,8 +330,14 @@ def test_fourth_live_architecture_reports_real_converter_overload() -> None:
         json.loads((Path(__file__).parent / "fixtures" / "live_architecture_fourth.json").read_text())
     )
     result = check_architecture(requirements, architecture, "fourth-live-architecture-rev")
-    assert not result.passed
-    assert any(finding.rule == "power budget" and finding.severity == "error" for finding in result.findings)
+    assert result.passed, result.findings
+    assert any(
+        finding.rule == "power budget"
+        and finding.actual == 620.0
+        and finding.severity == "warning"
+        and "converter declaration is advisory" in str(finding.expected)
+        for finding in result.findings
+    )
 
 
 def test_fifth_live_architecture_passes_identifier_connectivity_gate() -> None:
@@ -381,6 +387,13 @@ def test_eighth_live_architecture_treats_temperature_mapping_as_advisory() -> No
         finding.rule == "requirements map to blocks"
         and finding.actual == "TEMP-001"
         and finding.severity == "warning"
+        for finding in result.findings
+    )
+    assert any(
+        finding.rule == "power budget"
+        and finding.actual == 605.0
+        and finding.severity == "warning"
+        and "converter declaration is advisory" in str(finding.expected)
         for finding in result.findings
     )
 
