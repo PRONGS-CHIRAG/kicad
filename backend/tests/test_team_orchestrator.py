@@ -175,16 +175,15 @@ def test_stub_workflow_reaches_exact_review_wording(tmp_path: Path, monkeypatch)
     assert report.summary == "ready for engineering review"
 
 
-def test_failed_requirements_gate_routes_back_until_human_review(tmp_path: Path) -> None:
-    project, _ = _project(tmp_path)
-    outputs = _outputs(project, tmp_path / "project")
-    outputs["requirements"] = RequirementsDoc(
+def _disagreeing_requirements() -> RequirementsDoc:
+    """A summary that no identified requirement backs: the gate must reject it."""
+    return RequirementsDoc(
         requirements=[
             {
                 "id": "PWR-001",
-                "category": "interface",
-                "statement": "bad category",
-                "value": 3.3,
+                "category": "power",
+                "statement": "logic voltage",
+                "value": 5,
                 "unit": "V",
                 "source": "request",
             }
@@ -195,6 +194,12 @@ def test_failed_requirements_gate_routes_back_until_human_review(tmp_path: Path)
         constraints=[],
         acceptance_tests=[],
     )
+
+
+def test_failed_requirements_gate_routes_back_until_human_review(tmp_path: Path) -> None:
+    project, _ = _project(tmp_path)
+    outputs = _outputs(project, tmp_path / "project")
+    outputs["requirements"] = _disagreeing_requirements()
     report = TeamOrchestrator(
         StubAgentRunner(outputs=outputs),
         run_id="routing",
@@ -202,6 +207,36 @@ def test_failed_requirements_gate_routes_back_until_human_review(tmp_path: Path)
     ).run(project)
     assert report.release_status == "needs_human_review"
     assert "requirements" in report.per_stage_results
+
+
+def test_a_stage_sent_back_is_told_why_it_failed(tmp_path: Path) -> None:
+    """A re-run that is asked the identical question returns the identical answer."""
+
+    class RecordingRunner(StubAgentRunner):
+        def __init__(self, **kwargs) -> None:
+            super().__init__(**kwargs)
+            self.tasks: list[AgentTask] = []
+
+        def run(self, spec, task, project, inputs, project_version):  # type: ignore[override]
+            self.tasks.append(task)
+            return super().run(spec, task, project, inputs, project_version)
+
+    project, _ = _project(tmp_path)
+    outputs = _outputs(project, tmp_path / "project")
+    outputs["requirements"] = _disagreeing_requirements()
+    runner = RecordingRunner(outputs=outputs)
+    TeamOrchestrator(
+        runner,
+        run_id="feedback",
+        workspace_dir=tmp_path / "workspace",
+    ).run(project)
+
+    passes = [task for task in runner.tasks if task.assigned_agent == "requirements"]
+    assert len(passes) > 1, "the requirements stage should have been handed back"
+    assert passes[0].prior_gate_findings == []
+    findings = passes[1].prior_gate_findings
+    assert findings, "a re-run must carry the findings that rejected the last attempt"
+    assert any("grouped and identified requirements agree" in finding for finding in findings)
 
 
 def test_parallel_and_sequential_reports_match(tmp_path: Path, monkeypatch) -> None:

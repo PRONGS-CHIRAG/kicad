@@ -56,6 +56,14 @@ CANONICAL_ORDER = (
 )
 _ALIASES = {"schematic": "schematic_design", "layout": "pcb_layout"}
 
+_MAX_FEEDBACK_FINDINGS = 12
+"""How many rejected findings a re-run is shown. Enough to fix, short enough to read."""
+
+
+def _clip(value: object, limit: int = 160) -> str:
+    text = repr(value)
+    return text if len(text) <= limit else f"{text[:limit]}..."
+
 
 @dataclass(frozen=True)
 class OrchestratorOptions:
@@ -96,6 +104,9 @@ class TeamOrchestrator:
         results: dict[str, AgentResult] = {}
         gates: dict[str, StageCheckResult] = {}
         returns: dict[str, int] = {}
+        # Why each stage was handed back, so a re-run is asked a different question
+        # than the one it already failed. Cleared the moment the stage passes.
+        feedback: dict[str, list[str]] = {}
         events: list[dict[str, object]] = []
         queue = list(CANONICAL_ORDER)
         project_version = f"{self.run_id}:0"
@@ -126,7 +137,9 @@ class TeamOrchestrator:
             stage = queue.pop(0)
             if stage == "pcb_layout" and queue and queue[0] == "simulation" and settings.team_parallel:
                 queue.pop(0)
-                pair = self._run_parallel(("pcb_layout", "simulation"), project, outputs, project_version)
+                pair = self._run_parallel(
+                    ("pcb_layout", "simulation"), project, outputs, project_version, feedback
+                )
                 for sibling in ("pcb_layout", "simulation"):
                     result = pair[sibling]
                     results[sibling] = result
@@ -146,8 +159,11 @@ class TeamOrchestrator:
                     gate = self._evaluate_stage(sibling, result, project, outputs, project_version)
                     gates[sibling] = gate
                     self._write_gate(sibling, gate)
-                    if not gate.passed:
+                    if gate.passed:
+                        feedback.pop(sibling, None)
+                    else:
                         target = self._route(sibling, gate)
+                        feedback[target] = self._findings_text(sibling, gate)
                         returns[target] = returns.get(target, 0) + 1
                         if returns[target] > 2:
                             self._event(
@@ -160,7 +176,7 @@ class TeamOrchestrator:
                         self._enqueue_remainder(queue, target)
                 continue
             spec = get_agent(stage)
-            result = self._run_stage(spec, project, outputs, project_version)
+            result = self._run_stage(spec, project, outputs, project_version, feedback)
             results[stage] = result
             self._record_result(stage, result, project_version)
             if self._read_only_violation(spec, result):
@@ -179,8 +195,10 @@ class TeamOrchestrator:
             gates[stage] = gate
             self._write_gate(stage, gate)
             if gate.passed:
+                feedback.pop(stage, None)
                 continue
             target = self._route(stage, gate)
+            feedback[target] = self._findings_text(stage, gate)
             returns[target] = returns.get(target, 0) + 1
             if returns[target] > 2:
                 self._event(events, "return_trip_cap", {"agent": target, "findings": gate.findings})
@@ -244,12 +262,13 @@ class TeamOrchestrator:
         project: ProjectSpec,
         outputs: Mapping[str, object],
         project_version: str,
+        feedback: Mapping[str, list[str]] | None = None,
     ) -> dict[str, AgentResult]:
         if isinstance(self.runner, DevinAgentRunner):
             invocations = {
                 stage: self.runner.start(
                     get_agent(stage),
-                    self._task(stage),
+                    self._task(stage, feedback),
                     project,
                     get_agent(stage).inputs_for(outputs),
                     project_version,
@@ -262,7 +281,7 @@ class TeamOrchestrator:
                 stage: executor.submit(
                     self.runner.run,
                     get_agent(stage),
-                    self._task(stage),
+                    self._task(stage, feedback),
                     project,
                     get_agent(stage).inputs_for(outputs),
                     project_version,
@@ -271,13 +290,29 @@ class TeamOrchestrator:
             }
             return {stage: future.result() for stage, future in futures.items()}
 
-    def _task(self, stage: str) -> AgentTask:
+    def _task(self, stage: str, feedback: Mapping[str, list[str]] | None = None) -> AgentTask:
         spec = get_agent(stage)
         return AgentTask(
             task_id=f"{self.run_id}-{spec.id}",
             assigned_agent=spec.id,
             objective=f"Complete the {spec.name} stage",
+            prior_gate_findings=list((feedback or {}).get(spec.id, [])),
         )
+
+    @staticmethod
+    def _findings_text(stage: str, gate: StageCheckResult) -> list[str]:
+        """The failing gate's errors as sentences an agent can act on.
+
+        Bounded on purpose: a finding whose `actual` is a whole acceptance-test
+        list would otherwise put a document back into the next prompt, and the
+        prompt is what the next session spends its time reading.
+        """
+        errors = [finding for finding in gate.findings if finding.severity == "error"]
+        return [
+            f"{stage} gate: {finding.rule} - {finding.kicad_object} is "
+            f"{_clip(finding.actual)}, expected {_clip(finding.expected)}"
+            for finding in errors[:_MAX_FEEDBACK_FINDINGS]
+        ]
 
     def _run_stage(
         self,
@@ -285,8 +320,11 @@ class TeamOrchestrator:
         project: ProjectSpec,
         outputs: Mapping[str, object],
         project_version: str,
+        feedback: Mapping[str, list[str]] | None = None,
     ) -> AgentResult:
-        return self.runner.run(spec, self._task(spec.id), project, spec.inputs_for(outputs), project_version)
+        return self.runner.run(
+            spec, self._task(spec.id, feedback), project, spec.inputs_for(outputs), project_version
+        )
 
     def _gate(
         self,

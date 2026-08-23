@@ -141,12 +141,10 @@ def _quantity_matches(summary: tuple[float, str | None], requirement: Requiremen
 def check_requirements(document: RequirementsDoc, project_version: str) -> StageCheckResult:
     findings: list[CheckFinding] = []
     seen: set[str] = set()
-    prefixes = {
-        "power": "PWR",
-        "interface": "IF",
-        "mechanical": "MECH",
-        "test": "TEST",
-    }
+    # No ID-versus-category check lives here: `Requirement` takes the category
+    # from the ID prefix, so the two cannot disagree by the time a document
+    # exists. What is still worth checking is that the grouped summaries below
+    # are backed by identified requirements - see the acceptance_tests rule.
     by_category: dict[str, list[Requirement]] = {}
     for requirement in document.requirements:
         by_category.setdefault(requirement.category.lower(), []).append(requirement)
@@ -162,18 +160,6 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
                 )
             )
         seen.add(requirement.id)
-        prefix = prefixes.get(requirement.category.lower())
-        if prefix is None or not re.fullmatch(rf"{prefix}-\d{{3}}", requirement.id):
-            findings.append(
-                _finding(
-                    "requirement ID matches category",
-                    requirement.id,
-                    f"{prefix or 'known-category'}-NNN",
-                    requirement.id,
-                    "requirements",
-                    "error",
-                )
-            )
         if requirement.value is not None and not requirement.unit:
             findings.append(
                 _finding(
