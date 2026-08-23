@@ -41,6 +41,10 @@ export type HealthResponse = {
   drc_supported: boolean;
   executor: string;
   llm_enabled: boolean;
+  /** Which runner a team run uses when the request names none. */
+  team_runner: "devin" | "stub";
+  /** Whether the layout and simulation stages overlap. */
+  team_parallel: boolean;
 };
 
 export type ProjectSummary = { name: string; path: string; origin: "fixture" | "uploaded" };
@@ -129,7 +133,7 @@ export type RunReport = {
   duration_seconds: number;
 };
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
@@ -143,6 +147,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   health: () => request<HealthResponse>("/api/health"),
+  session: (sessionId: string) => request<SessionResponse>(`/api/sessions/${sessionId}`),
   projects: () => request<{ projects: ProjectSummary[] }>("/api/projects"),
   /** Upload a zipped KiCAD project. Uploads land in the workspace, not the fixtures. */
   uploadProject: async (name: string, file: File) => {

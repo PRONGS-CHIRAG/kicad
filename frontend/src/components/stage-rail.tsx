@@ -1,34 +1,34 @@
-import type { Stage } from "@/lib/stages";
-import { STAGES } from "@/lib/stages";
+import type { Step } from "@/lib/stages";
 
 /**
- * Display-only. The stage is derived from state in page.tsx — this rail reports
- * it and never sets it, so there is one source of truth for where you are.
+ * Display-only. The current step is derived from state in page.tsx — this rail
+ * reports it and never sets it, so there is one source of truth for where you
+ * are. Both lanes use it, so the steps are passed in rather than assumed.
  *
  * Numbered because the flow genuinely is a sequence: nothing can be reviewed
  * before it is planned, and nothing gets a verdict before it runs.
  */
-export function StageRail({ stage }: { stage: Stage }) {
-  const current = STAGES.findIndex((item) => item.id === stage);
+export function StageRail({ steps, current }: { steps: Step[]; current: string }) {
+  const index = steps.findIndex((item) => item.id === current);
 
   return (
-    <ol className="grid grid-cols-4">
-      {STAGES.map((item, index) => {
-        const done = index < current;
-        const active = index === current;
+    <ol className="flex">
+      {steps.map((item, position) => {
+        const done = position < index;
+        const active = position === index;
         return (
           <li
             key={item.id}
-            className="relative flex min-w-0 flex-col items-center pt-0.5"
+            className="relative flex min-w-0 flex-1 flex-col items-center pt-0.5"
             aria-current={active ? "step" : undefined}
           >
-            {index > 0 && (
+            {position > 0 && (
               <span
                 aria-hidden
                 className={`absolute left-0 top-[6px] h-[1.5px] w-1/2 ${done || active ? "bg-wire" : "bg-rule"}`}
               />
             )}
-            {index < STAGES.length - 1 && (
+            {position < steps.length - 1 && (
               <span
                 aria-hidden
                 className={`absolute right-0 top-[6px] h-[1.5px] w-1/2 ${done ? "bg-wire" : "bg-rule"}`}
