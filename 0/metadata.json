@@ -1,0 +1,88 @@
+{
+  "cli_version": "0.10.2",
+  "checkpoint_id": "01M0PRART3QGPWDFQRDKGN959Q",
+  "session_id": "7cad6a9b-ef6c-48f2-b3a8-b200c7723b2a",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-23T07:28:32.281715Z",
+  "branch": "feat/team-lane-ui",
+  "checkpoints_count": 2,
+  "save_step_count": 2,
+  "files_touched": [
+    "backend/.env.example",
+    "backend/app/config.py",
+    "backend/app/team/checks.py",
+    "backend/app/team/orchestrator.py",
+    "backend/app/team/prompts.py",
+    "backend/app/team/schemas.py",
+    "backend/tests/test_team_checks.py",
+    "backend/tests/test_team_orchestrator.py",
+    "backend/tests/test_team_schemas.py",
+    "frontend/src/app/page.tsx"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5",
+  "turn_id": "aa1a3241eea6",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 268,
+    "cache_creation_tokens": 300679,
+    "cache_read_tokens": 25019906,
+    "output_tokens": 130205,
+    "api_call_count": 130
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-23T07:28:32.138664Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 45,
+    "total_committed": 0,
+    "total_lines_changed": 45,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 581,
+      "user_lines_removed": 45,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "backend/.env.example": 7,
+        "backend/app/config.py": 6,
+        "backend/app/team/checks.py": 4,
+        "backend/app/team/orchestrator.py": 45,
+        "backend/app/team/prompts.py": 55,
+        "backend/app/team/schemas.py": 32,
+        "backend/tests/fixtures/live_requirements_synonym_category.json": 296,
+        "backend/tests/test_team_checks.py": 21,
+        "backend/tests/test_team_orchestrator.py": 42,
+        "backend/tests/test_team_schemas.py": 72,
+        "frontend/src/app/page.tsx": 1
+      },
+      "user_removed_per_file": {
+        "backend/.env.example": 4,
+        "backend/app/config.py": 2,
+        "backend/app/team/checks.py": 18,
+        "backend/app/team/orchestrator.py": 7,
+        "backend/app/team/prompts.py": 3,
+        "backend/app/team/schemas.py": 2,
+        "backend/tests/test_team_orchestrator.py": 7,
+        "backend/tests/test_team_schemas.py": 1,
+        "frontend/src/app/page.tsx": 1
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 581,
+      "agent_lines_removed": 45
+    }
+  ]
+}

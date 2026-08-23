@@ -1,0 +1,13 @@
+make the pr
+
+---
+
+run the app
+
+---
+
+what is the current branch the latest code is in ( the code we did in this session)
+
+---
+
+merge the pr
