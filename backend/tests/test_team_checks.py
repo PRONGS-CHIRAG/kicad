@@ -618,10 +618,16 @@ def test_components_gate_uses_real_fixture_context_and_requires_provenance() -> 
 def test_captured_ninth_live_components_accept_annotations_and_partial_bounds() -> None:
     payload = json.loads((Path(__file__).parent / "fixtures" / "live_components_ninth.json").read_text())
     selection = ComponentSelection.model_validate(payload)
-    result = check_components(selection, project_version="ninth-live")
+    project, _ = _project("esp32_i2c_demo")
+    assert project.design_context is not None
+    result = check_components(selection, project.design_context, project_version="ninth-live")
     assert result.passed, result.findings
     assert any(
         finding.rule == "numeric specification bound missing" and finding.severity == "warning"
+        for finding in result.findings
+    )
+    assert any(
+        finding.rule == "component references exist" and finding.severity == "warning"
         for finding in result.findings
     )
 
@@ -725,14 +731,32 @@ def test_components_parse_reference_groups_and_allow_symbol_substitution() -> No
         for finding in result.findings
     )
 
-    absent = selection.model_copy(
+    new_proposal = selection.model_copy(
         update={
             "components": [
                 selection.components[0].model_copy(update={"reference_group": "U99 (new proposal)"})
             ]
         }
     )
-    result = check_components(absent, context, project_version="rev-1")
+    result = check_components(new_proposal, context, project_version="rev-1")
+    assert result.passed
+    assert any(
+        finding.rule == "component references exist"
+        and finding.actual == "U99"
+        and finding.severity == "warning"
+        for finding in result.findings
+    )
+
+    existing_claim = new_proposal.model_copy(
+        update={
+            "components": [
+                new_proposal.components[0].model_copy(
+                    update={"reference_group": "U99 (existing schematic part)"}
+                )
+            ]
+        }
+    )
+    result = check_components(existing_claim, context, project_version="rev-1")
     assert not result.passed
     assert any(
         finding.rule == "component references exist"
