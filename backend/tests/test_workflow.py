@@ -98,6 +98,22 @@ def test_place_footprint_moves_the_pullup_next_to_the_target(store, requires_kic
         assert target_extent is not None and moved_extent is not None
 
 
+def test_place_footprint_reports_no_board_for_schematic_only_projects(
+    store, schematic_only: str, requires_kicad: None
+) -> None:
+    session = store.create(schematic_only)
+    assert session.board_path is None
+    plan, problems, _ = store.plan(
+        session, ["U1", "U2"], "Connect U1 and U2 using I2C with 3.3V logic. Add pull-ups near U1."
+    )
+    assert isinstance(plan, ActionPlan) and problems == []
+
+    report = store.execute(session, plan)
+
+    assert report.decision == Decision.ACCEPTED
+    assert any("this project has no board" in change for change in report.changes)
+
+
 def test_session_survives_a_backend_restart(store) -> None:
     """A fresh SessionStore over the same workspace must recover the session, not lose it.
 

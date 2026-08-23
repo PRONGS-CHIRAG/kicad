@@ -35,6 +35,11 @@ warnings, protected_objects, actions. Allowed action types:
   {"id","type":"connect_pins","from":"U2.SDA","to":"U1.GPIO21","net_name":"I2C_SDA","purpose":""}
   {"id","type":"connect_pin_to_net","pin":"U2.VCC","net":"+3V3","purpose":""}
   {"id","type":"ensure_pullup","net":"I2C_SDA","to_net":"+3V3","value":"4.7k","purpose":""}
+  {"id","type":"place_footprint","net":"I2C_SDA","near":"U1","purpose":""}
+
+place_footprint moves the board footprint of a pull-up this same plan is adding (named by its net)
+next to an existing component (near). Only emit it when the instruction asks where to place a
+pull-up, and only alongside an ensure_pullup action on that same net.
 """
 
 

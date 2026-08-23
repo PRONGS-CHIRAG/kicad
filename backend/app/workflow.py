@@ -18,8 +18,7 @@ from .decision import evaluate
 from .execution.base import Executor
 from .execution.local import LocalExecutor
 from .execution.mitos import MitosExecutor
-from .kicad.board import BoardSync, footprint_on_net, move_footprint_near
-from .kicad.board import load as load_board
+from .kicad.board import BoardSync, footprint_by_reference, footprint_on_net, move_footprint_near
 from .kicad.board import save as save_board
 from .kicad.board import sync_to_schematic as sync_board
 from .kicad.checkpoint import Checkpoint
@@ -45,6 +44,53 @@ def build_executor() -> Executor:
     if settings.executor == "mitos":
         return MitosExecutor(settings.mitos_command)
     return LocalExecutor()
+
+
+def apply_placements(
+    board: Path, board_sync: BoardSync, placements: list[PlaceFootprint], sync_failed: bool
+) -> list[str]:
+    """Apply each `place_footprint` action against the board the sync just wrote.
+
+    A placement that cannot be satisfied (target missing, board too crowded,
+    or the sync itself failed) is reported here, not rejected: it is a layout
+    nicety, not an electrical-correctness matter. This only ever touches a
+    footprint this same sync just synthesised (named in
+    `board_sync.footprints_added`) - never a component the person placed
+    themselves.
+    """
+    if not placements:
+        return []
+    if sync_failed:
+        return [
+            f"could not place the {action.net} pull-up near {action.near}: board sync failed"
+            for action in placements
+        ]
+
+    # `board_sync.doc` is the same in-memory document the sync just loaded and
+    # (if it changed anything) saved - reusing it avoids re-parsing the board
+    # file we just wrote. Each action is judged on its own net: a plan can add
+    # one pull-up while reusing another already on the board, so whether *this*
+    # net's footprint is newly synthesised can't be decided for the batch as a
+    # whole.
+    doc = board_sync.doc
+    notes: list[str] = []
+    moved = False
+    for action in placements:
+        reference = footprint_on_net(doc, action.net, board_sync.footprints_added)
+        if reference is None and footprint_on_net(doc, action.net) is not None:
+            notes.append(f"{action.net} pull-up already existed; nothing new to place near {action.near}")
+        elif reference is None:
+            notes.append(f"could not find the {action.net} pull-up to place near {action.near}")
+        elif footprint_by_reference(doc, action.near) is None:
+            notes.append(f"{action.near} has no footprint on the board to place {reference} near")
+        elif move_footprint_near(doc, reference, action.near):
+            notes.append(f"moved {reference} next to {action.near}")
+            moved = True
+        else:
+            notes.append(f"no free area to place {reference} near {action.near}")
+    if moved:
+        save_board(doc, board)
+    return notes
 
 
 @dataclass
@@ -274,45 +320,22 @@ class SessionStore:
         board = session.board_path
         board_sync = BoardSync()
         placement_notes: list[str] = []
+        placements = [action for action in plan.actions if isinstance(action, PlaceFootprint)]
+        sync_failed = False
         if board and after is not None and execution.completed:
             try:
                 board_sync = sync_board(board, after)
             except Exception as exc:  # noqa: BLE001 - a failed sync must not crash the run
                 logger.exception("board sync failed")
                 execution = execution.model_copy(update={"error": f"board sync failed: {exc}"})
+                sync_failed = True
 
-            # `place_footprint` only ever targets a resistor this same sync just
-            # synthesised, so it runs after the sync and only touches footprints
-            # named in `board_sync.footprints_added` - never a component the
-            # person placed themselves. A placement that cannot be satisfied
-            # (target missing, board too crowded) is reported, not rejected: it
-            # is a layout nicety, not an electrical-correctness matter.
-            placements = [action for action in plan.actions if isinstance(action, PlaceFootprint)]
-            if placements and board_sync.footprints_added:
-                doc = load_board(board)
-                moved = False
-                for action in placements:
-                    reference = footprint_on_net(doc, action.net, board_sync.footprints_added)
-                    if reference is None:
-                        placement_notes.append(
-                            f"could not find the {action.net} pull-up to place near {action.near}"
-                        )
-                    elif move_footprint_near(doc, reference, action.near):
-                        placement_notes.append(f"moved {reference} next to {action.near}")
-                        moved = True
-                    else:
-                        placement_notes.append(f"no free area to place {reference} near {action.near}")
-                if moved:
-                    save_board(doc, board)
-            elif placements:
-                # Nothing new was synthesised (e.g. the pull-up already existed),
-                # so there is no Mitos-added footprint to move - moving the
-                # existing one would break the "never touch what the person
-                # placed" guarantee.
-                placement_notes.extend(
-                    f"{action.net} pull-up already existed; nothing new to place near {action.near}"
-                    for action in placements
-                )
+            placement_notes = apply_placements(board, board_sync, placements, sync_failed)
+        elif placements and board is None:
+            placement_notes.extend(
+                f"cannot place the {action.net} pull-up near {action.near}: this project has no board"
+                for action in placements
+            )
 
         # Snapshot the file-level diff here, before ERC/DRC run: kicad-cli
         # rewrites project files as a side effect, and attributing those writes

@@ -21,6 +21,7 @@ treat the resulting unconnected items as pending work rather than a regression.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -52,6 +53,10 @@ class BoardSync:
     pads_rebound: list[str] = field(default_factory=list)
     footprints_added: list[str] = field(default_factory=list)
     unplaced: list[str] = field(default_factory=list)
+    #: The in-memory document `sync_to_schematic` already loaded and (if
+    #: `changed`) saved, handed back so a caller applying `place_footprint`
+    #: right after doesn't re-read and re-parse the same file from disk.
+    doc: list | None = field(default=None, repr=False, compare=False)
 
     @property
     def changed(self) -> bool:
@@ -147,8 +152,17 @@ def footprint_by_reference(doc: list, reference: str) -> list | None:
     return None
 
 
-def footprint_on_net(doc: list, net: str, candidates: list[str]) -> str | None:
-    """Which of `candidates` (references) has a pad bound to `net`, if any."""
+def footprint_on_net(doc: list, net: str, candidates: list[str] | None = None) -> str | None:
+    """Which of `candidates` (references) has a pad bound to `net`, if any.
+
+    Searches every footprint on the board when `candidates` is omitted.
+    """
+    if candidates is None:
+        candidates = [
+            reference
+            for reference in (footprint_reference(fp) for fp in sexpr.find_all(doc, "footprint"))
+            if reference
+        ]
     for reference in candidates:
         footprint = footprint_by_reference(doc, reference)
         if footprint is None:
@@ -178,7 +192,13 @@ def _set_pad_net(pad: list, number: int | None, name: str | None) -> None:
 
 
 def _footprint_extent(footprint: list) -> tuple[float, float, float, float] | None:
-    """Bounding box of a placed footprint, from its silkscreen body rectangle."""
+    """Axis-aligned bounding box of a placed footprint, from its silkscreen body
+    rectangle, honouring the footprint's own rotation (`(at x y angle)`).
+
+    Ignoring rotation would understate a rotated footprint's true extent on one
+    axis, letting a "free" slot land inside it - the opposite of what a
+    collision check is for.
+    """
     at = sexpr.find(footprint, "at")
     if at is None or len(at) < 3:
         return None
@@ -186,18 +206,42 @@ def _footprint_extent(footprint: list) -> tuple[float, float, float, float] | No
         ox, oy = float(str(at[1])), float(str(at[2]))
     except ValueError:
         return None
+    try:
+        angle = float(str(at[3])) if len(at) >= 4 else 0.0
+    except ValueError:
+        angle = 0.0
+
     half_w, half_h = 2.0, 2.0
+    theta = math.radians(angle)
+    cos_a, sin_a = math.cos(theta), math.sin(theta)
     for rect in sexpr.find_all(footprint, "fp_rect"):
         start, end = sexpr.find(rect, "start"), sexpr.find(rect, "end")
         if start is None or end is None:
             continue
         try:
-            xs = [abs(float(str(start[1]))), abs(float(str(end[1])))]
-            ys = [abs(float(str(start[2]))), abs(float(str(end[2])))]
+            x1, y1 = float(str(start[1])), float(str(start[2]))
+            x2, y2 = float(str(end[1])), float(str(end[2]))
         except (ValueError, IndexError):
             continue
-        half_w, half_h = max(half_w, *xs), max(half_h, *ys)
+        # KiCad rotates footprints counter-clockwise in its own Y-down
+        # coordinate system, the mirror of the usual Y-up convention. At
+        # angle 0 this reduces exactly to the identity transform.
+        for x, y in ((x1, y1), (x1, y2), (x2, y1), (x2, y2)):
+            rx, ry = x * cos_a + y * sin_a, -x * sin_a + y * cos_a
+            half_w, half_h = max(half_w, abs(rx)), max(half_h, abs(ry))
+
     return (ox - half_w, oy - half_h, ox + half_w, oy + half_h)
+
+
+def _clashes(box: tuple[float, float, float, float], occupied: list[tuple]) -> bool:
+    """Would `box` come within clearance of anything in `occupied`?"""
+    return any(
+        box[0] - _PLACEMENT_CLEARANCE < ox2
+        and box[2] + _PLACEMENT_CLEARANCE > ox1
+        and box[1] - _PLACEMENT_CLEARANCE < oy2
+        and box[3] + _PLACEMENT_CLEARANCE > oy1
+        for ox1, oy1, ox2, oy2 in occupied
+    )
 
 
 def board_outline(doc: list) -> tuple[float, float, float, float]:
@@ -233,14 +277,7 @@ def free_position(doc: list, half_w: float, half_h: float, reserved: list[tuple]
         x = min_x + _OUTLINE_MARGIN + half_w
         while x + half_w + _OUTLINE_MARGIN <= max_x:
             box = (x - half_w, y - half_h, x + half_w, y + half_h)
-            clash = any(
-                box[0] - _PLACEMENT_CLEARANCE < ox2
-                and box[2] + _PLACEMENT_CLEARANCE > ox1
-                and box[1] - _PLACEMENT_CLEARANCE < oy2
-                and box[3] + _PLACEMENT_CLEARANCE > oy1
-                for ox1, oy1, ox2, oy2 in occupied
-            )
-            if not clash:
+            if not _clashes(box, occupied):
                 return (round(x, 2), round(y, 2))
             x += _PLACEMENT_STEP
         y += _PLACEMENT_STEP
@@ -280,14 +317,7 @@ def free_position_near(
         if not (min_y + _OUTLINE_MARGIN <= y - half_h and y + half_h <= max_y - _OUTLINE_MARGIN):
             continue
         box = (x - half_w, y - half_h, x + half_w, y + half_h)
-        clash = any(
-            box[0] - _PLACEMENT_CLEARANCE < ox2
-            and box[2] + _PLACEMENT_CLEARANCE > ox1
-            and box[1] - _PLACEMENT_CLEARANCE < oy2
-            and box[3] + _PLACEMENT_CLEARANCE > oy1
-            for ox1, oy1, ox2, oy2 in occupied
-        )
-        if not clash:
+        if not _clashes(box, occupied):
             return (round(x, 2), round(y, 2))
     return None
 
@@ -438,4 +468,5 @@ def sync_to_schematic(board_path: Path, state: ProjectState) -> BoardSync:
     if result.changed:
         save(doc, board_path)
         logger.info("synced board %s: %s", board_path.name, "; ".join(result.summary()))
+    result.doc = doc
     return result

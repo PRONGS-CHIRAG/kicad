@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -11,7 +12,8 @@ from app.decision import _awaiting_routing
 from app.kicad import board, sexpr
 from app.kicad.erc import KicadCli, diff_violations
 from app.kicad.reader import read_project
-from app.models import Violation
+from app.models import PlaceFootprint, Violation
+from app.workflow import apply_placements
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "projects"
 WITH_BOARD = "esp32_i2c_board"
@@ -279,6 +281,143 @@ def test_move_footprint_near_is_a_no_op_for_unknown_references(
     reference = result.footprints_added[0]
     assert board.move_footprint_near(doc, "R404", "U1") is False
     assert board.move_footprint_near(doc, reference, "U404") is False
+
+
+def _rect_footprint(x: float, y: float, angle: float, half_w: float, half_h: float) -> list:
+    S = sexpr.Symbol
+    at = [S("at"), S(str(x)), S(str(y))]
+    if angle:
+        at.append(S(str(angle)))
+    return [
+        S("footprint"),
+        "Test:Big",
+        at,
+        [
+            S("fp_rect"),
+            [S("start"), S(str(-half_w)), S(str(-half_h))],
+            [S("end"), S(str(half_w)), S(str(half_h))],
+        ],
+    ]
+
+
+def test_footprint_extent_ignores_rotation_when_there_is_none() -> None:
+    flat = _rect_footprint(10.0, 10.0, 0.0, 5.0, 2.0)
+    extent = board._footprint_extent(flat)
+    assert extent is not None
+    assert (extent[2] - extent[0]) == pytest.approx(10.0)
+    assert (extent[3] - extent[1]) == pytest.approx(4.0)
+
+
+def test_footprint_extent_accounts_for_rotation() -> None:
+    """A rotated footprint's true extent must swap axes, or a 'free' slot search
+
+    could place something new right inside it.
+    """
+    turned = _rect_footprint(10.0, 10.0, 90.0, 5.0, 2.0)
+    extent = board._footprint_extent(turned)
+    assert extent is not None
+    width, height = extent[2] - extent[0], extent[3] - extent[1]
+    assert width == pytest.approx(4.0, abs=1e-6)
+    assert height == pytest.approx(10.0, abs=1e-6)
+
+
+# --------------------------------------------------------------- apply_placements
+
+
+def test_apply_placements_with_no_actions_is_a_noop(synced: tuple[Path, board.BoardSync]) -> None:
+    _, result = synced
+    assert apply_placements(Path("/nonexistent"), result, [], sync_failed=False) == []
+
+
+def test_apply_placements_reports_a_failed_sync(synced: tuple[Path, board.BoardSync]) -> None:
+    _, result = synced
+    placements = [PlaceFootprint(id="a1", net="I2C_SDA", near="U1")]
+    notes = apply_placements(Path("/nonexistent"), result, placements, sync_failed=True)
+    assert notes == ["could not place the I2C_SDA pull-up near U1: board sync failed"]
+
+
+def test_apply_placements_reports_when_nothing_new_was_synthesised(
+    synced: tuple[Path, board.BoardSync],
+) -> None:
+    """Realistic version: the resistor genuinely is on the board, just not newly added."""
+    _, result = synced
+    already_existing = replace(result, footprints_added=[])
+    placements = [PlaceFootprint(id="a1", net="I2C_SDA", near="U1")]
+
+    notes = apply_placements(Path("/nonexistent"), already_existing, placements, sync_failed=False)
+
+    assert notes == ["I2C_SDA pull-up already existed; nothing new to place near U1"]
+
+
+def test_apply_placements_reports_an_unmatched_net(synced: tuple[Path, board.BoardSync]) -> None:
+    project, result = synced
+    placements = [PlaceFootprint(id="a1", net="NO_SUCH_NET", near="U1")]
+    notes = apply_placements(_board_of(project), result, placements, sync_failed=False)
+    assert notes == ["could not find the NO_SUCH_NET pull-up to place near U1"]
+
+
+def test_apply_placements_reports_a_missing_target_footprint(
+    synced: tuple[Path, board.BoardSync],
+) -> None:
+    project, result = synced
+    reference = board.footprint_on_net(result.doc, "I2C_SDA", result.footprints_added)
+    assert reference is not None
+    placements = [PlaceFootprint(id="a1", net="I2C_SDA", near="U404")]
+    notes = apply_placements(_board_of(project), result, placements, sync_failed=False)
+    assert notes == [f"U404 has no footprint on the board to place {reference} near"]
+
+
+def test_apply_placements_reports_a_crowded_board(
+    synced: tuple[Path, board.BoardSync], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project, result = synced
+    from app import workflow
+
+    monkeypatch.setattr(workflow, "move_footprint_near", lambda *a, **k: False)
+    reference = board.footprint_on_net(result.doc, "I2C_SDA", result.footprints_added)
+    placements = [PlaceFootprint(id="a1", net="I2C_SDA", near="U1")]
+    notes = workflow.apply_placements(_board_of(project), result, placements, sync_failed=False)
+    assert notes == [f"no free area to place {reference} near U1"]
+
+
+def test_apply_placements_judges_each_action_by_its_own_net(
+    synced: tuple[Path, board.BoardSync],
+) -> None:
+    """One net's pull-up is newly added, the other's already existed: each
+
+    action must be judged on its own net, not gated on whether *anything* in
+    the batch was newly synthesised.
+    """
+    project, result = synced
+    assert len(result.footprints_added) == 2  # this fixture's SDA and SCL pull-ups
+
+    # Pretend only one of the two was newly synthesised this run - the other's
+    # footprint is still genuinely on the board, exactly as if it pre-existed.
+    partial = replace(result, footprints_added=result.footprints_added[:1])
+    placements = [
+        PlaceFootprint(id="a1", net="I2C_SDA", near="U1"),
+        PlaceFootprint(id="a2", net="I2C_SCL", near="U1"),
+    ]
+
+    notes = apply_placements(_board_of(project), partial, placements, sync_failed=False)
+
+    assert any("already existed" in note for note in notes), notes
+    assert not any("could not find" in note for note in notes), notes
+
+
+def test_apply_placements_moves_and_persists_to_disk(synced: tuple[Path, board.BoardSync]) -> None:
+    project, result = synced
+    pcb = _board_of(project)
+    placements = [PlaceFootprint(id="a1", net="I2C_SDA", near="U1")]
+
+    notes = apply_placements(pcb, result, placements, sync_failed=False)
+
+    assert len(notes) == 1
+    assert notes[0].startswith("moved ") and notes[0].endswith("next to U1")
+    reference = notes[0].split()[1]
+
+    reloaded = board.load(pcb)
+    assert board._footprint_extent(board.footprint_by_reference(reloaded, reference)) is not None
 
 
 def test_drc_diffing_is_deterministic(tmp_path: Path, requires_kicad: None) -> None:
