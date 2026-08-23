@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .api.routes import router
+from .api.team import router as team_router
 from .config import settings
 
 logging.basicConfig(
@@ -40,3 +41,4 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(router)
+app.include_router(team_router)

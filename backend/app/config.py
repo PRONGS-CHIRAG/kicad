@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -57,10 +57,26 @@ class Settings(BaseSettings):
         ),
     )
 
+    team_runner: str | None = Field(
+        default=None,
+        description="Team runner: 'devin' for real sessions or 'stub' for deterministic offline runs.",
+    )
+    team_max_retries: int = Field(default=2, ge=0)
+    team_stage_acu: int = Field(default=3, ge=1)
+    team_manufacturer_profile: str = "generic_two_layer"
+    team_parallel: bool = True
+
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
     log_level: str = "INFO"
 
     model_config = {"env_prefix": "KICAD_MITOS_", "env_file": ".env", "extra": "ignore"}
+
+    @field_validator("team_runner")
+    @classmethod
+    def validate_team_runner(cls, value: str | None) -> str | None:
+        if value is not None and value not in {"devin", "stub"}:
+            raise ValueError("team_runner must be 'devin' or 'stub'")
+        return value
 
     @property
     def llm_enabled(self) -> bool:
@@ -69,6 +85,10 @@ class Settings(BaseSettings):
     @property
     def devin_enabled(self) -> bool:
         return bool(self.devin_api_key)
+
+    @property
+    def resolved_team_runner(self) -> str:
+        return self.team_runner or ("devin" if self.devin_enabled else "stub")
 
     @property
     def agent_resolves_ambiguity(self) -> bool:

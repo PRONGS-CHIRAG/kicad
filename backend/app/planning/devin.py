@@ -108,6 +108,21 @@ class AgentAnswer:
     session_url: str
 
 
+@dataclass(frozen=True)
+class SessionHandle:
+    session_id: str
+    url: str
+
+
+@dataclass(frozen=True)
+class SessionResult:
+    output: dict
+    url: str
+    status: str
+    acus_consumed: float
+    detail: dict
+
+
 class DevinClient:
     """The Devin v3 organization sessions API."""
 
@@ -172,7 +187,15 @@ class DevinClient:
     def _sessions_url(self) -> str:
         return f"{self.base_url}/organizations/{self.org_id()}/sessions"
 
-    def create_session(self, prompt: str, title: str, schema: dict) -> dict:
+    def create_session(
+        self,
+        prompt: str,
+        title: str,
+        schema: dict,
+        tags: list[str] | None = None,
+        max_acu: int | None = None,
+        devin_mode: str | None = None,
+    ) -> dict:
         return self._request(
             "POST",
             self._sessions_url(),
@@ -184,38 +207,56 @@ class DevinClient:
                 "structured_output_required": True,
                 # An ACU is roughly fifteen minutes of work; one question needs
                 # a fraction of that, and the ceiling stops a runaway session.
-                "max_acu_limit": settings.devin_max_acu,
-                "devin_mode": settings.devin_mode,
-                "tags": ["kicad-mitos", "clarification"],
+                "max_acu_limit": max_acu if max_acu is not None else settings.devin_max_acu,
+                "devin_mode": devin_mode or settings.devin_mode,
+                "tags": tags if tags is not None else ["kicad-mitos", "clarification"],
             },
         ).json()
 
     def session(self, session_id: str) -> dict:
         return self._request("GET", f"{self._sessions_url()}/{session_id}").json()
 
-    def run(self, prompt: str, title: str, schema: dict = ANSWER_SCHEMA) -> tuple[dict, str]:
-        """Create a session, wait for it to finish, return (structured_output, url).
+    def start(
+        self,
+        prompt: str,
+        title: str,
+        schema: dict = ANSWER_SCHEMA,
+        *,
+        tags: list[str] | None = None,
+        max_acu: int | None = None,
+        devin_mode: str | None = None,
+    ) -> SessionHandle:
+        """Create a session without waiting for its structured answer."""
+        if not self.available:
+            raise DevinError("no Devin API key configured")
+        created = self.create_session(
+            prompt,
+            title,
+            schema,
+            tags=tags,
+            max_acu=max_acu,
+            devin_mode=devin_mode,
+        )
+        session_id = created.get("session_id")
+        if not session_id:
+            raise DevinError(f"Devin did not return a session_id: {created}")
+        return SessionHandle(session_id=session_id, url=created.get("url", ""))
+
+    def wait(self, handle: SessionHandle, timeout: float | None = None) -> SessionResult:
+        """Wait for a session, returning structured output as soon as it appears.
 
         Raises DevinError on a terminal failure or when the wait runs out. Callers
         treat that as "unresolved" and fall back to asking the user.
         """
-        if not self.available:
-            raise DevinError("no Devin API key configured")
-        created = self.create_session(prompt, title, schema)
-        session_id = created.get("session_id")
-        url = created.get("url", "")
-        if not session_id:
-            raise DevinError(f"Devin did not return a session_id: {created}")
-
-        deadline = time.monotonic() + self.timeout_seconds
+        deadline = time.monotonic() + (timeout if timeout is not None else self.timeout_seconds)
         status = "new"
         while True:
             try:
-                detail = self.session(session_id)
+                detail = self.session(handle.session_id)
             except DevinError as exc:
                 # A transient poll failure must not throw away a session that is
                 # about to answer. Keep polling until the deadline instead.
-                logger.warning("poll of %s failed, retrying: %s", session_id, exc)
+                logger.warning("poll of %s failed, retrying: %s", handle.session_id, exc)
                 if time.monotonic() >= deadline:
                     raise
                 time.sleep(self.poll_seconds)
@@ -230,18 +271,31 @@ class DevinClient:
             if isinstance(output, dict) and output:
                 logger.info(
                     "Devin session %s answered while %s, %.2f ACU consumed",
-                    session_id,
+                    handle.session_id,
                     status,
                     detail.get("acus_consumed", 0.0) or 0.0,
                 )
-                return output, url
+                return SessionResult(
+                    output=output,
+                    url=handle.url,
+                    status=status,
+                    acus_consumed=float(detail.get("acus_consumed", 0.0) or 0.0),
+                    detail=detail,
+                )
             if status in {"exit", "error", "suspended"}:
-                raise DevinError(f"session {session_id} ended as {status} with no structured output")
+                raise DevinError(f"session {handle.session_id} ended as {status} with no structured output")
             if time.monotonic() >= deadline:
                 raise DevinError(
-                    f"session {session_id} still {status} after {self.timeout_seconds:.0f}s"
+                    f"session {handle.session_id} still {status} after "
+                    f"{(timeout if timeout is not None else self.timeout_seconds):.0f}s"
                 )
             time.sleep(self.poll_seconds)
+
+    def run(self, prompt: str, title: str, schema: dict = ANSWER_SCHEMA) -> tuple[dict, str]:
+        """Create a session, wait for it to finish, return (structured_output, url)."""
+        handle = self.start(prompt, title, schema)
+        result = self.wait(handle)
+        return result.output, result.url
 
 
 def _peripheral_context(state: ProjectState, selected: list[str]) -> str:
@@ -361,7 +415,7 @@ def resolve_and_plan(
             break
         answers = apply_answer(answers, current.answer_key or "", resolved.answer)
         notes.append(
-            f"{resolved.answer} chosen for \"{current.question}\" by the Devin agent"
+            f'{resolved.answer} chosen for "{current.question}" by the Devin agent'
             + (f": {resolved.reasoning}" if resolved.reasoning else "")
         )
         current = plan_fn(answers)

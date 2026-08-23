@@ -180,6 +180,12 @@ def _footprint_extent(footprint: list) -> tuple[float, float, float, float] | No
     return (ox - half_w, oy - half_h, ox + half_w, oy + half_h)
 
 
+def footprint_extent(footprint: list) -> tuple[float, float, float, float] | None:
+    if not sexpr.find_all(footprint, "fp_rect"):
+        return None
+    return _footprint_extent(footprint)
+
+
 def board_outline(doc: list) -> tuple[float, float, float, float]:
     xs: list[float] = []
     ys: list[float] = []

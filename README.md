@@ -207,6 +207,33 @@ here speaks for it, and searching turns up no public Mitos. `DEFAULT_TOOL_MAP` i
 precisely so its real names can be dropped in. See `docs/mitos.md`, which is generated from a live
 `tools/list` and says which server it was generated from.
 
+## Ten-agent engineering team
+
+The team coordinates a project manager, requirements, architecture, component, schematic, PCB
+layout, simulation, verification, manufacturing, and QA/release agent. The canonical workflow runs
+layout and simulation as siblings, then verifies, checks manufacturing, and prepares release.
+Failed gates route to the responsible stage and replay the downstream remainder; two return trips end
+in human review.
+
+Agents receive parsed schematic and board context. Devin runs use validated structured output and
+one session per invocation. Keyless runs use the explicitly labelled `STUB` runner, which is
+deterministic and never contacts Devin. Agents do not edit files or open pull requests; schematic
+and placement proposals are applied only through checkpointed, deterministic gates.
+
+The background API provides `POST /api/team/runs` and status, report, evidence, and answer endpoints
+at `/api/team/runs/{run_id}`, `/report`, `/evidence`, and `/answer`. The equivalent CLI is:
+
+```text
+python -m app.team.cli --project fixtures/projects/esp32_i2c_demo \
+  "Create and validate a small ESP32 temperature-monitoring PCB with an I²C sensor and USB-C power."
+```
+
+Evidence is append-only under `settings.workspace_dir/team/<run_id>/`, including stage outputs,
+gate results, events, checkpoints, and artifacts. The current MVP does not route copper or run
+ngspice; simulation is closed-form arithmetic, and footprint extents are checked only where the
+parser exposes them. `ready for engineering review` is not a guarantee that a board works: KiCAD
+checks cannot replace physical prototyping and lab validation.
+
 Point the probe at a running server and it writes the capability matrix from what the server actually
 advertises, including each tool's input schema:
 
