@@ -1,0 +1,45 @@
+{
+  "critical_nets": [
+    "USB_D+",
+    "USB_D-",
+    "SDA",
+    "SCL",
+    "+3V3",
+    "GND",
+    "VBUS",
+    "EN"
+  ],
+  "placements": [
+    {
+      "rationale": "USB connector pushed to the left board edge (outline starts at x=35) and vertically centered so the receptacle overhangs the edge for mating; keeps VBUS/GND entry and the USB_D+/USB_D- pair short into U1.",
+      "reference": "J1",
+      "rotation": 0.0,
+      "x": 42.0,
+      "y": 67.5
+    },
+    {
+      "rationale": "ESP32-WROOM-32 module placed center-left with its castellated pin rows toward J1 and U2; leaves the module's PCB antenna end pointing to open board area near the right/top edge so no copper or parts sit under the antenna keepout.",
+      "reference": "U1",
+      "rotation": 0.0,
+      "x": 80.0,
+      "y": 62.0
+    },
+    {
+      "rationale": "TMP102 in the far corner, away from the ESP32 module and the USB power entry, to minimize self-heating error while keeping the two-node I2C bus (SDA/SCL from U1.3/U1.4) short enough for 400 kHz with 4.7k pull-ups.",
+      "reference": "U2",
+      "rotation": 0.0,
+      "x": 128.0,
+      "y": 88.0
+    }
+  ],
+  "unrouted_nets": [
+    "+3V3",
+    "GND",
+    "USB_D+",
+    "USB_D-",
+    "VBUS",
+    "SDA",
+    "SCL",
+    "EN"
+  ]
+}

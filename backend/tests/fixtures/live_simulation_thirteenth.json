@@ -1,0 +1,244 @@
+{
+  "assumptions": [
+    "USB-C source is a default (non-PD, non-BC1.2) 5 V source with a 500 mA budget, consistent with the passive 5.1 kOhm Rd-only termination of PWR-002/PWR-005.",
+    "ESP32-WROOM-32E peak current is taken as the 500 mA recommended supply capability from the datasheet Recommended Operating Conditions; no duty-cycle averaging of RF transmit bursts is applied, so 528.4 mA is a worst-case peak rather than an average.",
+    "CP2102N active supply current is taken as approximately 26 mA from the CP2102N datasheet supply-current specification.",
+    "Because an LDO passes load current 1:1, VBUS input current equals the 3.3 V load current plus quiescent; there is no step-down current gain. This is why the 530 mA worst-case VBUS draw exceeds the 500 mA default USB-C allowance.",
+    "The VBUS budget failure is a peak-current finding: duty-cycling the ESP32 transmit peak, negotiating higher current, or replacing the LDO with a buck converter all close the budget. As specified today with Rd-only termination it does not close at worst-case peak.",
+    "I2C analysis is DC only; bus capacitance is not given, so no fast-mode rise-time result is claimed.",
+    "Worst-case +3V3 tolerance uses the LDO datasheet VOUT window (3.234-3.366 V) and does not add further line/load regulation terms.",
+    "Capacitor derating is evaluated as applied DC voltage versus rated voltage only; DC-bias capacitance loss is not quantified.",
+    "Absolute logic thresholds were not supplied in the design context, so ratiometric CMOS thresholds were used.",
+    "No project files were read or modified; all results are closed-form from the supplied pin table, nets, intents and component specifications."
+  ],
+  "models": [
+    "Rail voltage model: nominal and worst-case DC levels from datasheet VOUT/VIN min-typ-max; no transient or load-step modelling.",
+    "LDO model: series pass element with Iin = Iout (no current gain); regulates while Vin >= Vout + VDROPOUT; dissipation P = (Vin - Vout) x Iout.",
+    "Pull-up model: DC resistive pull-up to +3V3; I = Vrail / R while the open-drain driver holds the line low, 0 when released; resistor dissipation P = Vrail^2 / R.",
+    "CC sink model: USB Type-C default source presents an 80 uA Rp current source into Rd, so Vcc = 80 uA x 5.1 kOhm.",
+    "Rating-margin model: margin_percent = (available - required) / required x 100; resistor current capability derived as sqrt(Prated / R).",
+    "Load-budget model: worst-case simultaneous peak currents summed arithmetically with no duty-cycle averaging.",
+    "Logic-level model: ratiometric CMOS thresholds (ESP32 VIH = 0.75 x VDD, TMP102 VIH = 0.7 x VDD, VIL = 0.25 x VDD)."
+  ],
+  "tests": [
+    {
+      "expected": {},
+      "measured_v": "5.0 V",
+      "name": "VBUS rail at USB-C default source (expected 4.75-5.25 V, nominal 5.0 V)",
+      "source": "PWR-001",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "3.3 V",
+      "name": "+3V3 rail output of U3 MCP1826S-3302E (expected 3.234-3.366 V, inside the 3.135-3.465 V +/-5% window)",
+      "source": "Microchip MCP1826/MCP1826S datasheet (DS22056), Electrical Characteristics, VOUT",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "4.50 V available after the 250 mV dropout, above the 3.3 V target",
+      "name": "LDO dropout headroom at worst-case 4.75 V VBUS and 500 mA (needs >= 3.55 V in for 3.3 V out with 250 mV dropout; headroom 1.20 V)",
+      "source": "Microchip MCP1826/MCP1826S datasheet (DS22056), Electrical Characteristics, VDROPOUT",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "5.0 V",
+      "name": "LDO input voltage within rated VIN range (expected 2.1-6.0 V)",
+      "source": "Microchip MCP1826/MCP1826S datasheet (DS22056), Electrical Characteristics, VIN",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "3.3 V",
+      "name": "U1 ESP32-WROOM-32E supply within recommended 3.0-3.6 V (worst-case rail 3.234-3.366 V)",
+      "source": "ESP32-WROOM-32E/32UE datasheet, Section 3, Recommended Operating Conditions",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "3.3 V",
+      "name": "U2 TMP102 VCC supply within recommended 1.4-3.6 V",
+      "source": "Texas Instruments TMP102 datasheet (SBOS397), Recommended Operating Conditions",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "5.0 V",
+      "name": "U4 CP2102N VREGIN supply from VBUS within 3.0-5.5 V",
+      "source": "Silicon Labs CP2102N datasheet, Recommended Operating Conditions",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "5.0 V",
+      "name": "D1 USBLC6-2SC6 reverse standoff 5.25 V max vs VBUS (5.0 V nominal, 5.25 V USB max leaves zero margin at the upper limit)",
+      "source": "STMicroelectronics USBLC6-2 datasheet, Absolute Maximum Ratings",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "0.408 V",
+      "name": "CC1/CC2 Rd advertisement voltage with 5.1 kOhm to GND and 80 uA Rp (expected 0.25-0.61 V default-source window)",
+      "source": "PWR-002",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "5.0 V applied against a 10.0 V rating",
+      "name": "C1 10 uF X5R voltage derating on the 5 V VBUS rail (10.0 V rating, 2x margin)",
+      "source": "Samsung Electro-Mechanics CL10A106KP8NNNC datasheet, Product specification",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "3.3 V applied against a 10.0 V rating",
+      "name": "C2 10 uF X5R voltage derating on the +3V3 rail (10.0 V rating, 3x margin)",
+      "source": "Samsung Electro-Mechanics CL10A106KP8NNNC datasheet, Product specification",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "5.0 V applied against a 50.0 V rating",
+      "name": "C3-C8 X7R voltage derating on the 5 V and 3.3 V rails (50.0 V rating, 10x margin)",
+      "source": "Samsung Electro-Mechanics CL10B104KB8NNNC / CL10B105KB8NNNC datasheets, Product specification",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "3.3 V",
+      "name": "I2C SDA/SCL idle-high level with 4.7 kOhm pull-up to +3V3 (VIH needs 2.475 V at the ESP32, 2.31 V at the TMP102)",
+      "source": "IF-002",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "0.4 V worst-case VOL",
+      "name": "I2C SDA/SCL low level with 4.7 kOhm pull-up sinking 0.702 mA (VIL limit 0.825 V)",
+      "source": "Texas Instruments TMP102 datasheet (SBOS397), Electrical Characteristics (VOL)",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "3.3 V",
+      "name": "EN net static high level with R5 10 kOhm pull-up to +3V3 (VIH needs 2.475 V; EN leakage is sub-microamp so IR drop is negligible)",
+      "source": "IF-006",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "0.85 W",
+      "name": "U3 LDO junction dissipation at 5.0 V in / 3.3 V out and 500 mA, P = (Vin - Vout) x Iout",
+      "source": "Microchip MCP1826/MCP1826S datasheet (DS22056), Electrical Characteristics",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "not evaluated",
+      "name": "U3 LDO thermal rise vs the 40 degC limit (needs layout copper area and mounted theta_JA, not a closed-form power calculation)",
+      "source": "TEMP-004",
+      "status": "unverified"
+    },
+    {
+      "expected": {},
+      "measured_v": "not applicable",
+      "name": "LED current-limit resistor analysis (no LED or indicator branch exists in the pin table, netlist or component list)",
+      "source": "PWR-005",
+      "status": "unverified"
+    },
+    {
+      "expected": {},
+      "measured_v": "not applicable",
+      "name": "Regulator feedback resistive divider analysis (U3 MCP1826S-3302E is fixed-output with an internal divider; no external divider exists)",
+      "source": "PWR-004",
+      "status": "unverified"
+    },
+    {
+      "expected": {},
+      "measured_v": "not evaluated",
+      "name": "EN power-on-reset RC delay, R5 10 kOhm with C8 1 uF (10 ms time constant, about 12.6 ms to the 2.475 V threshold; transient timing is outside the closed-form scope of this stage)",
+      "source": "IF-006",
+      "status": "unverified"
+    },
+    {
+      "expected": {},
+      "measured_v": "not evaluated",
+      "name": "I2C fast-mode rise time with 4.7 kOhm pull-ups (bus capacitance is not specified anywhere in the design context)",
+      "source": "IF-003",
+      "status": "unverified"
+    },
+    {
+      "available_ma": "1000 mA",
+      "margin_percent": "66.7%",
+      "name": "U3 LDO output current capability vs the continuous rail requirement",
+      "required_ma": "600 mA",
+      "source": "PWR-003",
+      "status": "pass"
+    },
+    {
+      "available_ma": "1000 mA",
+      "margin_percent": "89.2%",
+      "name": "+3V3 rail itemised load budget vs U3 capability (U1 500 mA peak + U4 26 mA + U2 0.01 mA + SDA 0.702 mA + SCL 0.702 mA + EN 0.33 mA)",
+      "required_ma": "528.4 mA",
+      "source": "PWR-003",
+      "status": "pass"
+    },
+    {
+      "available_ma": "500 mA",
+      "margin_percent": "-5.7%",
+      "name": "VBUS draw vs USB-C default source budget (an LDO passes load current 1:1, so worst-case ESP32 RF peak load appears almost unchanged on VBUS plus LDO quiescent)",
+      "required_ma": "530 mA",
+      "source": "PWR-005",
+      "status": "failed"
+    },
+    {
+      "available_ma": "5000 mA",
+      "margin_percent": "900%",
+      "name": "J1 USB-C receptacle power contact current rating vs sink budget",
+      "required_ma": "500 mA",
+      "source": "GCT USB4105 datasheet, Electrical Specifications",
+      "status": "pass"
+    },
+    {
+      "available_ma": "4.61 mA",
+      "margin_percent": "557%",
+      "name": "R3/R4 4.7 kOhm 0603 pull-up power rating margin (2.32 mW dissipated when the line is held low vs the 0.1 W rating)",
+      "required_ma": "0.702 mA",
+      "source": "Yageo RC-L series datasheet, Power Rating table",
+      "status": "pass"
+    },
+    {
+      "available_ma": "3.16 mA",
+      "margin_percent": "858%",
+      "name": "R5 10 kOhm 0603 EN pull-up power rating margin (1.09 mW when EN is held low vs the 0.1 W rating)",
+      "required_ma": "0.33 mA",
+      "source": "Yageo RC-L series datasheet, Power Rating table",
+      "status": "pass"
+    },
+    {
+      "available_ma": "4.43 mA",
+      "margin_percent": "5437%",
+      "name": "R1/R2 5.1 kOhm 0603 CC termination power rating margin (0.033 mW at the 80 uA Rp current vs the 0.1 W rating)",
+      "required_ma": "0.08 mA",
+      "source": "Yageo RC-L series datasheet, Power Rating table",
+      "status": "pass"
+    },
+    {
+      "available_ma": "3.0 mA",
+      "margin_percent": "327%",
+      "name": "TMP102 open-drain sink capability vs I2C pull-up current",
+      "required_ma": "0.702 mA",
+      "source": "Texas Instruments TMP102 datasheet (SBOS397), Electrical Characteristics (IOL)",
+      "status": "pass"
+    },
+    {
+      "available_ma": "1000 mA",
+      "margin_percent": "100%",
+      "name": "U3 LDO output current headroom against the ESP32 recommended supply capability",
+      "required_ma": "500 mA",
+      "source": "ESP32-WROOM-32E/32UE datasheet, Section 3, Recommended Operating Conditions",
+      "status": "pass"
+    }
+  ]
+}

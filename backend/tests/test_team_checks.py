@@ -276,7 +276,13 @@ def test_gated_agent_prompts_state_the_vocabulary_they_emit() -> None:
             "Power symbols and PWR_FLAG symbols are net markers",
             "Connecting an already-netted ordinary pin to a new net moves its existing label",
         ),
-        "simulation": ("pass, failed, or unverified", "Numeric values must include units"),
+        "simulation": (
+            "pass, failed, or unverified",
+            "Numeric values must include units",
+            "pass or failed verdict",
+            "unverified tests must state a concise explicit reason",
+            "not a silent escape hatch",
+        ),
         "verification": (
             "severity error, warning, or info",
             "decision status passed, failed, or unverified",
@@ -896,10 +902,66 @@ def test_simulation_gate_passes_with_units_and_fails_without_assumptions() -> No
     unitless = passing.model_copy(update={"tests": [passing.tests[0].model_copy(update={"measured_v": 3.3})]})
     assert not check_simulation(unitless, _requirements(), project_version="rev-1").passed
     unknown_requirement = passing.model_copy(
-        update={"tests": [passing.tests[0].model_copy(update={"source": "requirement PWR-999"})]}
+        update={
+            "tests": [passing.tests[0].model_copy(update={"status": "pass", "source": "requirement PWR-999"})]
+        }
     )
     assert not check_simulation(unknown_requirement, _requirements(), project_version="rev-1").passed
+    empty_reason = passing.model_copy(
+        update={"tests": [passing.tests[0].model_copy(update={"measured_v": ""})]}
+    )
+    assert not check_simulation(empty_reason, _requirements(), project_version="rev-1").passed
+    missing_source_pass = passing.model_copy(
+        update={"tests": [passing.tests[0].model_copy(update={"status": "pass", "source": None})]}
+    )
+    assert not check_simulation(missing_source_pass, _requirements(), project_version="rev-1").passed
+    failed = passing.tests[0].model_copy(update={"status": "failed"})
+    failed_report = passing.model_copy(update={"tests": [failed]})
+    assert not check_simulation(failed_report, _requirements(), project_version="rev-1").passed
+    missing_source_failed = failed_report.model_copy(
+        update={"tests": [failed.model_copy(update={"source": None})]}
+    )
+    assert not check_simulation(missing_source_failed, _requirements(), project_version="rev-1").passed
     assert not check_simulation(SimulationReport(tests=[]), project_version="rev-1").passed
+
+
+def test_thirteenth_live_simulation_keeps_unverified_reasons_and_failed_tests_strict() -> None:
+    report = SimulationReport.model_validate(
+        json.loads((Path(__file__).parent / "fixtures" / "live_simulation_thirteenth.json").read_text())
+    )
+    requirements = RequirementsDoc.model_validate(
+        json.loads(
+            (Path(__file__).parent / "fixtures" / "live_architecture_twelfth_requirements.json").read_text()
+        )
+    )
+    unverified_without_source = report.model_copy(
+        update={
+            "tests": [
+                test.model_copy(update={"source": None})
+                if "LED" in test.name or "divider" in test.name
+                else test
+                for test in report.tests
+            ]
+        }
+    )
+    result = check_simulation(unverified_without_source, requirements, project_version="thirteenth-live")
+    assert not result.passed
+    unverified = [
+        test for test in unverified_without_source.tests if test.status.lower().startswith("unverified")
+    ]
+    assert unverified
+    assert all(test.source is None for test in unverified if "LED" in test.name or "divider" in test.name)
+    assert not any(
+        finding.rule == "simulation range traceability"
+        and finding.kicad_object in {test.name for test in unverified}
+        for finding in result.findings
+    )
+    assert any(
+        finding.rule == "simulation test status"
+        and "VBUS draw vs USB-C default source budget" in finding.kicad_object
+        and finding.severity == "error"
+        for finding in result.findings
+    )
 
 
 def test_architecture_voltage_formatting_is_not_a_gate_failure() -> None:

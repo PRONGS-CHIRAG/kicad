@@ -1045,13 +1045,36 @@ def check_simulation(
                     "warning",
                 )
             )
+            reason = test.measured_v if isinstance(test, SimulationRailTest) else test.required_ma
+            if not isinstance(reason, str) or not reason.strip():
+                findings.append(
+                    finding(
+                        "unverified simulation reason",
+                        reason,
+                        "explicit reason",
+                        test.name,
+                        "simulation report",
+                        "error",
+                    )
+                )
+        elif not _is_pass_status(test.status):
+            findings.append(
+                finding(
+                    "simulation test status",
+                    test.status,
+                    "pass or unverified",
+                    test.name,
+                    "simulation report",
+                    "error",
+                )
+            )
         source = test.source or ""
         requirement_match = _REQUIREMENT_ID_RE.search(source)
         traceable = (
             bool(requirement_match and requirement_match.group(0).upper() in requirement_ids)
             or "datasheet" in source.lower()
         )
-        if not traceable:
+        if not _is_unverified_status(test.status) and not traceable:
             findings.append(
                 finding(
                     "simulation range traceability",

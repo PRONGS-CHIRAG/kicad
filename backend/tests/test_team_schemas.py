@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
 from app.config import Settings, settings
-from app.kicad.reader import Component, Pin, ProjectState
+from app.kicad.reader import Component, Pin, ProjectState, read_project
 from app.models import ErcReport
 from app.team.prompts import build_project_manager_prompt
 from app.team.registry import AGENTS, get_agent
@@ -271,6 +273,33 @@ def test_design_context_builds_and_renders_the_pin_table(tmp_path) -> None:
     assert "U1 | TMP102 | Sensor:TMP102 | 1 | SDA | bidirectional" in prompt
     assert "I2C_SDA: U1.1" in prompt
     assert '"components"' not in prompt
+
+
+def test_design_context_includes_board_footprint_inventory() -> None:
+    directory = Path(__file__).parents[2] / "fixtures" / "projects" / "esp32_i2c_board"
+    state = read_project(directory)
+    context = DesignContext.from_project(
+        state,
+        ErcReport(ran=True),
+        ErcReport(ran=True),
+        directory / "esp32_i2c_board.kicad_pcb",
+    )
+    assert context.board is not None
+    assert [(item.reference, item.x_mm, item.y_mm) for item in context.board.footprints] == [
+        ("J1", 120.0, 75.0),
+        ("U1", 65.0, 65.0),
+        ("U2", 95.0, 55.0),
+    ]
+    project = ProjectSpec(project_id="board", current_stage="pcb_layout", design_context=context)
+    prompt = get_agent("pcb_layout").build_prompt(
+        project,
+        AgentTask(task_id="layout-inventory", assigned_agent="pcb_layout", objective="place parts"),
+        {},
+    )
+    assert "Placed footprints (only these existing references can be moved):" in prompt
+    assert "J1 | 120 | 75" in prompt
+    assert "MVP layout cannot add new footprints" in prompt
+    assert "schematic symbol has no board footprint" in prompt
 
 
 def test_duplicate_requirement_ids_are_rejected() -> None:

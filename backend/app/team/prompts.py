@@ -24,6 +24,18 @@ def render_design_context(context: DesignContext) -> str:
             f"Board: {context.board.width_mm:g} x {context.board.height_mm:g} mm "
             f"(outline {min_x:g},{min_y:g} to {max_x:g},{max_y:g})"
         )
+        if context.board.footprints:
+            lines.append("Placed footprints (only these existing references can be moved):")
+            lines.append("reference | x | y")
+            lines.extend(
+                f"{footprint.reference} | {footprint.x_mm:g} | {footprint.y_mm:g}"
+                for footprint in context.board.footprints
+            )
+        else:
+            lines.append("Placed footprints: none")
+        lines.append(
+            "MVP layout cannot add new footprints; report symbols without footprints as limitations."
+        )
     else:
         lines.append("Board: none")
     lines.append("Pin table:")
@@ -167,7 +179,12 @@ def build_pcb_layout_prompt(
         context,
         task,
         inputs,
-        "Propose placement only within the MVP scope. Do not claim routing that was not performed.",
+        (
+            "Propose placement only within the MVP scope. Only references in the placed-footprint "
+            "inventory can be moved; this MVP cannot add new footprints to the board. If a schematic "
+            "symbol has no board footprint, report it as a limitation rather than placing it. Do not "
+            "claim routing that was not performed."
+        ),
     )
 
 
@@ -183,8 +200,10 @@ def build_simulation_prompt(
         (
             "Perform only closed-form power, regulator, LED, divider, pull-up, and "
             "rating-margin analysis. Use exactly one status per test: pass, failed, or "
-            "unverified. Numeric values must include units, and source must name either "
-            "a requirement ID (PREFIX-NNN) or a datasheet source."
+            "unverified. Numeric values must include units. Tests with a pass or failed verdict "
+            "must cite either a requirement ID (PREFIX-NNN) or a datasheet source; unverified "
+            "tests must state a concise explicit reason in the measured result text; unverified "
+            "is not a silent escape hatch."
         ),
     )
 

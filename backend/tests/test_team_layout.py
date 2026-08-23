@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -10,7 +11,7 @@ import pytest
 from app.models import ErcReport, Violation
 from app.team.layout import LayoutApplicationError, apply_layout
 from app.team.profiles import get_profile
-from app.team.schemas import LayoutProposal
+from app.team.schemas import LayoutProposal, Placement
 
 FIXTURE = Path(__file__).parents[2] / "fixtures" / "projects" / "esp32_i2c_board"
 
@@ -57,6 +58,29 @@ def test_unknown_reference_is_rejected_before_any_write(tmp_path: Path) -> None:
             checkpoint_path=tmp_path / "checkpoint",
         )
     assert board.read_bytes() == original
+
+
+def test_thirteenth_live_layout_rejects_absent_board_references(tmp_path: Path) -> None:
+    board = _board(tmp_path)
+    proposal = LayoutProposal.model_validate(
+        json.loads((Path(__file__).parent / "fixtures" / "live_pcb_layout_thirteenth.json").read_text())
+    )
+    proposal = proposal.model_copy(
+        update={
+            "placements": [
+                *proposal.placements,
+                Placement(reference="R1", x=70, y=65, rotation=0, rationale="absent"),
+            ]
+        }
+    )
+    with pytest.raises(LayoutApplicationError, match="R1"):
+        apply_layout(
+            board,
+            proposal,
+            "generic_two_layer",
+            project_version="thirteenth-live",
+            checkpoint_path=tmp_path / "checkpoint",
+        )
 
 
 def test_rejected_edge_placement_restores_original_bytes(tmp_path: Path) -> None:

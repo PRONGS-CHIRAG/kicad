@@ -82,10 +82,19 @@ class CheckCounts(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class BoardFootprint(BaseModel):
+    reference: str
+    x_mm: float
+    y_mm: float
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class BoardContext(BaseModel):
     outline: tuple[float, float, float, float]
     width_mm: float
     height_mm: float
+    footprints: list[BoardFootprint] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -107,7 +116,8 @@ class DesignContext(BaseModel):
         drc_baseline: ErcReport | None = None,
         board_path: Path | str | None = None,
     ) -> DesignContext:
-        from ..kicad.board import board_outline, load
+        from ..kicad import sexpr
+        from ..kicad.board import board_outline, footprint_reference, load
 
         components = [
             DesignComponent(
@@ -131,10 +141,24 @@ class DesignContext(BaseModel):
         if path.exists():
             document = load(path)
             min_x, min_y, max_x, max_y = board_outline(document)
+            footprints = []
+            for footprint in sexpr.find_all(document, "footprint"):
+                reference = footprint_reference(footprint)
+                at = sexpr.find(footprint, "at")
+                if reference is None or at is None or len(at) < 3:
+                    continue
+                try:
+                    x_mm = float(str(at[1]))
+                    y_mm = float(str(at[2]))
+                except ValueError:
+                    continue
+                footprints.append(BoardFootprint(reference=reference, x_mm=x_mm, y_mm=y_mm))
+            footprints.sort(key=lambda item: item.reference)
             board = BoardContext(
                 outline=(min_x, min_y, max_x, max_y),
                 width_mm=max_x - min_x,
                 height_mm=max_y - min_y,
+                footprints=footprints,
             )
         return cls(
             components=components,
