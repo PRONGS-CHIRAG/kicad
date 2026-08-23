@@ -22,8 +22,11 @@ def apply_schematic_intents(intents: SchematicIntents, project_dir: Path) -> Non
         if isinstance(intent, ConnectPinsIntent):
             _require_pin(state, intent.from_pin)
             _require_pin(state, intent.to_pin)
+            edits.validate_pin_connection(document, state, intent.from_pin, intent.net_name)
+            edits.validate_pin_connection(document, state, intent.to_pin, intent.net_name)
         elif isinstance(intent, ConnectPinToNetIntent):
             _require_pin(state, intent.pin)
+            edits.validate_pin_connection(document, state, intent.pin, intent.net)
         elif isinstance(intent, EnsurePullupIntent):
             if not intent.net or not intent.to_net:
                 raise ValueError("pull-up intent must name both nets")
@@ -56,3 +59,8 @@ def _require_pin(state: ProjectState, pin_ref: str) -> None:
     reference, _, pin_key = pin_ref.partition(".")
     if not pin_key or state.pin_position(reference, pin_key) is None:
         raise ValueError(f"pin {pin_ref} not found in schematic")
+    component = state.components[reference]
+    if component.is_power:
+        raise ValueError(
+            f"rejected {pin_ref}: power symbols and power flags are net markers, not connectable pins"
+        )

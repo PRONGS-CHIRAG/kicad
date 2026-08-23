@@ -1,0 +1,155 @@
+{
+  "assumptions": [
+    "Only three intent types are supported (connect_pins, connect_pin_to_net, ensure_pullup), so component additions/replacements (USB-C receptacle for J1, AMS1117-3.3 LDO U3, CP2102N U4, decoupling caps, 0R strap R6, test point TP1) cannot be expressed here and are left to the component/layout stages.",
+    "I2C bus nets are named SDA and SCL; U1 GPIO21 = SDA, U1 GPIO22 = SCL per IF-001.",
+    "4.7k pull-ups on SDA and SCL to +3V3 per IF-002; 100 kHz standard mode with <400 pF bus capacitance (IF-003) is satisfied with two devices.",
+    "U2 VCC (pin 1) is currently on no net; it is added to +3V3, and U2 GND (pin 2) is added to GND to close PWR-003/PWR-008 and TEST-004.",
+    "U2 pin 5 (ADD0) is already on GND in the baseline netlist; the intent restates it as an intentional strap for address 0x48 (IF-004). Physically it should be a 0R 0603 jumper (R6), which cannot be expressed as an intent.",
+    "U1 EN (pin 8) is moved off the +3V3 net onto a dedicated EN net with a 10k pull-up to +3V3 (IF-007). The 100 nF from EN to GND cannot be expressed with the supported intents and must be added as component C5.",
+    "U1 GPIO25 (pin 5) is terminated to a dedicated GPIO25_TP net feeding test point TP1 (IF-008) rather than a no-connect flag, matching the component stage decision.",
+    "PWR_FLAG symbols: #FLG01 is assigned to VBUS and #FLG02 to +3V3; a third flag is required on GND for PWR-007 but no third PWR_FLAG symbol exists in the pin table, so the GND flag must be added as a new symbol (cannot be expressed as an intent).",
+    "#PWR01 (+3V3) and #PWR02 (GND) power symbols are tied to their respective rails to make the global rails explicit.",
+    "USB_D+/USB_D- baseline connections (J1.3->U1.6, J1.2->U1.7) are left unchanged as intents; note that ESP32-WROOM-32 has no USB PHY, so per the component stage these pins are really UART TXD0/RXD0 and the D+/D- pair should terminate on the CP2102N bridge (U4). This re-mapping requires new symbols and is flagged rather than proposed as an intent.",
+    "VBUS_FILT, the LDO input/output connections, and the 5.1k CC1/CC2 pull-downs (IF-006) require the new USB-C receptacle and LDO symbols and therefore cannot be proposed as intents at this stage.",
+    "The 90 Ohm differential pair spec (IF-005) is treated as best-effort symmetric routing since COST-003 forbids controlled impedance; acceptable for USB full speed."
+  ],
+  "intents": [
+    {
+      "id": "SCH-001",
+      "net": "+3V3",
+      "pin": "U2.1",
+      "purpose": "PWR-003/TEST-004: drive TMP102 VCC from the 3.3 V logic rail; power_in pin is currently unconnected.",
+      "type": "connect_pin_to_net"
+    },
+    {
+      "id": "SCH-002",
+      "net": "GND",
+      "pin": "U2.2",
+      "purpose": "PWR-008/TEST-004: tie TMP102 GND into the single common ground net (currently missing from GND).",
+      "type": "connect_pin_to_net"
+    },
+    {
+      "from_pin": "U1.3",
+      "id": "SCH-003",
+      "net_name": "SDA",
+      "purpose": "IF-001: I2C data from ESP32 GPIO21 to TMP102 SDA at 3.3 V logic.",
+      "to_pin": "U2.3",
+      "type": "connect_pins"
+    },
+    {
+      "from_pin": "U1.4",
+      "id": "SCH-004",
+      "net_name": "SCL",
+      "purpose": "IF-001: I2C clock from ESP32 GPIO22 to TMP102 SCL at 100 kHz standard mode.",
+      "to_pin": "U2.4",
+      "type": "connect_pins"
+    },
+    {
+      "id": "SCH-005",
+      "net": "SDA",
+      "purpose": "IF-002/IF-003: open-drain SDA idle-high bias, 0.70 mA sink, rise time within 100 kHz standard mode.",
+      "to_net": "+3V3",
+      "type": "ensure_pullup",
+      "value": "4.7k"
+    },
+    {
+      "id": "SCH-006",
+      "net": "SCL",
+      "purpose": "IF-002/IF-003: open-drain SCL idle-high bias, 0.70 mA sink, rise time within 100 kHz standard mode.",
+      "to_net": "+3V3",
+      "type": "ensure_pullup",
+      "value": "4.7k"
+    },
+    {
+      "id": "SCH-007",
+      "net": "GND",
+      "pin": "U2.5",
+      "purpose": "IF-004: ADD0 strapped low to select I2C address 0x48 and never left floating (intentional strap, to be implemented as 0R jumper R6).",
+      "type": "connect_pin_to_net"
+    },
+    {
+      "id": "SCH-008",
+      "net": "EN",
+      "pin": "U1.8",
+      "purpose": "IF-007: move ESP32 EN off the +3V3 net onto a dedicated RC-strapped enable node.",
+      "type": "connect_pin_to_net"
+    },
+    {
+      "id": "SCH-009",
+      "net": "EN",
+      "purpose": "IF-007: 10k pull-up forming the EN power-on delay with the 100 nF to GND (C5), so EN is released after the 3.3 V rail settles.",
+      "to_net": "+3V3",
+      "type": "ensure_pullup",
+      "value": "10k"
+    },
+    {
+      "id": "SCH-010",
+      "net": "GPIO25_TP",
+      "pin": "U1.5",
+      "purpose": "IF-008/TEST-001: terminate spare GPIO25 on a defined net routed to test point TP1 so no pin is left unconnected in ERC.",
+      "type": "connect_pin_to_net"
+    },
+    {
+      "id": "SCH-011",
+      "net": "VBUS",
+      "pin": "#FLG01.1",
+      "purpose": "PWR-007/TEST-004: PWR_FLAG marks VBUS as driven since the USB receptacle pin is passive.",
+      "type": "connect_pin_to_net"
+    },
+    {
+      "id": "SCH-012",
+      "net": "+3V3",
+      "pin": "#FLG02.1",
+      "purpose": "PWR-007/TEST-004: PWR_FLAG marks the +3V3 rail as driven for the U1.1 and U2.1 power_in pins.",
+      "type": "connect_pin_to_net"
+    },
+    {
+      "id": "SCH-013",
+      "net": "+3V3",
+      "pin": "#PWR01.1",
+      "purpose": "Make the global +3V3 rail symbol explicit on the regulated logic rail (PWR-003).",
+      "type": "connect_pin_to_net"
+    },
+    {
+      "id": "SCH-014",
+      "net": "GND",
+      "pin": "#PWR02.1",
+      "purpose": "Make the global GND rail symbol explicit on the single common ground net (PWR-008).",
+      "type": "connect_pin_to_net"
+    },
+    {
+      "id": "SCH-015",
+      "net": "VBUS",
+      "pin": "J1.1",
+      "purpose": "PWR-001: 5 V VBUS input from the USB receptacle feeds the bulk decoupling and LDO input.",
+      "type": "connect_pin_to_net"
+    },
+    {
+      "id": "SCH-016",
+      "net": "GND",
+      "pin": "J1.4",
+      "purpose": "PWR-008: USB cable ground return joins the single common GND net.",
+      "type": "connect_pin_to_net"
+    },
+    {
+      "from_pin": "J1.3",
+      "id": "SCH-017",
+      "net_name": "USB_D+",
+      "purpose": "IF-005: retain the D+ leg of the USB 2.0 full-speed pair (best-effort symmetric routing; see assumption on the required USB-UART bridge).",
+      "to_pin": "U1.6",
+      "type": "connect_pins"
+    },
+    {
+      "from_pin": "J1.2",
+      "id": "SCH-018",
+      "net_name": "USB_D-",
+      "purpose": "IF-005: retain the D- leg of the USB 2.0 full-speed pair (best-effort symmetric routing; see assumption on the required USB-UART bridge).",
+      "to_pin": "U1.7",
+      "type": "connect_pins"
+    }
+  ],
+  "logic_voltage": "3.3V",
+  "protected_objects": [],
+  "protocol": "I2C",
+  "pullup_value": "4.7k"
+}

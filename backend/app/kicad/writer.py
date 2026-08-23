@@ -80,6 +80,41 @@ def has_global_label(doc: list, name: str, x: float, y: float) -> bool:
     return False
 
 
+def labels_at(doc: list, x: float, y: float) -> list[tuple[str, str]]:
+    """Return named labels attached to a sheet coordinate."""
+    labels: list[tuple[str, str]] = []
+    for kind in ("label", "global_label", "hierarchical_label"):
+        for label in sexpr.find_all(doc, kind):
+            at = sexpr.find(label, "at")
+            if at is None:
+                continue
+            if abs(sexpr.number(at, 1) - x) < 0.01 and abs(sexpr.number(at, 2) - y) < 0.01:
+                labels.append((kind, sexpr.atom(label)))
+    return labels
+
+
+def remove_labels_at(doc: list, x: float, y: float) -> int:
+    """Remove named labels attached to a sheet coordinate."""
+    removed = 0
+    for index in range(len(doc) - 1, -1, -1):
+        node = doc[index]
+        if not isinstance(node, list) or not node:
+            continue
+        if not isinstance(node[0], S) or node[0].value not in {
+            "label",
+            "global_label",
+            "hierarchical_label",
+        }:
+            continue
+        at = sexpr.find(node, "at")
+        if at is None:
+            continue
+        if abs(sexpr.number(at, 1) - x) < 0.01 and abs(sexpr.number(at, 2) - y) < 0.01:
+            del doc[index]
+            removed += 1
+    return removed
+
+
 def add_global_label(doc: list, name: str, x: float, y: float, angle: float = 0) -> bool:
     """Attach a named global label at a sheet coordinate (idempotent)."""
     if has_global_label(doc, name, x, y):

@@ -272,6 +272,10 @@ def test_gated_agent_prompts_state_the_vocabulary_they_emit() -> None:
             "no parentheses, commentary, or alternatives",
             "reason or verified_constraints",
         ),
+        "schematic_design": (
+            "Power symbols and PWR_FLAG symbols are net markers",
+            "Connecting an already-netted ordinary pin to a new net moves its existing label",
+        ),
         "simulation": ("pass, failed, or unverified", "Numeric values must include units"),
         "verification": (
             "severity error, warning, or info",

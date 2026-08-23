@@ -148,7 +148,13 @@ def build_schematic_design_prompt(
         context,
         task,
         inputs,
-        "Propose only supported schematic connection intents and report assumptions.",
+        (
+            "Propose only supported schematic connection intents and report assumptions. "
+            "Power symbols and PWR_FLAG symbols are net markers, not connectable intent "
+            "targets. Connecting an already-netted ordinary pin to a new net moves its "
+            "existing label when it is safely isolated; do not assume additive labels merge "
+            "or split nets."
+        ),
     )
 
 

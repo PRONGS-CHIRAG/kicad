@@ -1,7 +1,9 @@
 """The actual schematic edits, as primitives both executors share.
 
 Connections are made with global labels placed on pin connection points, which is
-what KiCAD's own netlister resolves into nets.
+what KiCAD's own netlister resolves into nets. Moving an already-labelled pin
+replaces its isolated label; shared labels and wires are rejected rather than
+silently re-netting unrelated items.
 
 These live here rather than in either executor because there are two of them: the
 local executor batches a whole plan into one load/save, while the MCP server
@@ -11,7 +13,7 @@ paths produce the same schematic instead of two implementations that drift.
 
 from __future__ import annotations
 
-from . import writer
+from . import sexpr, writer
 from .reader import ProjectState
 
 # Horizontal step between pull-ups added in the same batch. `free_area` already
@@ -26,18 +28,130 @@ def label_pin(doc: list, state: ProjectState, pin_ref: str, net: str) -> str:
     position = state.pin_position(reference, pin_key)
     if position is None:
         raise ValueError(f"pin {pin_ref} not found in schematic")
+    _validate_pin_net_change(doc, state, pin_ref, net, position)
+    current = _current_pin_net(doc, state, pin_ref, position)
+    if current and current == net:
+        return f"{pin_ref} already on {net}"
+    if current and not current.startswith("Net-("):
+        writer.remove_labels_at(doc, *position)
     added = writer.add_global_label(doc, net, position[0], position[1])
     return f"labelled {pin_ref} as {net}" if added else f"{pin_ref} already on {net}"
 
 
 def connect_pins(doc: list, state: ProjectState, from_pin: str, to_pin: str, net: str) -> str:
-    return "; ".join(
-        (label_pin(doc, state, from_pin, net), label_pin(doc, state, to_pin, net))
-    )
+    validate_pin_connection(doc, state, from_pin, net)
+    validate_pin_connection(doc, state, to_pin, net)
+    return "; ".join((label_pin(doc, state, from_pin, net), label_pin(doc, state, to_pin, net)))
 
 
 def connect_pin_to_net(doc: list, state: ProjectState, pin: str, net: str) -> str:
+    validate_pin_connection(doc, state, pin, net)
     return label_pin(doc, state, pin, net)
+
+
+def validate_pin_connection(doc: list, state: ProjectState, pin_ref: str, net: str) -> None:
+    _validate_pin_net_change(doc, state, pin_ref, net, _pin_position(state, pin_ref))
+
+
+def _pin_position(state: ProjectState, pin_ref: str) -> tuple[float, float]:
+    reference, _, pin_key = pin_ref.partition(".")
+    position = state.pin_position(reference, pin_key)
+    if position is None:
+        raise ValueError(f"pin {pin_ref} not found in schematic")
+    return position
+
+
+def _validate_pin_net_change(
+    doc: list,
+    state: ProjectState,
+    pin_ref: str,
+    net: str,
+    position: tuple[float, float],
+) -> None:
+    reference, _, pin_key = pin_ref.partition(".")
+    component = state.components.get(reference)
+    if component is None:
+        raise ValueError(f"pin {pin_ref} not found in schematic")
+    if component.is_power:
+        raise ValueError(
+            f"rejected {pin_ref}: power symbols and power flags are net markers, not connectable pins"
+        )
+    pin = component.pin(pin_key)
+    if pin is None:
+        raise ValueError(f"pin {pin_ref} not found in schematic")
+    labels = writer.labels_at(doc, *position)
+    current = labels[0][1] if len(labels) == 1 else state.pin_nets.get(f"{reference}.{pin.number}")
+    if not current or current == net or current.startswith("Net-("):
+        return
+    if len(labels) != 1 or labels[0][1] != current:
+        raise ValueError(
+            f"cannot move {pin_ref} from {current} to {net}: "
+            "its existing net label is not uniquely attached to this pin"
+        )
+    if _point_is_shared(doc, state, pin_ref, position):
+        raise ValueError(
+            f"cannot move {pin_ref} from {current} to {net}: "
+            "its existing net label is shared with other schematic items"
+        )
+
+
+def _current_pin_net(
+    doc: list,
+    state: ProjectState,
+    pin_ref: str,
+    position: tuple[float, float],
+) -> str | None:
+    labels = writer.labels_at(doc, *position)
+    if len(labels) == 1:
+        return labels[0][1]
+    reference, _, pin_key = pin_ref.partition(".")
+    pin = state.components[reference].pin(pin_key)
+    assert pin is not None
+    return state.pin_nets.get(f"{reference}.{pin.number}")
+
+
+def _point_is_shared(
+    doc: list,
+    state: ProjectState,
+    pin_ref: str,
+    position: tuple[float, float],
+) -> bool:
+    for other_ref, other_position in state.pin_positions.items():
+        if other_ref != pin_ref and _same_point(other_position, position):
+            return True
+    for wire in sexpr.find_all(doc, "wire"):
+        points = sexpr.find(wire, "pts")
+        if points is None:
+            continue
+        coordinates = [
+            (sexpr.number(point, 1), sexpr.number(point, 2)) for point in sexpr.find_all(points, "xy")
+        ]
+        if any(
+            _point_on_segment(position, start, end)
+            for start, end in zip(coordinates, coordinates[1:], strict=False)
+        ):
+            return True
+    return False
+
+
+def _same_point(left: tuple[float, float], right: tuple[float, float]) -> bool:
+    return abs(left[0] - right[0]) < 0.01 and abs(left[1] - right[1]) < 0.01
+
+
+def _point_on_segment(
+    point: tuple[float, float],
+    start: tuple[float, float],
+    end: tuple[float, float],
+) -> bool:
+    if _same_point(start, end):
+        return False
+    cross = (point[0] - start[0]) * (end[1] - start[1]) - (point[1] - start[1]) * (end[0] - start[0])
+    if abs(cross) >= 0.01:
+        return False
+    return (
+        min(start[0], end[0]) - 0.01 <= point[0] <= max(start[0], end[0]) + 0.01
+        and min(start[1], end[1]) - 0.01 <= point[1] <= max(start[1], end[1]) + 0.01
+    )
 
 
 def find_pullup(state: ProjectState, net: str, rail: str) -> str | None:
