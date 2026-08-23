@@ -9,11 +9,13 @@ from app.config import settings
 from app.kicad.erc import KicadCli
 from app.kicad.reader import read_project
 from app.models import ErcReport
+from app.team.cli import _print_report
 from app.team.fallbacks import qa_release_fallback
 from app.team.orchestrator import OrchestratorOptions, TeamOrchestrator
 from app.team.profiles import get_profile
 from app.team.runner import StubAgentRunner
 from app.team.schemas import (
+    AgentResult,
     AgentTask,
     Architecture,
     CheckFinding,
@@ -173,6 +175,33 @@ def test_stub_workflow_reaches_exact_review_wording(tmp_path: Path, monkeypatch)
     ).run(project)
     assert report.release_status == "ready for engineering review"
     assert report.summary == "ready for engineering review"
+
+
+def test_report_marks_requirements_not_run_before_verification(capsys, tmp_path: Path) -> None:
+    project, directory = _project(tmp_path)
+    requirements = _outputs(project, directory)["requirements"]
+    orchestrator = TeamOrchestrator(
+        StubAgentRunner(outputs={}),
+        run_id="requirements-not-run",
+        workspace_dir=tmp_path / "workspace",
+    )
+    report = orchestrator._report(
+        project,
+        {
+            "requirements": AgentResult(
+                task_id="requirements",
+                agent="requirements",
+                status="completed",
+                output=requirements,
+            )
+        },
+        {},
+        [],
+        "needs_human_review",
+    )
+    _print_report(report)
+    assert report.requirements_status == "not run"
+    assert "Requirements satisfied: not run" in capsys.readouterr().out
 
 
 def test_failed_requirements_gate_routes_back_until_human_review(tmp_path: Path) -> None:

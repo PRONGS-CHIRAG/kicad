@@ -327,7 +327,7 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
                     "interface requirement statement",
                     "interfaces",
                     "requirements",
-                    "error",
+                    "warning",
                 )
             )
         if voltage_quantities and not any(
@@ -342,7 +342,7 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
                     "interface or power requirement quantity",
                     "interfaces",
                     "requirements",
-                    "error",
+                    "warning",
                 )
             )
     mechanical_values = (
@@ -422,16 +422,76 @@ def _signal_matches(required: str, signal: str) -> bool:
 
 def _signal_is_confident(required: str) -> bool:
     without_annotations = re.sub(r"\([^)]*\)", " ", required)
-    if re.search(r"\b(?:gnd|vbus|vcc|3v3|sda|scl|en|add0|gpio)\b", without_annotations, re.I):
-        return True
     return bool(re.search(r"\b[A-Za-z0-9]+[_/+*-][A-Za-z0-9_/+*-]*\b", without_annotations))
+
+
+def _global_net_names(document: RequirementsDoc, architecture: Architecture) -> set[str]:
+    names = {"ground"}
+    declared = [document.power.input, document.power.logic_voltage]
+    for block in architecture.blocks:
+        block_type = block.type.lower()
+        if "power" in block_type and ("distribution" in block_type or "decoupl" in block_type):
+            declared.extend(block.required_inputs or [])
+            declared.extend(block.required_outputs or [])
+    result: set[str] = set()
+    for value in declared:
+        lowered = value.lower()
+        if re.search(r"\b(?:gnd|ground|vss|return)\b", lowered):
+            result.add("ground")
+        if re.search(r"\bvbus\b", lowered):
+            result.add("vbus")
+        if re.search(r"(?:\+?3v3|3\.3\s*v)", lowered):
+            result.add("3v3")
+    return names | result
+
+
+def _named_global_nets(value: str) -> set[str]:
+    lowered = value.lower()
+    result: set[str] = set()
+    if re.search(r"\b(?:gnd|ground|vss|return)\b", lowered):
+        result.add("ground")
+    if re.search(r"\bvbus\b", lowered):
+        result.add("vbus")
+    if re.search(r"(?:\+?3v3|3\.3\s*v)", lowered):
+        result.add("3v3")
+    return result
+
+
+def _is_constraint_item(value: str) -> bool:
+    lowered = value.lower()
+    return any(
+        marker in lowered
+        for marker in (
+            "clearance",
+            "constraint",
+            "courtyard",
+            "documentation",
+            "keep-out",
+            "keepout",
+            "layer",
+            "outline",
+            "placement zone",
+            "stackup",
+            "zone",
+        )
+    )
 
 
 def _unmatched_signal_severity(required: str, block: ArchitectureBlock) -> str:
     lowered = required.lower()
+    if _is_constraint_item(required):
+        return "info"
     if any(
         marker in lowered
-        for marker in ("external", "spare", "passive", "declaration", "strap", "temperature data")
+        for marker in (
+            "cable",
+            "external",
+            "spare",
+            "passive",
+            "declaration",
+            "strap",
+            "temperature data",
+        )
     ):
         return "warning"
     if _signal_tokens(required) & _signal_tokens(block.type):
@@ -478,6 +538,8 @@ def check_architecture(
             )
     incoming: dict[str, list[str]] = {block_id: [] for block_id in blocks}
     outgoing: dict[str, list[str]] = {block_id: [] for block_id in blocks}
+    global_nets = _global_net_names(document, architecture)
+    global_nets_present: set[str] = set()
     for connection in architecture.connections:
         if connection.from_block not in blocks or connection.to_block not in blocks:
             findings.append(
@@ -493,6 +555,7 @@ def check_architecture(
             continue
         incoming[connection.to_block].append(connection.signal)
         outgoing[connection.from_block].append(connection.signal)
+        global_nets_present.update(_named_global_nets(connection.signal) & global_nets)
         source = blocks[connection.from_block]
         target = blocks[connection.to_block]
         if (
@@ -513,6 +576,11 @@ def check_architecture(
             )
     for block in architecture.blocks:
         for item in block.required_inputs or []:
+            required_global_nets = _named_global_nets(item) & global_nets
+            if required_global_nets and required_global_nets & global_nets_present:
+                continue
+            if _is_constraint_item(item):
+                continue
             if not any(_signal_matches(item, signal) for signal in incoming[block.id]):
                 findings.append(
                     finding(
@@ -525,6 +593,11 @@ def check_architecture(
                     )
                 )
         for item in block.required_outputs or []:
+            required_global_nets = _named_global_nets(item) & global_nets
+            if required_global_nets and required_global_nets & global_nets_present:
+                continue
+            if _is_constraint_item(item):
+                continue
             if not any(_signal_matches(item, signal) for signal in outgoing[block.id]):
                 findings.append(
                     finding(

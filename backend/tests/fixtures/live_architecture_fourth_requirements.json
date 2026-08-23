@@ -1,0 +1,364 @@
+{
+  "acceptance_tests": [
+    "ERC run reports 0 errors versus the 10-error baseline, with every remaining warning justified in writing.",
+    "DRC run reports 0 errors versus the 5-error baseline, with every remaining warning justified in writing.",
+    "Netlist audit confirms zero floating pins: U1.3, U1.4, U1.5, U2.1, U2.2, U2.3, U2.4 are connected or explicitly no-connect, and VBUS has more than one node.",
+    "Power-up from a USB-C host measures 3.3 V +/-5% at U1.1 and U2.1 with total draw under 500 mA.",
+    "I2C bus scan detects exactly one device at the TMP102 strapped address and returns ambient readings within +/-1.0 C of a reference thermometer.",
+    "Fabrication output review confirms 2-layer stackup, board within 110 x 65 mm, and all features at or above 0.2 mm trace/clearance and 0.6/0.3 mm vias.",
+    "Manufacturability check against the generic_two_layer profile returns no violations and a complete release package (Gerbers, drills, BOM, centroid)."
+  ],
+  "constraints": [
+    "Connector mismatch: the request specifies USB-C, but J1 is instantiated as Connector:USB_B_Micro with only VBUS/D+/D-/GND. A USB-C receptacle with CC pulldowns must replace it, or the request must be amended to micro-B.",
+    "No 3.3 V source exists: VBUS is a single-node net (J1.1) and +3V3 has no regulator or supply, so the board cannot currently power up.",
+    "TMP102 is entirely unpowered and unconnected except ADD0 to GND; VCC, GND, SDA, SCL are all floating.",
+    "No I2C nets exist; GPIO21/GPIO22 and U2.SDA/U2.SCL are unrouted.",
+    "ESP32 EN is tied directly to +3V3 with no RC reset network.",
+    "USB data lines connect J1 directly to ESP32-WROOM-32 USB_D+/USB_D-; the WROOM module has no native USB PHY, so a USB-UART bridge is likely required.",
+    "Manufacturing limited to generic_two_layer: 2 layers, no blind/buried vias, no via-in-pad, minimum 0.2 mm trace/clearance.",
+    "Board must fit within the existing 110 x 65 mm outline (35,35 to 145,100).",
+    "ESP32 module antenna region must remain free of copper and components.",
+    "No cost ceiling, quantity, or environmental/certification target was supplied in the specification; these remain open items."
+  ],
+  "interfaces": [
+    {
+      "devices": 1,
+      "type": "I2C",
+      "voltage": "3.3 V"
+    },
+    {
+      "devices": 1,
+      "type": "USB-C (USB 2.0 full speed, power + data)",
+      "voltage": "5 V VBUS / 3.3 V logic"
+    },
+    {
+      "devices": 1,
+      "type": "GPIO (spare, GPIO25)",
+      "voltage": "3.3 V"
+    }
+  ],
+  "mechanical": {
+    "layers": 2,
+    "maximum_height_mm": 65.0,
+    "maximum_width_mm": 110.0
+  },
+  "power": {
+    "input": "USB-C VBUS, 5 V nominal (4.75-5.25 V); on-board regulator to 3.3 V required (currently absent from the netlist)",
+    "logic_voltage": "3.3 V CMOS",
+    "maximum_current_ma": 500.0
+  },
+  "requirements": [
+    {
+      "category": "power",
+      "id": "PWR-001",
+      "source": "request: 'USB-C power'",
+      "statement": "The board shall be powered from a USB-C receptacle supplying VBUS at 5 V nominal (4.75-5.25 V per USB 2.0 tolerance).",
+      "unit": "V",
+      "value": 5
+    },
+    {
+      "category": "power",
+      "id": "PWR-002",
+      "source": "net list: +3V3 only reaches U1.1, U1.8; no regulator present",
+      "statement": "A regulator shall derive a 3.3 V logic rail from VBUS to supply U1 (ESP32-WROOM-32) and U2 (TMP102); the +3V3 net currently has no source.",
+      "unit": "V",
+      "value": 3.3
+    },
+    {
+      "category": "power",
+      "id": "PWR-003",
+      "source": "ESP32-WROOM-32 peak current, derived",
+      "statement": "The 3.3 V rail shall supply at least 600 mA continuous to cover ESP32 Wi-Fi transmit peaks plus sensor load.",
+      "unit": "mA",
+      "value": 600
+    },
+    {
+      "category": "power",
+      "id": "PWR-004",
+      "source": "USB 2.0 default port budget",
+      "statement": "VBUS input shall be limited to 500 mA maximum draw from the USB host.",
+      "unit": "mA",
+      "value": 500
+    },
+    {
+      "category": "power",
+      "id": "PWR-005",
+      "source": "pin table: U2.1 VCC absent from all nets",
+      "statement": "U2 (TMP102) VCC shall be connected to the +3V3 rail; it is currently unconnected.",
+      "unit": "net",
+      "value": "U2.1 to +3V3"
+    },
+    {
+      "category": "power",
+      "id": "PWR-006",
+      "source": "net list: GND = J1.4, U1.2, U2.5",
+      "statement": "U2 (TMP102) GND pin 2 shall be connected to the GND net; only U2.5 (ADD0) is currently on GND.",
+      "unit": "net",
+      "value": "U2.2 to GND"
+    },
+    {
+      "category": "power",
+      "id": "PWR-007",
+      "source": "standard decoupling practice",
+      "statement": "Each power pin of U1 and U2 shall have local decoupling: 100 nF per pin plus a 10 uF bulk capacitor per rail.",
+      "unit": "F",
+      "value": "100nF + 10uF"
+    },
+    {
+      "category": "power",
+      "id": "PWR-008",
+      "source": "ERC baseline 10 errors; #FLG01/#FLG02 present",
+      "statement": "Exactly one PWR_FLAG shall be attached per power net (+3V3, GND, VBUS) to satisfy ERC power-source checks.",
+      "unit": "count",
+      "value": 3
+    },
+    {
+      "category": "interface",
+      "id": "IF-001",
+      "source": "request: 'I2C sensor'; pin table shows GPIO21/22 and U2.3/U2.4 unconnected",
+      "statement": "The board shall provide one I2C bus at 3.3 V logic connecting U1.GPIO21 (SDA) to U2.SDA and U1.GPIO22 (SCL) to U2.SCL; neither net exists today.",
+      "unit": "bus",
+      "value": "1 bus / 1 peripheral"
+    },
+    {
+      "category": "interface",
+      "id": "IF-002",
+      "source": "I2C bus design practice",
+      "statement": "SDA and SCL shall each be pulled up to +3V3 with 4.7 kOhm resistors for 100 kHz standard-mode operation.",
+      "unit": "kOhm",
+      "value": 4.7
+    },
+    {
+      "category": "interface",
+      "id": "IF-003",
+      "source": "TMP102 capability",
+      "statement": "I2C clock rate shall be 100 kHz minimum capability, up to 400 kHz fast mode supported by TMP102.",
+      "unit": "kHz",
+      "value": 400
+    },
+    {
+      "category": "interface",
+      "id": "IF-004",
+      "source": "net list: GND includes U2.5 ADD0",
+      "statement": "U2.ADD0 shall be strapped to a defined logic level to select the I2C slave address; it is currently tied to GND, which must be an intentional address selection rather than an accidental connection.",
+      "unit": "net",
+      "value": "GND (address 0x48)"
+    },
+    {
+      "category": "interface",
+      "id": "IF-005",
+      "source": "request specifies USB-C; J1 lib_id is Connector:USB_B_Micro",
+      "statement": "The USB interface shall use a USB-C receptacle with CC1/CC2 5.1 kOhm pulldowns for sink advertisement, replacing the currently specified USB_B_Micro connector J1.",
+      "unit": "kOhm",
+      "value": 5.1
+    },
+    {
+      "category": "interface",
+      "id": "IF-006",
+      "source": "USB 2.0 full-speed signalling",
+      "statement": "USB data pair D+/D- shall be routed as a 90 Ohm differential pair between J1 and the USB transceiver, matched within 5 mm.",
+      "unit": "Ohm",
+      "value": 90
+    },
+    {
+      "category": "interface",
+      "id": "IF-007",
+      "source": "net list: +3V3 = U1.1, U1.8 (EN directly on rail)",
+      "statement": "The ESP32 EN pin shall have a reset circuit (10 kOhm pullup to +3V3 and 100 nF to GND) rather than being tied directly to the +3V3 net.",
+      "unit": "mixed",
+      "value": "10kOhm + 100nF"
+    },
+    {
+      "category": "interface",
+      "id": "IF-008",
+      "source": "ESP32/TMP102 logic level",
+      "statement": "Digital I/O signal levels shall be 3.3 V CMOS for all logic interfaces (I2C, GPIO25, EN).",
+      "unit": "V",
+      "value": 3.3
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-001",
+      "source": "board outline 35,35 to 145,100",
+      "statement": "Board outline shall not exceed 110 mm width.",
+      "unit": "mm",
+      "value": 110
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-002",
+      "source": "board outline 35,35 to 145,100",
+      "statement": "Board outline shall not exceed 65 mm height.",
+      "unit": "mm",
+      "value": 65
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-003",
+      "source": "manufacturer_profile: generic_two_layer",
+      "statement": "The PCB shall be a 2-layer design.",
+      "unit": "layers",
+      "value": 2
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-004",
+      "source": "derived from USB-C usability",
+      "statement": "The USB-C connector shall be placed on a board edge with its mating face flush to the outline for cable access.",
+      "unit": "boolean",
+      "value": "edge-mounted"
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-005",
+      "source": "ESP32-WROOM-32 module requirement",
+      "statement": "The ESP32 module antenna keep-out shall extend beyond or overhang the board edge with no copper, planes, or components beneath it.",
+      "unit": "boolean",
+      "value": "antenna keep-out"
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-006",
+      "source": "derived from temperature-measurement accuracy goal",
+      "statement": "The temperature sensor U2 shall be placed at least 15 mm from the regulator and ESP32 module to reduce self-heating error.",
+      "unit": "mm",
+      "value": 15
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-007",
+      "source": "generic_two_layer edge clearance",
+      "statement": "All components shall be placed within the outline with a minimum 1 mm courtyard-to-edge clearance.",
+      "unit": "mm",
+      "value": 1
+    },
+    {
+      "category": "manufacturing",
+      "id": "MFG-001",
+      "source": "manufacturer_profile: generic_two_layer",
+      "statement": "Minimum trace width shall be 0.2 mm and minimum copper clearance 0.2 mm for the generic_two_layer process.",
+      "unit": "mm",
+      "value": 0.2
+    },
+    {
+      "category": "manufacturing",
+      "id": "MFG-002",
+      "source": "manufacturer_profile: generic_two_layer",
+      "statement": "Minimum via shall be 0.6 mm pad with 0.3 mm drill.",
+      "unit": "mm",
+      "value": "0.6/0.3"
+    },
+    {
+      "category": "manufacturing",
+      "id": "MFG-003",
+      "source": "IPC-2221 current capacity, derived from PWR-003",
+      "statement": "Power traces carrying up to 600 mA shall be at least 0.5 mm wide on 1 oz copper.",
+      "unit": "mm",
+      "value": 0.5
+    },
+    {
+      "category": "manufacturing",
+      "id": "MFG-004",
+      "source": "manufacturing release practice",
+      "statement": "The design shall release a complete fabrication package: Gerbers, drill files, IPC-356 netlist, BOM, and centroid file.",
+      "unit": "set",
+      "value": "gerber+drill+BOM+CPL"
+    },
+    {
+      "category": "manufacturing",
+      "id": "MFG-005",
+      "source": "manufacturer_profile: generic_two_layer",
+      "statement": "All parts shall use standard two-layer-compatible footprints with no blind/buried vias, no via-in-pad, and no controlled impedance stackup requirement beyond MFG-001.",
+      "unit": "boolean",
+      "value": "no advanced features"
+    },
+    {
+      "category": "cost",
+      "id": "COST-001",
+      "source": "project spec: constraints = [] (no cost target given)",
+      "statement": "The bill of materials shall be minimized by reusing a single passive value set; no cost ceiling was specified in the request, so cost is tracked but unconstrained pending stakeholder input.",
+      "unit": "USD",
+      "value": null
+    },
+    {
+      "category": "cost",
+      "id": "COST-002",
+      "source": "derived sourcing practice",
+      "statement": "All components shall be commercially available in single-piece quantities from at least two distributors to avoid sole-source cost risk.",
+      "unit": "sources",
+      "value": 2
+    },
+    {
+      "category": "temperature",
+      "id": "TEMP-001",
+      "source": "derived from ESP32/TMP102 commercial ratings",
+      "statement": "The board shall operate over an ambient range of 0 C to 70 C (commercial), bounded by the narrowest device rating.",
+      "unit": "C",
+      "value": "0 to 70"
+    },
+    {
+      "category": "temperature",
+      "id": "TEMP-002",
+      "source": "TMP102 typical accuracy; request goal 'temperature-monitoring'",
+      "statement": "Measured temperature accuracy shall be within +/-1.0 C over 0 C to 60 C, including board self-heating error.",
+      "unit": "C",
+      "value": 1.0
+    },
+    {
+      "category": "temperature",
+      "id": "TEMP-003",
+      "source": "derived thermal margin",
+      "statement": "Regulator junction temperature rise shall stay below 40 C above ambient at maximum load.",
+      "unit": "C",
+      "value": 40
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-001",
+      "source": "ERC baseline: 10 errors, 8 warnings",
+      "statement": "ERC shall report 0 errors, improving on the baseline of 10 errors and 8 warnings; remaining warnings shall be individually justified.",
+      "unit": "errors",
+      "value": 0
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-002",
+      "source": "DRC baseline: 5 errors, 13 warnings",
+      "statement": "DRC shall report 0 errors, improving on the baseline of 5 errors and 13 warnings; remaining warnings shall be individually justified.",
+      "unit": "errors",
+      "value": 0
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-003",
+      "source": "pin table vs net list comparison",
+      "statement": "There shall be zero unconnected pins in the netlist; the currently floating pins U1.3, U1.4, U1.5, U2.1, U2.2, U2.3, U2.4 and net VBUS (single node J1.1) shall be resolved or explicitly marked no-connect.",
+      "unit": "unconnected pins",
+      "value": 0
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-004",
+      "source": "derived from PWR-002",
+      "statement": "Powering the board from a USB-C host shall produce 3.3 V +/-5% on the +3V3 rail measured at U1.1 and U2.1.",
+      "unit": "% tolerance",
+      "value": 5
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-005",
+      "source": "derived from IF-001, IF-004, TEMP-002",
+      "statement": "An I2C bus scan shall detect the TMP102 at its strapped address and return plausible ambient readings within TEMP-002 accuracy.",
+      "unit": "count",
+      "value": "1 device detected"
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-006",
+      "source": "MECH-001, MECH-002, MECH-003",
+      "statement": "Board dimensions extracted from fabrication output shall be 110 x 65 mm or smaller with a 2-layer stackup.",
+      "unit": "mm",
+      "value": "110 x 65"
+    }
+  ]
+}

@@ -402,8 +402,9 @@ class TeamOrchestrator:
         total = len(requirement_ids)
         verification = outputs.get("verification")
         verification_gate = gates.get("verification")
+        verification_ran = isinstance(verification, VerificationReport) and verification_gate is not None
         verified_passed = 0
-        if isinstance(verification, VerificationReport) and verification_gate is not None:
+        if verification_ran:
             verified_passed = len(
                 {
                     outcome.requirement_id
@@ -426,7 +427,7 @@ class TeamOrchestrator:
             per_stage_results=results,
             requirements_satisfied=verified_passed,
             requirements_total=total,
-            requirements_status="passed" if isinstance(requirements, RequirementsDoc) else "not run",
+            requirements_status="passed" if verification_ran else "not run",
             erc_status=self._tool_status(self._latest_erc, self._erc_fresh, "schematic"),
             drc_status=self._tool_status(self._latest_drc, self._drc_fresh, "layout"),
             power_tests=power_tests_total,

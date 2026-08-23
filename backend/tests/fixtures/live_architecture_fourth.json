@@ -1,0 +1,460 @@
+{
+  "blocks": [
+    {
+      "id": "BLK-USBC-IN",
+      "input_voltage": "5 V nominal (4.75-5.25 V) from USB host",
+      "output_voltage": "5 V VBUS",
+      "power_available_ma": 500.0,
+      "power_required_ma": 0.0,
+      "required_inputs": [
+        "USB-C cable VBUS",
+        "USB-C cable D+/D-",
+        "cable shield/GND"
+      ],
+      "required_outputs": [
+        "VBUS",
+        "GND",
+        "USB_D+",
+        "USB_D-",
+        "CC1/CC2 5.1 kOhm sink pulldowns to GND"
+      ],
+      "requirement_ids": [
+        "PWR-001",
+        "PWR-004",
+        "IF-005",
+        "IF-006",
+        "MECH-004"
+      ],
+      "type": "usb_c_receptacle_input"
+    },
+    {
+      "id": "BLK-VBUS-PROT",
+      "input_voltage": "5 V VBUS",
+      "output_voltage": "5 V VBUS (protected)",
+      "power_available_ma": 500.0,
+      "power_required_ma": 1.0,
+      "required_inputs": [
+        "VBUS",
+        "GND"
+      ],
+      "required_outputs": [
+        "VBUS_PROT",
+        "GND",
+        "PWR_FLAG on VBUS net"
+      ],
+      "requirement_ids": [
+        "PWR-004",
+        "PWR-007",
+        "PWR-008",
+        "MFG-003"
+      ],
+      "type": "input_protection_and_bulk_filter"
+    },
+    {
+      "id": "BLK-REG-3V3",
+      "input_voltage": "5 V VBUS (4.75-5.25 V)",
+      "output_voltage": "3.3 V +/-2% (600 mA class LDO, e.g. AP2112K-3.3 / TLV1117-33 alternative)",
+      "power_available_ma": 600.0,
+      "power_required_ma": 620.0,
+      "required_inputs": [
+        "VBUS_PROT",
+        "GND",
+        "10 uF input bulk capacitor"
+      ],
+      "required_outputs": [
+        "+3V3",
+        "GND",
+        "10 uF output bulk capacitor",
+        "PWR_FLAG on +3V3 net"
+      ],
+      "requirement_ids": [
+        "PWR-002",
+        "PWR-003",
+        "PWR-004",
+        "PWR-007",
+        "PWR-008",
+        "TEMP-003",
+        "MFG-003",
+        "TEST-004"
+      ],
+      "type": "linear_regulator_5v_to_3v3"
+    },
+    {
+      "id": "BLK-PWR-DIST",
+      "input_voltage": "3.3 V",
+      "output_voltage": "3.3 V",
+      "power_available_ma": 600.0,
+      "power_required_ma": 0.0,
+      "required_inputs": [
+        "+3V3",
+        "GND"
+      ],
+      "required_outputs": [
+        "+3V3 to U1.1, U2.1, bridge VDD, I2C pullups",
+        "GND to U1.2, U2.2, J1.4, all returns",
+        "100 nF per power pin",
+        "10 uF bulk per rail",
+        "PWR_FLAG on GND net"
+      ],
+      "requirement_ids": [
+        "PWR-005",
+        "PWR-006",
+        "PWR-007",
+        "PWR-008",
+        "MFG-003",
+        "TEST-003"
+      ],
+      "type": "power_distribution_and_decoupling"
+    },
+    {
+      "id": "BLK-USB-UART",
+      "input_voltage": "3.3 V logic, 5 V VBUS sense",
+      "output_voltage": "3.3 V CMOS UART + DTR/RTS",
+      "power_available_ma": 600.0,
+      "power_required_ma": 20.0,
+      "required_inputs": [
+        "USB_D+",
+        "USB_D-",
+        "+3V3",
+        "GND"
+      ],
+      "required_outputs": [
+        "UART_TXD (to ESP32 RXD)",
+        "UART_RXD (from ESP32 TXD)",
+        "DTR",
+        "RTS"
+      ],
+      "requirement_ids": [
+        "IF-006",
+        "IF-008",
+        "TEST-003",
+        "COST-002"
+      ],
+      "type": "usb_to_uart_bridge"
+    },
+    {
+      "id": "BLK-AUTO-RESET",
+      "input_voltage": "3.3 V CMOS",
+      "output_voltage": "3.3 V CMOS EN / IO0 levels",
+      "power_available_ma": 600.0,
+      "power_required_ma": 1.0,
+      "required_inputs": [
+        "+3V3",
+        "GND",
+        "DTR",
+        "RTS"
+      ],
+      "required_outputs": [
+        "EN (10 kOhm pullup to +3V3, 100 nF to GND)",
+        "BOOT/IO0 strap (10 kOhm pullup, optional push-button to GND)"
+      ],
+      "requirement_ids": [
+        "IF-007",
+        "IF-008",
+        "TEST-003"
+      ],
+      "type": "reset_and_boot_strapping"
+    },
+    {
+      "id": "BLK-MCU",
+      "input_voltage": "3.3 V (3.0-3.6 V)",
+      "output_voltage": "3.3 V CMOS I/O",
+      "power_available_ma": 600.0,
+      "power_required_ma": 500.0,
+      "required_inputs": [
+        "+3V3",
+        "GND",
+        "EN from BLK-AUTO-RESET",
+        "UART_TXD"
+      ],
+      "required_outputs": [
+        "GPIO21 (I2C SDA)",
+        "GPIO22 (I2C SCL)",
+        "GPIO25 (spare)",
+        "UART_RXD"
+      ],
+      "requirement_ids": [
+        "PWR-003",
+        "PWR-007",
+        "IF-001",
+        "IF-008",
+        "MECH-005",
+        "TEMP-001"
+      ],
+      "type": "esp32_wroom32_module"
+    },
+    {
+      "id": "BLK-I2C-BUS",
+      "input_voltage": "3.3 V CMOS",
+      "output_voltage": "3.3 V CMOS open-drain, 100-400 kHz",
+      "power_available_ma": 600.0,
+      "power_required_ma": 2.0,
+      "required_inputs": [
+        "+3V3",
+        "GND",
+        "SDA from U1.GPIO21",
+        "SCL from U1.GPIO22"
+      ],
+      "required_outputs": [
+        "I2C_SDA (4.7 kOhm pullup to +3V3)",
+        "I2C_SCL (4.7 kOhm pullup to +3V3)"
+      ],
+      "requirement_ids": [
+        "IF-001",
+        "IF-002",
+        "IF-003",
+        "IF-008",
+        "TEST-005"
+      ],
+      "type": "i2c_bus_with_pullups"
+    },
+    {
+      "id": "BLK-TEMP-SENSOR",
+      "input_voltage": "3.3 V (1.4-3.6 V)",
+      "output_voltage": "3.3 V CMOS open-drain SDA",
+      "power_available_ma": 600.0,
+      "power_required_ma": 0.01,
+      "required_inputs": [
+        "+3V3 to U2.1",
+        "GND to U2.2",
+        "I2C_SDA to U2.3",
+        "I2C_SCL to U2.4",
+        "ADD0 strap to GND (address 0x48)"
+      ],
+      "required_outputs": [
+        "I2C_SDA (bidirectional data)"
+      ],
+      "requirement_ids": [
+        "PWR-005",
+        "PWR-006",
+        "IF-001",
+        "IF-004",
+        "MECH-006",
+        "TEMP-001",
+        "TEMP-002",
+        "TEST-005"
+      ],
+      "type": "i2c_temperature_sensor_tmp102"
+    },
+    {
+      "id": "BLK-SPARE-IO",
+      "input_voltage": "3.3 V CMOS",
+      "output_voltage": "3.3 V CMOS",
+      "power_available_ma": 600.0,
+      "power_required_ma": 0.0,
+      "required_inputs": [
+        "GPIO25 from BLK-MCU"
+      ],
+      "required_outputs": [
+        "test point / header pin, or explicit no-connect flag"
+      ],
+      "requirement_ids": [
+        "IF-008",
+        "TEST-003"
+      ],
+      "type": "spare_gpio_test_point"
+    },
+    {
+      "id": "BLK-ERC-FLAGS",
+      "input_voltage": null,
+      "output_voltage": null,
+      "power_available_ma": null,
+      "power_required_ma": 0.0,
+      "required_inputs": [
+        "VBUS net",
+        "+3V3 net",
+        "GND net"
+      ],
+      "required_outputs": [
+        "one PWR_FLAG per power net (3 total)"
+      ],
+      "requirement_ids": [
+        "PWR-008",
+        "TEST-001",
+        "TEST-003"
+      ],
+      "type": "erc_power_flag_group"
+    },
+    {
+      "id": "BLK-MECH-KEEPOUT",
+      "input_voltage": null,
+      "output_voltage": null,
+      "power_available_ma": null,
+      "power_required_ma": null,
+      "required_inputs": [
+        "board outline 110 x 65 mm (35,35 to 145,100)",
+        "2-layer stackup"
+      ],
+      "required_outputs": [
+        "USB-C edge placement zone",
+        "ESP32 antenna keep-out at opposite edge (no copper/planes/parts)",
+        "sensor zone >= 15 mm from regulator and MCU",
+        "1 mm courtyard-to-edge clearance",
+        "GND pour on layer 2 excluding antenna keep-out"
+      ],
+      "requirement_ids": [
+        "MECH-001",
+        "MECH-002",
+        "MECH-003",
+        "MECH-004",
+        "MECH-005",
+        "MECH-006",
+        "MECH-007",
+        "MFG-001",
+        "MFG-002",
+        "MFG-005",
+        "TEMP-003",
+        "TEST-006"
+      ],
+      "type": "mechanical_and_thermal_zoning"
+    }
+  ],
+  "connections": [
+    {
+      "from_block": "BLK-USBC-IN",
+      "signal": "VBUS 5 V power (up to 500 mA)",
+      "to_block": "BLK-VBUS-PROT"
+    },
+    {
+      "from_block": "BLK-USBC-IN",
+      "signal": "GND return",
+      "to_block": "BLK-PWR-DIST"
+    },
+    {
+      "from_block": "BLK-USBC-IN",
+      "signal": "USB 2.0 full-speed differential pair D+/D- (90 Ohm, matched within 5 mm)",
+      "to_block": "BLK-USB-UART"
+    },
+    {
+      "from_block": "BLK-VBUS-PROT",
+      "signal": "VBUS_PROT 5 V power",
+      "to_block": "BLK-REG-3V3"
+    },
+    {
+      "from_block": "BLK-VBUS-PROT",
+      "signal": "VBUS net reference for PWR_FLAG",
+      "to_block": "BLK-ERC-FLAGS"
+    },
+    {
+      "from_block": "BLK-REG-3V3",
+      "signal": "+3V3 regulated rail (600 mA capability)",
+      "to_block": "BLK-PWR-DIST"
+    },
+    {
+      "from_block": "BLK-REG-3V3",
+      "signal": "+3V3 net reference for PWR_FLAG",
+      "to_block": "BLK-ERC-FLAGS"
+    },
+    {
+      "from_block": "BLK-PWR-DIST",
+      "signal": "+3V3 / GND with 100 nF + 10 uF decoupling",
+      "to_block": "BLK-MCU"
+    },
+    {
+      "from_block": "BLK-PWR-DIST",
+      "signal": "+3V3 / GND with 100 nF decoupling",
+      "to_block": "BLK-TEMP-SENSOR"
+    },
+    {
+      "from_block": "BLK-PWR-DIST",
+      "signal": "+3V3 / GND with 100 nF decoupling",
+      "to_block": "BLK-USB-UART"
+    },
+    {
+      "from_block": "BLK-PWR-DIST",
+      "signal": "+3V3 pullup supply",
+      "to_block": "BLK-I2C-BUS"
+    },
+    {
+      "from_block": "BLK-PWR-DIST",
+      "signal": "+3V3 / GND for pullup and RC network",
+      "to_block": "BLK-AUTO-RESET"
+    },
+    {
+      "from_block": "BLK-PWR-DIST",
+      "signal": "GND net reference for PWR_FLAG",
+      "to_block": "BLK-ERC-FLAGS"
+    },
+    {
+      "from_block": "BLK-USB-UART",
+      "signal": "UART_TXD 3.3 V CMOS (bridge TX -> ESP32 RX)",
+      "to_block": "BLK-MCU"
+    },
+    {
+      "from_block": "BLK-MCU",
+      "signal": "UART_RXD 3.3 V CMOS (ESP32 TX -> bridge RX)",
+      "to_block": "BLK-USB-UART"
+    },
+    {
+      "from_block": "BLK-USB-UART",
+      "signal": "DTR / RTS 3.3 V CMOS handshake for auto-reset sequencing",
+      "to_block": "BLK-AUTO-RESET"
+    },
+    {
+      "from_block": "BLK-AUTO-RESET",
+      "signal": "EN active-high reset, 3.3 V CMOS with RC delay",
+      "to_block": "BLK-MCU"
+    },
+    {
+      "from_block": "BLK-AUTO-RESET",
+      "signal": "BOOT/IO0 strap level, 3.3 V CMOS",
+      "to_block": "BLK-MCU"
+    },
+    {
+      "from_block": "BLK-MCU",
+      "signal": "I2C_SDA (GPIO21) bidirectional open-drain, 3.3 V",
+      "to_block": "BLK-I2C-BUS"
+    },
+    {
+      "from_block": "BLK-MCU",
+      "signal": "I2C_SCL (GPIO22) clock output, 3.3 V, 100-400 kHz",
+      "to_block": "BLK-I2C-BUS"
+    },
+    {
+      "from_block": "BLK-I2C-BUS",
+      "signal": "I2C_SDA / I2C_SCL bus, 3.3 V open-drain, address 0x48",
+      "to_block": "BLK-TEMP-SENSOR"
+    },
+    {
+      "from_block": "BLK-TEMP-SENSOR",
+      "signal": "I2C_SDA acknowledge / data return, 3.3 V open-drain",
+      "to_block": "BLK-I2C-BUS"
+    },
+    {
+      "from_block": "BLK-MCU",
+      "signal": "GPIO25 spare 3.3 V CMOS I/O",
+      "to_block": "BLK-SPARE-IO"
+    },
+    {
+      "from_block": "BLK-USBC-IN",
+      "signal": "edge-mount placement constraint (mating face flush to outline)",
+      "to_block": "BLK-MECH-KEEPOUT"
+    },
+    {
+      "from_block": "BLK-MCU",
+      "signal": "antenna keep-out zone constraint (no copper/planes/components)",
+      "to_block": "BLK-MECH-KEEPOUT"
+    },
+    {
+      "from_block": "BLK-TEMP-SENSOR",
+      "signal": "thermal isolation constraint (>= 15 mm from regulator and MCU)",
+      "to_block": "BLK-MECH-KEEPOUT"
+    },
+    {
+      "from_block": "BLK-REG-3V3",
+      "signal": "thermal dissipation constraint (junction rise < 40 C above ambient)",
+      "to_block": "BLK-MECH-KEEPOUT"
+    }
+  ],
+  "unresolved_questions": [
+    "PWR-003 (600 mA on +3V3) conflicts with PWR-004 (500 mA maximum draw from the USB host): a 600 mA continuous 3.3 V rail from a 5 V LDO exceeds the 500 mA VBUS budget. Proposal: keep the LDO rated at 600 mA for transmit peaks, add sufficient bulk capacitance (>= 10 uF plus 100 uF optional) to absorb Wi-Fi bursts, and revise PWR-003 to 'peak' rather than 'continuous', or authorize a >500 mA source (USB-C 1.5 A advertisement or higher-current host).",
+    "Connector change: replacing J1 (Connector:USB_B_Micro) with a USB-C 2.0 16-pin receptacle plus CC1/CC2 5.1 kOhm pulldowns changes the footprint and pin count. Confirm USB-C is required (per IF-005) versus amending the request to micro-B.",
+    "ESP32-WROOM-32 has no native USB PHY, yet USB_D+/USB_D- currently connect J1 directly to U1.6/U1.7. Confirm insertion of BLK-USB-UART (e.g. CP2102N or CH340N) and removal of the direct J1-to-module USB nets; alternatively switch to an ESP32-S3 module with native USB.",
+    "Regulator topology: a linear LDO at 5 V -> 3.3 V and 500 mA dissipates ~0.85 W, which stresses TEMP-003 (< 40 C rise) and worsens TEMP-002 self-heating error. Confirm whether a buck converter is acceptable, or whether the LDO must be used for cost/EMI simplicity with an enlarged copper thermal pad.",
+    "Sensor thermal placement: MECH-006 requires >= 15 mm separation, but board self-heating still couples through the ground pour. Confirm whether a thermal-relief slot or pour split around U2 is permitted on a 2-layer stackup.",
+    "GPIO25 disposition: expose as a test point/header (allows future use) or mark as explicit no-connect for TEST-003. Recommend a test point.",
+    "Whether a boot-mode push-button and reset push-button are wanted, or whether DTR/RTS auto-reset from the bridge alone is sufficient.",
+    "No cost ceiling, build quantity, or certification target (FCC/CE) was supplied; these bound COST-001 and antenna/keep-out treatment and remain open pending stakeholder input.",
+    "USB VBUS-to-3V3 reverse-current and ESD protection level: confirm whether a dedicated ESD array on D+/D-/VBUS and a series input ferrite/fuse are in scope for BLK-VBUS-PROT."
+  ]
+}

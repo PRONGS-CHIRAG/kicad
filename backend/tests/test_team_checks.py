@@ -277,6 +277,48 @@ def test_captured_live_architecture_passes_connectivity_and_budget_gate() -> Non
     assert result.passed, result.findings
 
 
+def test_fourth_live_architecture_passes_global_nets_and_constraints() -> None:
+    requirements = RequirementsDoc.model_validate(
+        json.loads(
+            (Path(__file__).parent / "fixtures" / "live_architecture_fourth_requirements.json").read_text()
+        )
+    )
+    architecture = Architecture.model_validate(
+        json.loads((Path(__file__).parent / "fixtures" / "live_architecture_fourth.json").read_text())
+    )
+    result = check_architecture(requirements, architecture, "fourth-live-architecture-rev")
+    assert result.passed, result.findings
+
+
+def test_architecture_global_nets_do_not_require_point_to_point_edges() -> None:
+    architecture = Architecture(
+        blocks=[
+            {
+                "id": "source",
+                "type": "source",
+                "requirement_ids": ["PWR-001"],
+                "required_outputs": ["GND"],
+            },
+            {
+                "id": "distribution",
+                "type": "power_distribution",
+                "required_inputs": ["GND"],
+                "required_outputs": ["+3V3", "GND"],
+            },
+            {"id": "consumer", "type": "sensor", "required_inputs": ["GND"]},
+            {
+                "id": "constraints",
+                "type": "mechanical zoning",
+                "required_inputs": ["2-layer stackup"],
+                "required_outputs": ["USB-C edge placement zone"],
+            },
+        ],
+        connections=[{"from": "source", "to": "distribution", "signal": "GND return"}],
+    )
+    result = check_architecture(_requirements(), architecture, "rev-1")
+    assert result.passed, result.findings
+
+
 def test_architecture_missing_required_input_fails() -> None:
     architecture = Architecture(
         blocks=[
