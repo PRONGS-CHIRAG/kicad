@@ -203,8 +203,10 @@ def build_simulation_prompt(
             "unverified. Free-form expected measurement values must include units; required_ma, "
             "available_ma, margin_percent, and measured_v already encode their units in the field "
             "name. Tests with a pass or failed verdict must cite either a requirement ID "
-            "(PREFIX-NNN) or a datasheet source; unverified "
-            "tests must state a concise explicit reason in the measured result text; unverified "
+            "(PREFIX-NNN), a datasheet source, or a standards/specification citation with a "
+            "section, table, clause, page, or revision locator; unverified tests must state a "
+            "concise explicit reason in the reason field (older outputs may use explanatory "
+            "non-numeric measured_v, required_ma, available_ma, or margin_percent text); unverified "
             "is not a silent escape hatch."
         ),
     )

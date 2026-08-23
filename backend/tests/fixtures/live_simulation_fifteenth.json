@@ -1,0 +1,69 @@
+{
+  "assumptions": [
+    "The stated 3.3 V logic voltage and 4.7 k\u03a9 pull-up value are used for arithmetic only.",
+    "Each pull-up current is calculated as 3.3 V / 4.7 k\u03a9 = 0.702 mA.",
+    "The combined worst-case static current for two pull-ups is 1.404 mA.",
+    "Pull-up resistor dissipation is calculated as 3.3 V^2 / 4.7 k\u03a9 = 2.32 mW per resistor, but resistor power rating is unspecified, so no rating verdict is issued.",
+    "No LED, divider, regulator, decoupling, or resistor footprints/components are present in the supplied MVP context.",
+    "No project files were modified."
+  ],
+  "models": [
+    "Ohm's law: I=V/R",
+    "Resistor dissipation: P=V^2/R"
+  ],
+  "tests": [
+    {
+      "expected": {},
+      "measured_v": "unverified: no regulator model, input range, or measured rail value is provided",
+      "name": "3V3 logic rail voltage",
+      "source": "TEST-003",
+      "status": "unverified"
+    },
+    {
+      "available_ma": "unverified: regulated-rail source current is unspecified",
+      "margin_percent": "unverified: available source current is unspecified",
+      "name": "SDA 4.7k pull-up current",
+      "required_ma": 0.702,
+      "source": "IF-005",
+      "status": "unverified"
+    },
+    {
+      "available_ma": "unverified: regulated-rail source current is unspecified",
+      "margin_percent": "unverified: available source current is unspecified",
+      "name": "SCL 4.7k pull-up current",
+      "required_ma": 0.702,
+      "source": "IF-005",
+      "status": "unverified"
+    },
+    {
+      "available_ma": "unverified: regulator capacity and total 3V3 load are unspecified",
+      "margin_percent": "unverified: available source current and load budget are unspecified",
+      "name": "Combined SDA and SCL pull-up current",
+      "required_ma": 1.404,
+      "source": "IF-005",
+      "status": "unverified"
+    },
+    {
+      "expected": {},
+      "measured_v": "unverified: no regulator symbol, topology, USB VBUS range, or output measurement is available; VBUS is only a single-node net",
+      "name": "VBUS-to-3V3 regulator conversion",
+      "source": "TEST-004",
+      "status": "unverified"
+    },
+    {
+      "expected": {},
+      "measured_v": "unverified: TMP102 datasheet limits and actual U2.1 supply voltage are not provided",
+      "name": "TMP102 supply-voltage compliance",
+      "source": "PWR-002",
+      "status": "unverified"
+    },
+    {
+      "available_ma": "unverified: USB source rating and regulator capacity are unspecified",
+      "margin_percent": "unverified: required and available current data are unspecified",
+      "name": "USB input and 3V3 power-rating margin",
+      "required_ma": "unverified: ESP32, TMP102, and regulator input-current requirements are unspecified",
+      "source": "TEST-004",
+      "status": "unverified"
+    }
+  ]
+}

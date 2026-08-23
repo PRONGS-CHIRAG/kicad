@@ -282,7 +282,7 @@ def test_gated_agent_prompts_state_the_vocabulary_they_emit() -> None:
             "Free-form expected measurement values must include units",
             "required_ma, available_ma, margin_percent, and measured_v already encode their units",
             "pass or failed verdict",
-            "unverified tests must state a concise explicit reason",
+            "unverified tests must state a concise explicit reason in the reason field",
             "not a silent escape hatch",
         ),
         "verification": (
@@ -968,6 +968,47 @@ def test_simulation_gate_passes_with_units_and_fails_without_assumptions() -> No
         update={"tests": [passing.tests[0].model_copy(update={"measured_v": ""})]}
     )
     assert not check_simulation(empty_reason, _requirements(), project_version="rev-1").passed
+    numeric_with_reason = passing.model_copy(
+        update={
+            "tests": [passing.tests[0].model_copy(update={"measured_v": 3.3, "reason": "no validated model"})]
+        }
+    )
+    assert check_simulation(numeric_with_reason, _requirements(), project_version="rev-1").passed
+    numeric_without_reason = numeric_with_reason.model_copy(
+        update={"tests": [numeric_with_reason.tests[0].model_copy(update={"reason": None})]}
+    )
+    assert not check_simulation(numeric_without_reason, _requirements(), project_version="rev-1").passed
+    numeric_margin_with_reason = SimulationReport(
+        tests=[
+            {
+                "name": "numeric unverified margin",
+                "required_ma": 240.01,
+                "available_ma": 500.0,
+                "margin_percent": 108.3,
+                "status": "unverified",
+                "reason": "no validated load model",
+            }
+        ],
+        assumptions=["no validated load model"],
+    )
+    assert check_simulation(numeric_margin_with_reason, project_version="rev-1").passed
+    numeric_margin_without_reason = numeric_margin_with_reason.model_copy(
+        update={"tests": [numeric_margin_with_reason.tests[0].model_copy(update={"reason": None})]}
+    )
+    assert not check_simulation(numeric_margin_without_reason, project_version="rev-1").passed
+    legacy_margin_reason = SimulationReport(
+        tests=[
+            {
+                "name": "legacy margin",
+                "required_ma": 240.01,
+                "available_ma": "unverified: no validated model",
+                "margin_percent": "unverified: no validated model",
+                "status": "unverified",
+            }
+        ],
+        assumptions=["no validated model"],
+    )
+    assert check_simulation(legacy_margin_reason, project_version="rev-1").passed
     missing_source_pass = passing.model_copy(
         update={"tests": [passing.tests[0].model_copy(update={"status": "pass", "source": None})]}
     )
@@ -1049,6 +1090,36 @@ def test_fourteenth_live_simulation_accepts_named_units_but_checks_free_form_uni
     )
     unitless_result = check_simulation(unitless_expected, project_version="unitless-expected")
     assert any(finding.rule == "simulation values carry units" for finding in unitless_result.findings)
+
+
+def test_fifteenth_live_simulation_preserves_legacy_reasons_and_accepts_located_standards() -> None:
+    report = SimulationReport.model_validate(
+        json.loads((Path(__file__).parent / "fixtures" / "live_simulation_fifteenth.json").read_text())
+    )
+    assert check_simulation(report, project_version="fifteenth-live").passed
+
+    standard = SimulationReport(
+        tests=[
+            {
+                "name": "USB VBUS range",
+                "expected": {"nominal": "5 V"},
+                "measured_v": "5 V",
+                "status": "pass",
+                "source": "USB 2.0 specification section 7.2.1",
+            }
+        ],
+        assumptions=["closed-form test"],
+    )
+    assert check_simulation(standard, project_version="standard-citation").passed
+
+    vague = standard.model_copy(
+        update={"tests": [standard.tests[0].model_copy(update={"source": "estimated from experience"})]}
+    )
+    vague_result = check_simulation(vague, project_version="vague-citation")
+    assert any(
+        finding.rule == "simulation range traceability" and finding.severity == "error"
+        for finding in vague_result.findings
+    )
 
 
 def test_architecture_voltage_formatting_is_not_a_gate_failure() -> None:

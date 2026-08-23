@@ -112,6 +112,17 @@ _REQUIREMENT_ID_RE = re.compile(
     rf"\b(?:{'|'.join(REQUIREMENT_CATEGORY_PREFIXES.values())})-\d{{3}}\b",
     re.IGNORECASE,
 )
+_STANDARD_LOCATOR_RE = re.compile(
+    r"(?=.*\b(?:standard|specification|spec)\b)"
+    r"(?=.*\b(?:section|sec\.?|table|tbl\.?|clause|page|p\.?|revision|rev\.?)"
+    r"\s*[:#]?\s*[A-Za-z0-9][\w.-]*)",
+    re.IGNORECASE,
+)
+_VAGUE_SOURCE_RE = re.compile(
+    r"\s*(?:estimated|assumed|typical|guess|unknown|n/?a|none|not specified)\b",
+    re.IGNORECASE,
+)
+_NUMERIC_PREFIX_RE = re.compile(r"\s*[-+]?(?:\d+(?:\.\d*)?|\.\d+)")
 
 
 _QUANTITY_RE = re.compile(
@@ -1074,7 +1085,23 @@ def check_simulation(
                     "warning",
                 )
             )
-            reason = test.measured_v if isinstance(test, SimulationRailTest) else test.required_ma
+            reason = test.reason
+            if not reason:
+                measurements = (
+                    [test.measured_v]
+                    if isinstance(test, SimulationRailTest)
+                    else [test.required_ma, test.available_ma, test.margin_percent]
+                )
+                reason = next(
+                    (
+                        measurement
+                        for measurement in measurements
+                        if isinstance(measurement, str)
+                        and measurement.strip()
+                        and not _NUMERIC_PREFIX_RE.match(measurement)
+                    ),
+                    None,
+                )
             if not isinstance(reason, str) or not reason.strip():
                 findings.append(
                     finding(
@@ -1099,9 +1126,10 @@ def check_simulation(
             )
         source = test.source or ""
         requirement_match = _REQUIREMENT_ID_RE.search(source)
-        traceable = (
+        traceable = not _VAGUE_SOURCE_RE.match(source) and (
             bool(requirement_match and requirement_match.group(0).upper() in requirement_ids)
             or "datasheet" in source.lower()
+            or bool(_STANDARD_LOCATOR_RE.search(source))
         )
         if not _is_unverified_status(test.status) and not traceable:
             findings.append(

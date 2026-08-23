@@ -469,6 +469,7 @@ class SimulationRailTest(BaseModel):
     measured_v: str | float
     status: str
     source: str | None = None
+    reason: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -480,6 +481,7 @@ class SimulationMarginTest(BaseModel):
     margin_percent: str | float
     status: str
     source: str | None = None
+    reason: str | None = None
 
     model_config = ConfigDict(extra="forbid")
 
