@@ -8,7 +8,7 @@ from pydantic import ValidationError
 from app.config import Settings, settings
 from app.kicad.reader import Component, Pin, ProjectState
 from app.models import ErcReport
-from app.team.prompts import build_project_manager_prompt
+from app.team.prompts import build_project_manager_prompt, build_requirements_prompt
 from app.team.registry import AGENTS, get_agent
 from app.team.schemas import (
     AgentTask,
@@ -20,6 +20,7 @@ from app.team.schemas import (
     PMPlan,
     ProjectSpec,
     ReleaseRecord,
+    Requirement,
     RequirementsDoc,
     SchematicIntents,
     SimulationReport,
@@ -271,6 +272,76 @@ def test_design_context_builds_and_renders_the_pin_table(tmp_path) -> None:
     assert "U1 | TMP102 | Sensor:TMP102 | 1 | SDA | bidirectional" in prompt
     assert "I2C_SDA: U1.1" in prompt
     assert '"components"' not in prompt
+    # A reasoning-only stage is told not to spend minutes exploring a repository
+    # it does not need, and a first pass carries no rejection block.
+    assert "Do not clone or read the" in prompt
+    assert "REJECTED" not in prompt
+
+
+def test_a_sent_back_stage_is_told_what_the_gate_rejected() -> None:
+    project = ProjectSpec(project_id="demo", current_stage="requirements", design_context=None)
+    context = DesignContext(erc_baseline={"errors": 0, "warnings": 0})
+    task = AgentTask(
+        task_id="T-2",
+        assigned_agent="requirements",
+        objective="requirements",
+        prior_gate_findings=[
+            "requirements gate: units normalized - PWR-001 is None, expected 'unit present'"
+        ],
+    )
+    prompt = build_requirements_prompt(project, context, task, {})
+    assert "REJECTED" in prompt
+    assert "units normalized - PWR-001" in prompt
+    # The contract the gate enforces is stated, not left to be guessed at.
+    assert "PWR-NNN" in prompt and "TEST-NNN" in prompt
+
+
+def test_requirement_category_follows_its_identifier() -> None:
+    """The ID prefix is the category; an agent's own word for it is normalized."""
+    requirement = Requirement.model_validate(
+        {
+            "id": "test-001",
+            "category": "quality",
+            "statement": "ERC reports no errors",
+            "value": 0,
+            "unit": "errors",
+            "source": "acceptance",
+        }
+    )
+    assert (requirement.id, requirement.category) == ("TEST-001", "test")
+
+    for identifier, category in (("PWR-002", "power"), ("IF-003", "interface"), ("MECH-004", "mechanical")):
+        normalized = Requirement.model_validate(
+            {
+                "id": identifier,
+                "category": "electrical",
+                "statement": "s",
+                "value": 1,
+                "unit": "V",
+                "source": "request",
+            }
+        )
+        assert normalized.category == category
+
+    with pytest.raises(ValidationError):
+        Requirement.model_validate(
+            {
+                "id": "QUAL-001",
+                "category": "power",
+                "statement": "s",
+                "value": 1,
+                "unit": "V",
+                "source": "request",
+            }
+        )
+
+
+def test_requirements_schema_enumerates_the_four_categories() -> None:
+    """The agent is handed the closed set in its own schema, not just in prose."""
+    category = json_schema(RequirementsDoc)["properties"]["requirements"]["items"]["properties"][
+        "category"
+    ]
+    assert category["enum"] == ["power", "interface", "mechanical", "test"]
 
 
 def test_duplicate_requirement_ids_are_rejected() -> None:

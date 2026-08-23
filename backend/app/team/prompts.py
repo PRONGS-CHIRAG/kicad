@@ -40,6 +40,28 @@ def render_design_context(context: DesignContext) -> str:
     return "\n".join(lines)
 
 
+SELF_CONTAINED = """Everything you need to answer is in this prompt. Do not clone or read the
+repository, run commands, browse the web, or otherwise investigate - that costs
+minutes per stage and adds nothing here. Answer directly from what is above."""
+
+
+def render_rejection(task: AgentTask) -> str:
+    """Say why the last attempt was rejected, so a re-run can converge.
+
+    A stage that fails its gate is handed back to the agent that owns it. Asking
+    the identical question again gets the identical answer - measured here as the
+    same finding three times over - so the deterministic findings come with it.
+    """
+    if not task.prior_gate_findings:
+        return ""
+    listed = "\n".join(f"  - {finding}" for finding in task.prior_gate_findings)
+    return (
+        "\nYour previous attempt at this stage was REJECTED by a deterministic gate.\n"
+        "Fix exactly these findings and keep everything else that was already correct:\n"
+        f"{listed}\n"
+    )
+
+
 def _prompt(
     role: str,
     project: ProjectSpec,
@@ -48,6 +70,7 @@ def _prompt(
     inputs: Mapping[str, object],
     instruction: str,
     read_only: bool = False,
+    self_contained: bool = False,
 ) -> str:
     prior = json.dumps(inputs, default=str, sort_keys=True)
     restriction = (
@@ -55,9 +78,11 @@ def _prompt(
         if read_only
         else "Propose changes only; do not modify the project."
     )
+    if self_contained:
+        restriction = f"{restriction} {SELF_CONTAINED}"
     return f"""You are the {role} on a virtual PCB engineering team.
 {instruction}
-
+{render_rejection(task)}
 Project specification:
 {project.model_dump_json(exclude={"schema_version", "design_context"})}
 
@@ -84,6 +109,7 @@ def build_project_manager_prompt(
         task,
         inputs,
         "Coordinate the workflow and identify the responsible return target. Do not emit circuit design.",
+        self_contained=True,
     )
 
 
@@ -96,7 +122,23 @@ def build_requirements_prompt(
         context,
         task,
         inputs,
-        "Convert the request into measurable electrical, interface, mechanical, and acceptance requirements.",
+        (
+            "Convert the request into measurable electrical, interface, mechanical, and "
+            "acceptance requirements.\n"
+            "Every requirement carries an ID whose prefix IS its category, and there are "
+            "only four: PWR-NNN (category power), IF-NNN (interface), MECH-NNN (mechanical), "
+            "TEST-NNN (test). Numbering starts at 001 within each prefix. Do not invent a "
+            "fifth category such as quality, thermal, or EMC - file those under the closest "
+            "of the four.\n"
+            "Every grouped summary must be backed by identified requirements: if you list "
+            "acceptance_tests, there must be TEST-NNN requirements; if you fill in "
+            "mechanical, there must be MECH-NNN requirements; power.logic_voltage and each "
+            "interface voltage must match the value of a PWR/IF requirement numerically.\n"
+            "Every requirement needs a unit and a numeric or boolean value where one exists. "
+            "Aim for at most 15 dense requirements - every later stage reads this document, "
+            "so a long list slows the whole team down."
+        ),
+        self_contained=True,
     )
 
 
@@ -109,7 +151,14 @@ def build_architecture_prompt(
         context,
         task,
         inputs,
-        "Describe functional blocks and compatible inter-block signals without designing individual wires.",
+        (
+            "Describe functional blocks and compatible inter-block signals without designing "
+            "individual wires.\n"
+            "Assign every requirement to a block: each requirement ID in the requirements "
+            "document must appear in at least one block's requirement_ids, and every ID you "
+            "write must exist in that document. Connections may only name blocks you declared."
+        ),
+        self_contained=True,
     )
 
 
@@ -165,6 +214,7 @@ def build_simulation_prompt(
         task,
         inputs,
         "Perform only closed-form power, regulator, LED, divider, pull-up, and rating-margin analysis.",
+        self_contained=True,
     )
 
 
@@ -182,6 +232,7 @@ def build_verification_prompt(
             "rule, actual, expected, object, evidence, and severity."
         ),
         read_only=True,
+        self_contained=True,
     )
 
 
@@ -199,6 +250,7 @@ def build_manufacturing_prompt(
             "without claiming unsupported readiness."
         ),
         read_only=True,
+        self_contained=True,
     )
 
 

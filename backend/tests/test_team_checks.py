@@ -94,6 +94,27 @@ def test_captured_live_requirements_accept_qualifying_summary_prose() -> None:
     assert result.passed, result.findings
 
 
+def test_captured_live_requirements_survive_a_synonym_category() -> None:
+    """A real run filed its TEST-00x requirements under the category "quality".
+
+    That failed the gate three times over - once per return trip - on the word
+    alone. The ID prefix now decides the category, so the same document is
+    accepted and the TEST-backed acceptance tests are seen for what they are.
+    """
+    path = Path(__file__).parent / "fixtures" / "live_requirements_synonym_category.json"
+    payload = json.loads(path.read_text())
+    assert {requirement["category"] for requirement in payload["requirements"]} & {"quality"}
+    document = RequirementsDoc.model_validate(payload)
+    assert {requirement.category for requirement in document.requirements} == {
+        "power",
+        "interface",
+        "mechanical",
+        "test",
+    }
+    result = check_requirements(document, "live-rev")
+    assert result.passed, result.findings
+
+
 def test_prose_only_summary_is_a_warning_not_an_error() -> None:
     document = _requirements().model_copy(
         update={

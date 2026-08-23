@@ -25,9 +25,15 @@ class TeamModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+REQUIREMENT_ID_RE = re.compile(r"(PWR|IF|MECH|TEST)-\d{3}")
+
+CATEGORY_BY_PREFIX = {"PWR": "power", "IF": "interface", "MECH": "mechanical", "TEST": "test"}
+"""The ID prefix and the category are the same fact, spelled twice."""
+
+
 class Requirement(BaseModel):
     id: str
-    category: str
+    category: Literal["power", "interface", "mechanical", "test"]
     statement: str
     value: str | int | float | bool | None
     unit: str
@@ -35,9 +41,31 @@ class Requirement(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    @model_validator(mode="before")
+    @classmethod
+    def category_follows_identifier(cls, data: object) -> object:
+        """Take the category from the ID prefix rather than from the agent's wording.
+
+        `id` is the load-bearing field: the architect maps blocks to it, the
+        verifier reports an outcome per ID, and the report counts them. `category`
+        only groups requirements for the gates. So an agent that filed `TEST-001`
+        under "quality" named the same thing in its own words, and a real run did
+        exactly that three times over - burning three two-minute sessions on a
+        synonym. The prefix decides, and the gate is spent on electrical content
+        instead. An ID that does not match the pattern is left alone for the field
+        validators to reject.
+        """
+        if not isinstance(data, dict):
+            return data
+        identifier = str(data.get("id", "")).strip().upper()
+        match = REQUIREMENT_ID_RE.fullmatch(identifier)
+        if match is None:
+            return data
+        return {**data, "id": identifier, "category": CATEGORY_BY_PREFIX[match.group(1)]}
+
     @model_validator(mode="after")
     def require_identifier(self) -> Requirement:
-        if not re.fullmatch(r"(PWR|IF|MECH|TEST)-\d{3}", self.id):
+        if not REQUIREMENT_ID_RE.fullmatch(self.id):
             raise ValueError("requirement id must match PWR-001, IF-002, MECH-003, or TEST-004")
         return self
 
@@ -169,6 +197,8 @@ class AgentTask(TeamModel):
     allowed_actions: list[str] = Field(default_factory=list)
     acceptance_criteria: list[str] = Field(default_factory=list)
     protected_objects: list[str] = Field(default_factory=list)
+    prior_gate_findings: list[str] = Field(default_factory=list)
+    """Why this stage was handed back, in the gate's own words. Empty on a first pass."""
 
 
 class ActionProposal(TeamModel):

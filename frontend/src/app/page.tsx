@@ -141,7 +141,7 @@ export default function Home() {
     };
     tick();
     if (teamSettled) return () => { cancelled = true; };
-    const timer = setInterval(tick, 2000);
+    const timer = setInterval(tick, 1000);
     return () => {
       cancelled = true;
       clearInterval(timer);

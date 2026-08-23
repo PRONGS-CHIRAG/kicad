@@ -45,8 +45,12 @@ class Settings(BaseSettings):
         default="normal",
         description="normal | fast | lite | ultra | fusion. 'fast' is ~2x quicker at ~4x the ACU.",
     )
-    devin_timeout_seconds: float = 120.0
-    devin_poll_seconds: float = 5.0
+    devin_timeout_seconds: float = 300.0
+    # Sessions answer anywhere between ~25 s and ~160 s, and the answer is read
+    # the moment it appears - so a flat, short poll is what decides how quickly
+    # one stage hands over to the next. A five-second poll spent up to five of
+    # those seconds doing nothing, ten times a run.
+    devin_poll_seconds: float = 1.5
     devin_max_acu: int = 5
     auto_resolve: bool = Field(
         default=False,
