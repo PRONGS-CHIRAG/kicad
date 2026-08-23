@@ -1,0 +1,415 @@
+{
+  "blocks": [
+    {
+      "id": "B1_USBC_INPUT",
+      "input_voltage": "5 V USB VBUS (4.75-5.25 V)",
+      "output_voltage": "5 V VBUS",
+      "power_available_ma": 500.0,
+      "power_required_ma": 0.1,
+      "required_inputs": [
+        "USB-C cable VBUS",
+        "USB-C cable GND",
+        "USB-C cable D+/D-"
+      ],
+      "required_outputs": [
+        "VBUS_5V",
+        "GND",
+        "USB_D+",
+        "USB_D-",
+        "CC1",
+        "CC2"
+      ],
+      "requirement_ids": [
+        "PWR-001",
+        "IF-005",
+        "IF-006",
+        "MECH-003"
+      ],
+      "type": "usb_c_receptacle_power_input"
+    },
+    {
+      "id": "B2_CC_SINK_STRAP",
+      "input_voltage": "CC1/CC2 (open-drain source advertisement)",
+      "output_voltage": "5.1 k to GND on each CC line",
+      "power_available_ma": null,
+      "power_required_ma": 0.0,
+      "required_inputs": [
+        "CC1",
+        "CC2",
+        "GND"
+      ],
+      "required_outputs": [
+        "default-current 5 V sink advertisement"
+      ],
+      "requirement_ids": [
+        "IF-006",
+        "PWR-001",
+        "PWR-004"
+      ],
+      "type": "cc_pulldown_network_2x5k1"
+    },
+    {
+      "id": "B3_INPUT_BULK_PROTECTION",
+      "input_voltage": "5 V VBUS",
+      "output_voltage": "5 V VBUS_FILT",
+      "power_available_ma": 500.0,
+      "power_required_ma": 0.05,
+      "required_inputs": [
+        "VBUS_5V",
+        "GND"
+      ],
+      "required_outputs": [
+        "VBUS_FILT",
+        "GND"
+      ],
+      "requirement_ids": [
+        "PWR-006",
+        "PWR-004",
+        "MFG-003"
+      ],
+      "type": "vbus_bulk_capacitance_and_reverse_protection"
+    },
+    {
+      "id": "B4_LDO_3V3",
+      "input_voltage": "5 V (4.75-5.25 V)",
+      "output_voltage": "3.3 V +/-2%",
+      "power_available_ma": 600.0,
+      "power_required_ma": 500.0,
+      "required_inputs": [
+        "VBUS_FILT",
+        "GND",
+        "enable (tied to VIN)"
+      ],
+      "required_outputs": [
+        "+3V3",
+        "GND"
+      ],
+      "requirement_ids": [
+        "PWR-002",
+        "PWR-003",
+        "PWR-004",
+        "TEST-005",
+        "TEMP-001",
+        "TEMP-003"
+      ],
+      "type": "linear_regulator_5v_to_3v3"
+    },
+    {
+      "id": "B5_RAIL_DECOUPLING",
+      "input_voltage": "3.3 V",
+      "output_voltage": "3.3 V (low-impedance)",
+      "power_available_ma": null,
+      "power_required_ma": 0.1,
+      "required_inputs": [
+        "+3V3",
+        "GND"
+      ],
+      "required_outputs": [
+        "+3V3 decoupled at U1.1 and U2.1"
+      ],
+      "requirement_ids": [
+        "PWR-006",
+        "TEST-005"
+      ],
+      "type": "bulk_and_local_decoupling_network"
+    },
+    {
+      "id": "B6_POWER_FLAG_ERC",
+      "input_voltage": null,
+      "output_voltage": null,
+      "power_available_ma": null,
+      "power_required_ma": null,
+      "required_inputs": [
+        "VBUS_5V net",
+        "+3V3 net",
+        "GND net"
+      ],
+      "required_outputs": [
+        "#FLG01 on VBUS",
+        "#FLG02 on GND",
+        "+3V3 driven by B4 regulator output"
+      ],
+      "requirement_ids": [
+        "PWR-005",
+        "TEST-001",
+        "TEST-003"
+      ],
+      "type": "erc_power_flag_and_net_labeling"
+    },
+    {
+      "id": "B7_MCU_ESP32",
+      "input_voltage": "3.3 V",
+      "output_voltage": "3.3 V logic (GPIO)",
+      "power_available_ma": null,
+      "power_required_ma": 500.0,
+      "required_inputs": [
+        "+3V3",
+        "GND",
+        "EN (RC reset)",
+        "USB_D+",
+        "USB_D-"
+      ],
+      "required_outputs": [
+        "SDA (GPIO21)",
+        "SCL (GPIO22)",
+        "GPIO25 spare"
+      ],
+      "requirement_ids": [
+        "PWR-002",
+        "PWR-003",
+        "IF-001",
+        "IF-005",
+        "IF-007",
+        "MECH-003",
+        "TEMP-001",
+        "TEST-004"
+      ],
+      "type": "mcu_module_esp32_wroom_32"
+    },
+    {
+      "id": "B8_EN_RESET_RC",
+      "input_voltage": "3.3 V",
+      "output_voltage": "3.3 V delayed EN",
+      "power_available_ma": null,
+      "power_required_ma": 0.33,
+      "required_inputs": [
+        "+3V3",
+        "GND"
+      ],
+      "required_outputs": [
+        "EN to U1.8"
+      ],
+      "requirement_ids": [
+        "IF-007",
+        "TEST-001"
+      ],
+      "type": "en_pullup_rc_reset_network_10k_100nf"
+    },
+    {
+      "id": "B9_I2C_BUS",
+      "input_voltage": "3.3 V logic",
+      "output_voltage": "3.3 V open-drain, 400 kHz",
+      "power_available_ma": null,
+      "power_required_ma": 3.0,
+      "required_inputs": [
+        "+3V3 (pull-up reference)",
+        "SDA from U1.3",
+        "SCL from U1.4"
+      ],
+      "required_outputs": [
+        "SDA to U2.3",
+        "SCL to U2.4"
+      ],
+      "requirement_ids": [
+        "IF-001",
+        "IF-002",
+        "IF-003",
+        "TEST-004"
+      ],
+      "type": "i2c_bus_with_pullups_3v3_400khz"
+    },
+    {
+      "id": "B10_TEMP_SENSOR",
+      "input_voltage": "3.3 V",
+      "output_voltage": "3.3 V open-drain SDA",
+      "power_available_ma": null,
+      "power_required_ma": 0.01,
+      "required_inputs": [
+        "+3V3 to U2.1",
+        "GND to U2.2",
+        "SCL to U2.4",
+        "ADD0 defined level to U2.5"
+      ],
+      "required_outputs": [
+        "SDA to U2.3 (temperature register at 0x48)"
+      ],
+      "requirement_ids": [
+        "IF-003",
+        "IF-004",
+        "TEMP-002",
+        "TEMP-003",
+        "TEST-004",
+        "TEST-003"
+      ],
+      "type": "i2c_temperature_sensor_tmp102"
+    },
+    {
+      "id": "B11_ADDR_STRAP",
+      "input_voltage": "3.3 V logic",
+      "output_voltage": "logic 0 (address 0x48)",
+      "power_available_ma": null,
+      "power_required_ma": 0.0,
+      "required_inputs": [
+        "GND"
+      ],
+      "required_outputs": [
+        "ADD0 level to U2.5"
+      ],
+      "requirement_ids": [
+        "IF-003",
+        "IF-004"
+      ],
+      "type": "i2c_address_strap_add0_to_gnd"
+    },
+    {
+      "id": "B12_USB_DIFF_PAIR",
+      "input_voltage": "3.3 V signalling",
+      "output_voltage": "90 ohm differential, length-matched <=5 mm",
+      "power_available_ma": null,
+      "power_required_ma": null,
+      "required_inputs": [
+        "USB_D+ / USB_D- from J1"
+      ],
+      "required_outputs": [
+        "USB_D+ to U1.6",
+        "USB_D- to U1.7"
+      ],
+      "requirement_ids": [
+        "IF-005",
+        "MFG-001",
+        "TEST-002"
+      ],
+      "type": "usb2_differential_pair_channel_90ohm"
+    },
+    {
+      "id": "B13_BOARD_MECHANICAL",
+      "input_voltage": null,
+      "output_voltage": null,
+      "power_available_ma": null,
+      "power_required_ma": null,
+      "required_inputs": [
+        "generic_two_layer profile rules",
+        "component placement zones"
+      ],
+      "required_outputs": [
+        "<=100 x 60 mm 2-layer FR4 1.6 mm outline",
+        "antenna keep-out",
+        "2x 3.2 mm mounting holes",
+        "GND plane with sensor thermal isolation"
+      ],
+      "requirement_ids": [
+        "MECH-001",
+        "MECH-002",
+        "MECH-003",
+        "MECH-004",
+        "MFG-001",
+        "MFG-002",
+        "MFG-003",
+        "MFG-004",
+        "COST-001",
+        "TEST-002"
+      ],
+      "type": "board_outline_stackup_and_mounting"
+    }
+  ],
+  "connections": [
+    {
+      "from_block": "B1_USBC_INPUT",
+      "signal": "CC1/CC2 configuration channel",
+      "to_block": "B2_CC_SINK_STRAP"
+    },
+    {
+      "from_block": "B1_USBC_INPUT",
+      "signal": "VBUS 5 V power",
+      "to_block": "B3_INPUT_BULK_PROTECTION"
+    },
+    {
+      "from_block": "B1_USBC_INPUT",
+      "signal": "USB_D+/USB_D- differential pair",
+      "to_block": "B12_USB_DIFF_PAIR"
+    },
+    {
+      "from_block": "B3_INPUT_BULK_PROTECTION",
+      "signal": "VBUS_FILT 5 V power",
+      "to_block": "B4_LDO_3V3"
+    },
+    {
+      "from_block": "B4_LDO_3V3",
+      "signal": "+3V3 rail",
+      "to_block": "B5_RAIL_DECOUPLING"
+    },
+    {
+      "from_block": "B4_LDO_3V3",
+      "signal": "+3V3 power_out driving source",
+      "to_block": "B6_POWER_FLAG_ERC"
+    },
+    {
+      "from_block": "B1_USBC_INPUT",
+      "signal": "VBUS/GND net PWR_FLAG association",
+      "to_block": "B6_POWER_FLAG_ERC"
+    },
+    {
+      "from_block": "B5_RAIL_DECOUPLING",
+      "signal": "+3V3 decoupled power to U1.1",
+      "to_block": "B7_MCU_ESP32"
+    },
+    {
+      "from_block": "B5_RAIL_DECOUPLING",
+      "signal": "+3V3 decoupled power to U2.1",
+      "to_block": "B10_TEMP_SENSOR"
+    },
+    {
+      "from_block": "B4_LDO_3V3",
+      "signal": "+3V3 pull-up reference",
+      "to_block": "B8_EN_RESET_RC"
+    },
+    {
+      "from_block": "B8_EN_RESET_RC",
+      "signal": "EN delayed reset input to U1.8",
+      "to_block": "B7_MCU_ESP32"
+    },
+    {
+      "from_block": "B7_MCU_ESP32",
+      "signal": "SDA (GPIO21) / SCL (GPIO22) 3.3 V open-drain",
+      "to_block": "B9_I2C_BUS"
+    },
+    {
+      "from_block": "B4_LDO_3V3",
+      "signal": "+3V3 pull-up reference for SDA/SCL",
+      "to_block": "B9_I2C_BUS"
+    },
+    {
+      "from_block": "B9_I2C_BUS",
+      "signal": "SDA/SCL 400 kHz I2C bus",
+      "to_block": "B10_TEMP_SENSOR"
+    },
+    {
+      "from_block": "B11_ADDR_STRAP",
+      "signal": "ADD0 logic level (address select)",
+      "to_block": "B10_TEMP_SENSOR"
+    },
+    {
+      "from_block": "B12_USB_DIFF_PAIR",
+      "signal": "USB_D+/USB_D- to U1.6/U1.7",
+      "to_block": "B7_MCU_ESP32"
+    },
+    {
+      "from_block": "B1_USBC_INPUT",
+      "signal": "GND return / edge-mounted shell reference",
+      "to_block": "B13_BOARD_MECHANICAL"
+    },
+    {
+      "from_block": "B13_BOARD_MECHANICAL",
+      "signal": "GND plane and antenna keep-out zone",
+      "to_block": "B7_MCU_ESP32"
+    },
+    {
+      "from_block": "B13_BOARD_MECHANICAL",
+      "signal": "GND return with thermal isolation from B4/B7",
+      "to_block": "B10_TEMP_SENSOR"
+    },
+    {
+      "from_block": "B13_BOARD_MECHANICAL",
+      "signal": "GND return / thermal copper pad",
+      "to_block": "B4_LDO_3V3"
+    }
+  ],
+  "unresolved_questions": [
+    "PWR-003 (>=600 mA on +3V3) and PWR-004 (<=500 mA from VBUS) conflict: the regulator block is sized for 600 mA capability but VBUS draw must be capped at 500 mA, so ESP32 Wi-Fi peaks must be covered by bulk capacitance rather than steady-state current. Confirm which requirement governs, or accept the bulk-capacitance mitigation.",
+    "ESP32-WROOM-32 has no native USB peripheral; the pin table lists U1.6/U1.7 as USB_D+/USB_D-. Should B12 remain a direct pair to the module, or should a USB-UART bridge block be inserted between J1 and U1 (adds a BOM item and a UART interface instead of a differential pair)?",
+    "Regulator choice: LDO (simple, ~0.85 W dissipation at 500 mA from 5 V, conflicts with TEMP-003 self-heating isolation) versus buck converter (cooler, higher cost and more passives against COST-002). Preference needed.",
+    "ADD0 strap: tie directly to GND (address 0x48) or via a resistor/jumper to allow field-selectable 0x48-0x4B?",
+    "Is a VBUS ESD/overcurrent protection block (TVS + polyfuse) desired, given COST-002 budget and that it is not stated in any requirement?",
+    "MECH-003 antenna keep-out plus the TEMP-003 10 mm separation between U2, the regulator and the module must both fit within the reduced <=100 x 60 mm outline; confirm no additional mechanical constraints (enclosure, connector orientation) restrict placement further."
+  ]
+}

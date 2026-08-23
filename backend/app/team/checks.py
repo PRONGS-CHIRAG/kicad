@@ -256,11 +256,12 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
                     "error",
                 )
             )
-    statements: dict[tuple[str, str], object] = {}
+    statements: dict[tuple[str, str, str], object] = {}
     for requirement in document.requirements:
         key = (
             _canonical_category(requirement.category) or requirement.category.lower(),
             requirement.statement.lower(),
+            re.sub(r"\s+", " ", (requirement.unit or "").strip().lower()),
         )
         if key in statements and statements[key] != requirement.value:
             findings.append(
@@ -376,12 +377,19 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
 
 
 _SIGNAL_IDENTIFIER_RE = re.compile(
-    r"(?<![A-Za-z0-9])(?:\+?3V3|VBUS(?:_[A-Z0-9]+)?|GND|GROUND|VSS|RETURN|"
+    r"(?<![A-Za-z0-9])(?:\+?3V3|VBUS(?:[_-][A-Z0-9]+)?|GND|GROUND|VSS|RETURN|"
     r"GPIO\d+|IO\d+|D[+-]|SDA|SCL|EN|ADD0|"
     r"(?:I2C|UART|USB)_[A-Z0-9]+[+-]?)(?![A-Za-z0-9])",
     re.IGNORECASE,
 )
 _SHAPED_IDENTIFIER_RE = re.compile(r"^[A-Z][A-Z0-9]+(?:_[A-Z0-9]+)+(?:[+-])?$")
+_VOLTAGE_SUFFIX_RE = re.compile(r"^(?P<base>.+)_(?:\d+(?:\.\d+)?V|\d+V\d+)$")
+
+
+def _canonical_signal_identifier(identifier: str) -> str:
+    normalized = identifier.upper().replace("-", "_")
+    match = _VOLTAGE_SUFFIX_RE.fullmatch(normalized)
+    return match.group("base") if match else normalized
 
 
 def _signal_identifiers(value: str) -> set[str]:
@@ -389,7 +397,7 @@ def _signal_identifiers(value: str) -> set[str]:
     without_annotations = re.sub(r"\([^)]*\)", " ", value).strip()
     if not identifiers and _SHAPED_IDENTIFIER_RE.fullmatch(without_annotations):
         identifiers.add(without_annotations.upper())
-    aliases = set(identifiers)
+    aliases = {_canonical_signal_identifier(identifier) for identifier in identifiers}
     for identifier in identifiers:
         if identifier.startswith(("I2C_", "USB_")):
             suffix = identifier.split("_", 1)[1]

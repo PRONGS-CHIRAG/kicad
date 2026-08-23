@@ -32,6 +32,7 @@ from app.team.schemas import (
     InterfaceRequirement,
     PowerRequirements,
     ProjectSpec,
+    Requirement,
     RequirementsDoc,
     SimulationReport,
     VerificationFinding,
@@ -101,6 +102,12 @@ def test_captured_live_requirements_accept_qualifying_summary_prose() -> None:
 def test_second_captured_live_requirements_accept_category_synonyms() -> None:
     payload = json.loads((Path(__file__).parent / "fixtures" / "live_requirements_synonyms.json").read_text())
     result = check_requirements(RequirementsDoc.model_validate(payload), "live-synonyms-rev")
+    assert result.passed, result.findings
+
+
+def test_captured_seventh_live_requirements_accept_board_dimensions() -> None:
+    payload = json.loads((Path(__file__).parent / "fixtures" / "live_requirements_seventh.json").read_text())
+    result = check_requirements(RequirementsDoc.model_validate(payload), "live-seventh-rev")
     assert result.passed, result.findings
 
 
@@ -211,6 +218,32 @@ def test_conflicting_values_for_same_power_statement_fail() -> None:
     assert any(finding.rule == "conflicting requirements" for finding in result.findings)
 
 
+def test_same_statement_different_dimensions_do_not_conflict() -> None:
+    document = _requirements().model_copy(
+        update={
+            "requirements": [
+                *_requirements().requirements,
+                Requirement(
+                    id="MECH-001",
+                    category="mechanical",
+                    statement="Keep the finished PCB within the specified board outline.",
+                    value=110,
+                    unit="maximum width mm",
+                ),
+                Requirement(
+                    id="MECH-002",
+                    category="mechanical",
+                    statement="Keep the finished PCB within the specified board outline.",
+                    value=65,
+                    unit="maximum height mm",
+                ),
+            ]
+        }
+    )
+    result = check_requirements(document, "rev-1")
+    assert result.passed, result.findings
+
+
 def test_negative_requirement_value_fails() -> None:
     document = _requirements().model_copy(
         update={"requirements": [_requirements().requirements[0].model_copy(update={"value": -1})]}
@@ -301,6 +334,35 @@ def test_fifth_live_architecture_passes_identifier_connectivity_gate() -> None:
     )
     result = check_architecture(requirements, architecture, "fifth-live-architecture-rev")
     assert result.passed, result.findings
+
+
+def test_seventh_live_architecture_passes_voltage_annotated_nets() -> None:
+    requirements = RequirementsDoc.model_validate(
+        json.loads((Path(__file__).parent / "fixtures" / "live_requirements_seventh.json").read_text())
+    )
+    architecture = Architecture.model_validate(
+        json.loads((Path(__file__).parent / "fixtures" / "live_architecture_seventh.json").read_text())
+    )
+    result = check_architecture(requirements, architecture, "seventh-live-architecture-rev")
+    assert result.passed, result.findings
+
+
+def test_voltage_suffix_is_an_annotation_but_filtered_rail_stays_distinct() -> None:
+    passing = Architecture(
+        blocks=[
+            {"id": "source", "type": "source", "requirement_ids": ["PWR-001"]},
+            {"id": "load", "type": "load", "required_inputs": ["VBUS"]},
+        ],
+        connections=[{"from": "source", "to": "load", "signal": "VBUS 5 V power"}],
+    )
+    assert check_architecture(_requirements(), passing, "rev-1").passed
+
+    filtered = passing.model_copy(
+        update={"connections": [passing.connections[0].model_copy(update={"signal": "VBUS_FILT"})]}
+    )
+    result = check_architecture(_requirements(), filtered, "rev-1")
+    assert not result.passed
+    assert any(finding.rule == "required input connectivity" for finding in result.findings)
 
 
 def test_architecture_global_nets_do_not_require_point_to_point_edges() -> None:

@@ -1,0 +1,147 @@
+{
+  "acceptance_tests": [
+    "Confirm the implemented board uses a USB-C power connector; flag the current J1 USB_B_Micro designation as a discrepancy if unchanged.",
+    "Confirm VBUS and GND from the USB-C connector reach the board power circuitry and that +3V3 powers U1 and U2.",
+    "Confirm exactly one TMP102 temperature sensor is connected to the ESP32 through I2C SDA and SCL nets.",
+    "Confirm ESP32 EN, USB_D+, and USB_D- connectivity against the design pin/net tables.",
+    "Rerun ERC independently and report final errors and warnings; do not accept unresolved violations without an issue list.",
+    "Rerun DRC independently and report final errors and warnings; do not accept unresolved violations without an issue list.",
+    "Confirm the final board outline does not exceed 110 mm by 65 mm and the fabrication target is two layers."
+  ],
+  "constraints": [
+    "Propose requirements only; do not modify the project.",
+    "The responsible return target is the PCB engineering team lead/design-validation team.",
+    "Review and resolve the stated ERC baseline of 10 errors and 8 warnings against the requirements.",
+    "Review and resolve the stated DRC baseline of 5 errors and 13 warnings against the requirements.",
+    "Project manager must consolidate implementation and validation results and return either an accepted design package or an issue list.",
+    "The supplied J1 pin table identifies USB_B_Micro while the project request requires USB-C; this interface must be reconciled before acceptance."
+  ],
+  "interfaces": [
+    {
+      "devices": 1,
+      "type": "I2C",
+      "voltage": "+3V3"
+    },
+    {
+      "devices": null,
+      "type": "USB-C power",
+      "voltage": "VBUS voltage not specified"
+    }
+  ],
+  "mechanical": {
+    "layers": 2,
+    "maximum_height_mm": 65.0,
+    "maximum_width_mm": 110.0
+  },
+  "power": {
+    "input": "USB-C receptacle VBUS",
+    "logic_voltage": "+3V3",
+    "maximum_current_ma": null
+  },
+  "requirements": [
+    {
+      "category": "power",
+      "id": "PWR-001",
+      "source": "Project request",
+      "statement": "Provide board power through a USB-C receptacle interface.",
+      "unit": "connector type",
+      "value": "USB-C"
+    },
+    {
+      "category": "power",
+      "id": "PWR-002",
+      "source": "Pin table: U1.1, U2.1",
+      "statement": "Operate the ESP32 and I2C temperature sensor from the +3V3 logic rail.",
+      "unit": "V nominal logic rail",
+      "value": "+3V3"
+    },
+    {
+      "category": "interface",
+      "id": "IF-001",
+      "source": "Project request and pin table: U1 GPIO21/GPIO22, U2 SDA/SCL",
+      "statement": "Provide one I2C temperature-sensor connection between the ESP32 and TMP102 using SDA and SCL signals.",
+      "unit": "I2C sensor",
+      "value": 1
+    },
+    {
+      "category": "interface",
+      "id": "IF-002",
+      "source": "Pin table: U2 VCC and GND",
+      "statement": "Connect the TMP102 supply and ground pins to the board power rails.",
+      "unit": "required connection",
+      "value": true
+    },
+    {
+      "category": "interface",
+      "id": "IF-003",
+      "source": "Project request and pin table: J1 VBUS/GND",
+      "statement": "Provide USB power connectivity from the USB-C VBUS and GND contacts to the board power circuitry.",
+      "unit": "required connection",
+      "value": true
+    },
+    {
+      "category": "interface",
+      "id": "IF-004",
+      "source": "Pin table: U1 EN/USB_D+/USB_D-",
+      "statement": "Provide ESP32 connectivity for EN, USB_D+, and USB_D- nets as defined by the design.",
+      "unit": "required connection",
+      "value": true
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-001",
+      "source": "Design context: board 110 x 65 mm",
+      "statement": "Keep the finished PCB within the specified board outline.",
+      "unit": "maximum width mm",
+      "value": 110
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-002",
+      "source": "Design context: board 110 x 65 mm",
+      "statement": "Keep the finished PCB within the specified board outline.",
+      "unit": "maximum height mm",
+      "value": 65
+    },
+    {
+      "category": "manufacturing",
+      "id": "MFG-001",
+      "source": "Manufacturer profile: generic_two_layer",
+      "statement": "Target fabrication as a generic two-layer PCB.",
+      "unit": "copper layers",
+      "value": 2
+    },
+    {
+      "category": "acceptance/test",
+      "id": "TEST-001",
+      "source": "Assigned workflow",
+      "statement": "Independently rerun electrical rules checking after implementation and record the resulting error and warning counts.",
+      "unit": "ERC result",
+      "value": "rerun and report"
+    },
+    {
+      "category": "acceptance/test",
+      "id": "TEST-002",
+      "source": "Assigned workflow",
+      "statement": "Independently rerun design rules checking after implementation and record the resulting error and warning counts.",
+      "unit": "DRC result",
+      "value": "rerun and report"
+    },
+    {
+      "category": "acceptance/test",
+      "id": "TEST-003",
+      "source": "Project request versus design context pin table",
+      "statement": "Verify the implemented connector is USB-C and reconcile it with the supplied pin table, which currently identifies J1 as USB_B_Micro.",
+      "unit": "connector verification",
+      "value": "USB-C required; J1 discrepancy must be resolved"
+    },
+    {
+      "category": "acceptance/test",
+      "id": "TEST-004",
+      "source": "Assigned workflow and design context",
+      "statement": "Verify the ESP32, TMP102, power-rail, ground, and I2C connectivity against the stated pin and net tables.",
+      "unit": "connectivity verification",
+      "value": true
+    }
+  ]
+}
