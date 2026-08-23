@@ -191,6 +191,10 @@ and timestamp formats both changed between KiCAD 9 and 10.
 
 ## User flow
 
+Open a project and there are two lanes on it, switched by one control: **one change** (below) or the
+**ten-agent team** (see [Ten-agent team](#ten-agent-team)). Both work on the same project and both
+derive their step from state rather than tracking it.
+
 Four stages, derived in [page.tsx](frontend/src/app/page.tsx) from what exists rather than tracked as
 a state machine: `report ? "report" : plan ? "preview" : session ? "select" : "project"`.
 
@@ -272,11 +276,36 @@ agent and replay every downstream stage; two return trips end in human review.
 
 The Devin runner returns validated structured output from real sessions. The explicitly labelled
 `STUB` runner is deterministic and offline for keyless development. Agents never directly mutate
-design files or open pull requests. Team runs are available through the background
-`/api/team/runs` endpoints and `python -m app.team.cli --project <fixture> "<request>"`.
+design files or open pull requests. Team runs are driven from the UI's **Ten-agent team** lane, the
+background `/api/team/runs` endpoints, or `python -m app.team.cli --project <fixture> "<request>"`.
 Stage outputs, gate evidence, events, and checkpoints are written outside the worktree under
 `settings.workspace_dir/team/<run_id>/`. The existing `fixtures/projects/esp32_i2c_demo` fixture
 supports the ESP32/I²C temperature-monitoring and USB-C demonstration request.
+
+**The lane in the UI.** Three steps, derived the same way — `!runId ? "brief" : status === "running"
+? "run" : "release"`, from the run's own status rather than from whether a report exists, because
+answering a question puts the run back to `running` with the previous report still attached.
+[team.ts](frontend/src/lib/team.ts) mirrors the registry roster and rebuilds a run's shape from the
+append-only evidence file. The runner and the orchestrator each append a record for the same pass, and
+adjacency cannot tell those apart from a return trip — at the parallel fork the sibling's records land
+in between, so `simulation`'s two records are separated by all of `pcb_layout`'s. The gate can tell
+them apart: routing only ever happens *after* a gate, so an agent record opens a new pass only when
+the last one has already been gated. That way the same stage appearing again later reads as the return
+trip it is, and the fork does not invent two.
+[team-flow.tsx](frontend/src/components/team-flow.tsx) draws the ten stages with the layout/simulation
+fork, [team-stage.tsx](frontend/src/components/team-stage.tsx) opens one stage up — what it was given,
+its session, its gate findings, and its typed output rendered per model — and
+[team-trace.tsx](frontend/src/components/team-trace.tsx) lists the evidence in the order it landed.
+
+Two gates are honest about their own gaps rather than papering over them. The project manager's gate
+appends no evidence record, so it is reported as passed only because a later stage ran at all — the
+orchestrator returns the moment that gate fails. A gate the orchestrator built itself (an agent that
+returned nothing, an output no tool can ground) also has no record, so the finished run's
+`open_critical_findings` supplies the reason. One inference remains, and it is the most visible state in the
+lane: an agent appends its record only once it finishes, so the stage drawn as *working* is the
+canonical successor of the last gate that passed — both branches of the fork, where that successor is
+the pair. After a failed gate nothing claims to be working, because which agent picks the work up is
+decided by the finding text inside the backend. A stage with no records yet says it is waiting.
 
 The MVP does not route copper or run ngspice. Simulation uses closed-form arithmetic only, and
 layout checks use footprint extents only where the parser exposes trustworthy geometry. A release

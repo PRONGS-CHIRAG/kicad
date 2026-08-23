@@ -65,7 +65,7 @@ subcommands only) and the KiCAD PPAs publish amd64 only.
 | `backend/app/benchmark.py` | The 10 benchmark scenarios, JSON + HTML report |
 | `backend/app/demo.py` | Demo artefacts: accepted run, rolled-back run, benchmark summary |
 | `backend/app/probe_mitos.py` | Writes the Mitos capability matrix from a live MCP server |
-| `frontend` | Next.js UI: project -> selection + instruction/form -> plan preview -> validation report |
+| `frontend` | Next.js UI, two lanes on one project: one change (selection + instruction -> plan preview -> verdict) or the ten-agent team (brief -> live stage flow -> release) |
 | `fixtures/projects` | Generated KiCAD projects used by tests and benchmarks |
 
 ## Running without Docker
@@ -220,8 +220,22 @@ one session per invocation. Keyless runs use the explicitly labelled `STUB` runn
 deterministic and never contacts Devin. Agents do not edit files or open pull requests; schematic
 and placement proposals are applied only through checkpointed, deterministic gates.
 
+The UI carries the team as its own lane: pick a project, switch to **Ten-agent team**, brief it, and
+the run is drawn stage by stage as it executes — each agent, the deterministic gate that has to accept
+its output, the fork where layout and simulation overlap, every return trip, and the release verdict.
+Live progress is read from the append-only evidence the orchestrator writes as it goes, so what is on
+screen is what the run recorded. The single exception is which stage is drawn as *working*: an agent
+appends its record only once it finishes, so the stage in flight is inferred as the canonical successor
+of the last gate that passed — and after a gate *fails* no stage claims to be working at all, because
+which agent picks the work up is decided by the finding text inside the backend. The lane
+picks the offline `STUB` runner by default; choosing `devin` opens real sessions and says so next to
+the button. A run that ends in `needs_human_review` can be answered from that panel, which appends the
+answer to the request and re-runs.
+
 The background API provides `POST /api/team/runs` and status, report, evidence, and answer endpoints
-at `/api/team/runs/{run_id}`, `/report`, `/evidence`, and `/answer`. The equivalent CLI is:
+at `/api/team/runs/{run_id}`, `/report`, `/evidence`, and `/answer`. A run reports the `session_id` of
+the working copy it edits, so the UI renders the very files the schematic and layout stages write.
+The equivalent CLI is:
 
 ```text
 python -m app.team.cli --project fixtures/projects/esp32_i2c_demo \

@@ -74,6 +74,8 @@ def health() -> dict:
         "drc_supported": cli.supports("pcb", "drc"),
         "executor": settings.executor,
         "llm_enabled": settings.llm_enabled,
+        "team_runner": settings.resolved_team_runner,
+        "team_parallel": settings.team_parallel,
     }
 
 

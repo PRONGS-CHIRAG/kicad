@@ -102,7 +102,12 @@ def create_team_run(request: TeamRunRequest) -> dict[str, str]:
             "status": "running",
             "runner": request.runner or settings.resolved_team_runner,
             "project": request.project,
+            "request": request.request,
+            "manufacturer_profile": request.manufacturer_profile or settings.team_manufacturer_profile,
             "answers": [],
+            # The team edits this session's working copy, so the render endpoint
+            # can show the very files the schematic and layout stages write.
+            "session_id": session.id,
             "project_dir": str(session.project_dir),
             "request_model": request,
         }
