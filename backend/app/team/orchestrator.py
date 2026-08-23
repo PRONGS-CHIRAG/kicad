@@ -333,6 +333,11 @@ class TeamOrchestrator:
                     get_profile(str(project.manufacturer_profile.get("name", ""))),
                     project_version=project_version,
                     checkpoint_path=self.evidence.root / "checkpoints" / "layout",
+                    schematic_nets=(
+                        tuple(read_project(self.options.project_dir).nets)
+                        if self.options.project_dir is not None
+                        else ()
+                    ),
                     drc_before=self.options.drc_baseline,
                     cli=self.options.kicad_cli,
                 )

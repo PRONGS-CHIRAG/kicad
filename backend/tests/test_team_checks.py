@@ -31,6 +31,7 @@ from app.team.schemas import (
     ComponentSpecification,
     DesignContext,
     InterfaceRequirement,
+    LayoutProposal,
     PowerRequirements,
     ProjectSpec,
     Requirement,
@@ -278,7 +279,8 @@ def test_gated_agent_prompts_state_the_vocabulary_they_emit() -> None:
         ),
         "simulation": (
             "pass, failed, or unverified",
-            "Numeric values must include units",
+            "Free-form expected measurement values must include units",
+            "required_ma, available_ma, margin_percent, and measured_v already encode their units",
             "pass or failed verdict",
             "unverified tests must state a concise explicit reason",
             "not a silent escape hatch",
@@ -885,6 +887,61 @@ def test_layout_gate_uses_real_fixture_board() -> None:
     )
 
 
+def test_layout_gate_walks_footprint_pads_and_distinguishes_schematic_only_nets(
+    tmp_path: Path,
+) -> None:
+    board = FIXTURES / "esp32_i2c_demo" / "esp32_i2c_demo.kicad_pcb"
+    required = ["+3V3", "GND", "USB_D+", "USB_D-", "VBUS"]
+    assert check_layout(board, get_profile("generic_two_layer"), required, project_version="rev-1").passed
+
+    live_layout = LayoutProposal.model_validate(
+        json.loads((Path(__file__).parent / "fixtures" / "live_pcb_layout_fourteenth.json").read_text())
+    )
+    schematic_only = check_layout(
+        board,
+        get_profile("generic_two_layer"),
+        live_layout.critical_nets,
+        schematic_nets=["SDA", "SCL"],
+        project_version="rev-1",
+    )
+    assert schematic_only.passed
+    assert {
+        finding.actual
+        for finding in schematic_only.findings
+        if finding.rule == "required net connected" and finding.severity == "warning"
+    } == {"SDA", "SCL"}
+    assert all(
+        finding.rule == "required net connected"
+        and finding.severity == "warning"
+        and "MVP does not update the board netlist or route" in finding.expected
+        for finding in schematic_only.findings
+        if finding.actual in {"SDA", "SCL"}
+    )
+
+    board_with_unpadded_net = tmp_path / "board.kicad_pcb"
+    board_with_unpadded_net.write_text(
+        board.read_text().replace(
+            '(net 5 "VBUS")',
+            '(net 5 "VBUS")\n\t(net 6 "BOARD_ONLY")',
+            1,
+        ),
+        encoding="utf-8",
+    )
+    unpadded = check_layout(
+        board_with_unpadded_net,
+        get_profile("generic_two_layer"),
+        ["BOARD_ONLY"],
+        project_version="rev-1",
+    )
+    assert not unpadded.passed
+    assert any(
+        finding.rule == "required net connected"
+        and finding.actual == "BOARD_ONLY"
+        and finding.severity == "error"
+        for finding in unpadded.findings
+    )
+
+
 def test_simulation_gate_passes_with_units_and_fails_without_assumptions() -> None:
     passing = SimulationReport(
         tests=[
@@ -962,6 +1019,36 @@ def test_thirteenth_live_simulation_keeps_unverified_reasons_and_failed_tests_st
         and finding.severity == "error"
         for finding in result.findings
     )
+
+
+def test_fourteenth_live_simulation_accepts_named_units_but_checks_free_form_units() -> None:
+    report = SimulationReport.model_validate(
+        json.loads((Path(__file__).parent / "fixtures" / "live_simulation_fourteenth.json").read_text())
+    )
+    result = check_simulation(report, project_version="fourteenth-live")
+    assert not any(finding.rule == "simulation values carry units" for finding in result.findings)
+    assert not result.passed
+    assert any(
+        finding.rule == "simulation test status"
+        and finding.actual == "failed"
+        and finding.severity == "error"
+        for finding in result.findings
+    )
+
+    unitless_expected = SimulationReport(
+        tests=[
+            {
+                "name": "free-form rail measurement",
+                "expected": {"nominal": 3.3},
+                "measured_v": "3.3 V",
+                "status": "pass",
+                "source": "datasheet rail specification",
+            }
+        ],
+        assumptions=["closed-form test"],
+    )
+    unitless_result = check_simulation(unitless_expected, project_version="unitless-expected")
+    assert any(finding.rule == "simulation values carry units" for finding in unitless_result.findings)
 
 
 def test_architecture_voltage_formatting_is_not_a_gate_failure() -> None:

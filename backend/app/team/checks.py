@@ -907,6 +907,7 @@ def check_layout(
     drc_before: ErcReport | None = None,
     drc_after: ErcReport | None = None,
     *,
+    schematic_nets: Iterable[str] = (),
     project_version: str,
 ) -> StageCheckResult:
     manufacturer = get_profile(profile) if isinstance(profile, str) else profile
@@ -978,14 +979,46 @@ def check_layout(
     names = {str(net[2]) for net in sexpr.find_all(document, "net") if len(net) >= 3}
     connected_names = {
         str(net[2])
-        for pad in sexpr.find_all(document, "pad")
+        for footprint in sexpr.find_all(document, "footprint")
+        for pad in sexpr.find_all(footprint, "pad")
         for net in sexpr.find_all(pad, "net")
         if len(net) >= 3
     }
+    schematic_net_names = {str(net) for net in schematic_nets}
     for net in required_nets:
-        if net not in names or net not in connected_names:
+        if net not in names:
+            if net in schematic_net_names:
+                findings.append(
+                    finding(
+                        "required net connected",
+                        net,
+                        "MVP does not update the board netlist or route",
+                        net,
+                        str(board_path),
+                        "warning",
+                    )
+                )
+            else:
+                findings.append(
+                    finding(
+                        "required net connected",
+                        net,
+                        "present on board",
+                        net,
+                        str(board_path),
+                        "error",
+                    )
+                )
+        elif net not in connected_names:
             findings.append(
-                finding("required net connected", net, "present on board", net, str(board_path), "error")
+                finding(
+                    "required net connected",
+                    net,
+                    "present on a board footprint pad",
+                    net,
+                    str(board_path),
+                    "error",
+                )
             )
     if drc_after is not None and not drc_after.ran:
         findings.append(finding("DRC has run", False, True, str(board_path), "kicad-cli DRC", "error"))
@@ -1012,11 +1045,7 @@ def check_simulation(
         else set()
     )
     for test in report.tests:
-        numeric_values: list[object]
-        if isinstance(test, SimulationRailTest):
-            numeric_values = [*test.expected.values(), test.measured_v]
-        else:
-            numeric_values = [test.required_ma, test.available_ma, test.margin_percent]
+        numeric_values = list(test.expected.values()) if isinstance(test, SimulationRailTest) else []
         unitless = [
             value
             for value in numeric_values

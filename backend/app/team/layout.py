@@ -39,6 +39,7 @@ def apply_layout(
     project_version: str,
     checkpoint_path: Path | str | None = None,
     required_nets: tuple[str, ...] = (),
+    schematic_nets: tuple[str, ...] = (),
     drc_before: ErcReport | None = None,
     cli: KicadCli | None = None,
 ) -> LayoutApplicationResult:
@@ -78,6 +79,7 @@ def apply_layout(
             required_nets or tuple(proposal.critical_nets),
             drc_before,
             drc_report,
+            schematic_nets=schematic_nets,
             project_version=project_version,
         )
         if any(finding.severity == "error" for finding in result.findings):

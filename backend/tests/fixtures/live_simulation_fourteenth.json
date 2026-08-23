@@ -1,0 +1,196 @@
+{
+  "assumptions": [
+    "Analysis is closed-form only: no SPICE, no measurement, and no modification to the project, files, or schematic; every result is derived from the declared prior-stage component specifications plus the stated requirement IDs.",
+    "+3V3 is taken as 3.3 V nominal with a +/-5% distribution tolerance (3.135-3.465 V) per PWR-002; VBUS is taken as USB 5 V nominal with the USB 2.0 range 4.75-5.25 V per PWR-001.",
+    "Board current budget is 500 mA peak on the 3V3 rail, taken from the ESP32-WROOM-32E requirement for a >= 500 mA supply (PWR-003); TMP102 adds 10 uA typical.",
+    "Tests covering the proposed-but-unplaceable parts (AP2112K-3.3 LDO, 4.7 kOhm I2C pull-ups, 10 kOhm EN pull-up) are value/rating checks on the selected part numbers, valid for the next revision; the MVP no-new-footprint rule (MECH-006) means these parts are not physically present, and the as-built rail-source test is therefore reported unverified rather than pass.",
+    "The USB-input-current test assumes the proposed linear LDO topology and a default USB 2.0 high-power port (500 mA); it is reported failed because a linear 500 mA 3V3 budget leaves zero margin against the port limit. A switching converter, a reduced budget, or USB-C/BC1.2 current negotiation resolves it.",
+    "LED and resistive-divider checks are reported unverified because no such branches exist anywhere in the netlist, pin table, or component list - there is nothing to analyze, not a missing calculation.",
+    "The AP2112 thermal check is unverified solely because no theta_JA or package power-dissipation figure was supplied in the declared prior-stage specifications; the 0.85 W dissipation figure itself is computed and stated.",
+    "I2C timing (rise time / bus capacitance with 4.7 kOhm at 400 kHz) is outside the assigned closed-form scope of power, regulator, LED, divider, pull-up, and rating-margin analysis and is not claimed here; only the DC pull-up current and derating are evaluated.",
+    "ESP32 digital I/O thresholds are the datasheet ratiometric values (VIH 0.75 x VDD / VIL 0.25 x VDD, VOH min 0.8 x VDD) at VDD = 3.3 V.",
+    "Net-level electrical correctness (ERC/DRC counts, missing decoupling, single-pin VBUS net) is inherited as documented upstream limitations and is not re-verified as a simulation test."
+  ],
+  "models": [
+    "Rail tolerance model: V_rail_wc = V_nom x (1 +/- 0.05), compared against datasheet recommended-operating min/max supply limits.",
+    "LDO headroom model: V_in_min_required = V_out + V_dropout, evaluated at the USB VBUS minimum of 4.75 V.",
+    "Linear-regulator current model: I_in = I_out + I_q (a linear LDO passes load current 1:1 from input to output).",
+    "Current-margin model: margin_percent = (I_available - I_required) / I_required x 100.",
+    "Ohm's-law pull-up model: I_pullup = (V_rail - V_OL) / R_pullup, compared against the guaranteed open-drain sink current.",
+    "Resistor derating model: P = V^2 / R, with the equivalent allowed current at the rail expressed as I_allowed = P_rated / V_rail for margin arithmetic.",
+    "CMOS/I2C DC logic-level model: VOH_driver >= VIH_receiver and VOL_driver <= VIL_receiver, using the ratiometric thresholds (0.7 x V+ / 0.3 x V+ for TMP102, 0.8 x VDD / 0.25 x VDD for ESP32).",
+    "LDO dissipation model: P_diss = (V_in - V_out) x I_out (computed, but not convertible to a thermal verdict without a theta_JA figure)."
+  ],
+  "tests": [
+    {
+      "expected": {},
+      "measured_v": "3.300 V",
+      "name": "+3V3 rail nominal vs ESP32-WROOM-32E recommended supply range (3.0-3.6 V)",
+      "source": "PWR-002; Espressif ESP32-WROOM-32E datasheet Section 5.2 Recommended Operating Conditions (VDD 3.0/3.3/3.6 V). Expected window 3.0 V to 3.6 V.",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "3.465 V",
+      "name": "+3V3 rail worst-case high (+5% tolerance) vs TMP102 and ESP32 max supply (3.6 V)",
+      "source": "PWR-002; TI TMP102 datasheet SBOS397 Section 7.3 (V+ max 3.6 V) and ESP32-WROOM-32E datasheet Section 5.2 (VDD max 3.6 V). Expected limit <= 3.6 V; margin 0.135 V (3.9%).",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "3.135 V",
+      "name": "+3V3 rail worst-case low (-5% tolerance) vs ESP32 min 3.0 V / TMP102 min 1.4 V",
+      "source": "PWR-002; ESP32-WROOM-32E datasheet Section 5.2 (VDD min 3.0 V), TMP102 SBOS397 Section 7.3 (V+ min 1.4 V). Expected limit >= 3.0 V; margin 0.135 V (4.5%).",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "5.000 V (worst case 4.75 V to 5.25 V)",
+      "name": "VBUS 5 V input rail vs AP2112K-3.3 input range (2.5-6.0 V) and USB 2.0 tolerance (4.75-5.25 V)",
+      "source": "PWR-001; Diodes Inc. AP2112 datasheet Electrical Characteristics / Absolute Maximum Ratings (VIN 2.5-6.0 V). Worst-case 5.25 V is 0.75 V below the 6.0 V input maximum.",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "3.300 V nominal, 3.2505 V to 3.3495 V worst case",
+      "name": "AP2112K-3.3 regulated output accuracy (+/-1.5%) vs +3V3 rail tolerance (+/-5%)",
+      "source": "PWR-002/PWR-006; Diodes Inc. AP2112 datasheet Electrical Characteristics (VOUT 3.3 V, +/-1.5%). Entirely inside the 3.135-3.465 V rail window.",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "4.50 V minimum input required (4.75 V available; 1.20 V headroom)",
+      "name": "AP2112K-3.3 dropout headroom at 500 mA load from VBUS minimum 4.75 V",
+      "source": "PWR-001/PWR-002; Diodes Inc. AP2112 datasheet Electrical Characteristics (dropout 250 mV typ at 600 mA). 3.3 V + 0.25 V = 3.55 V required minimum input, satisfied with >= 1.2 V of headroom at the USB minimum of 4.75 V.",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "unverified - no 5 V-to-3V3 regulator footprint is placed (PWR-007, MECH-006), so the +3V3 net has no driving source in the MVP netlist and no rail voltage can be derived by closed-form analysis; VBUS remains a single-pin net (J1.1) with no sink",
+      "name": "As-built MVP +3V3 rail source voltage (regulator absent)",
+      "source": null,
+      "status": "unverified"
+    },
+    {
+      "expected": {},
+      "measured_v": "2.640 V driven vs 2.310 V required (margin 0.330 V)",
+      "name": "I2C high-level DC margin: ESP32 VOH driving TMP102 VIH (0.7 x V+)",
+      "source": "IF-002; TI TMP102 datasheet SBOS397 Section 7.5 Electrical Characteristics (VIH = 0.7 x V+ = 2.31 V at V+ = 3.3 V); ESP32-WROOM-32E datasheet Section 5.3 (VOH min = 0.8 x VDD = 2.64 V).",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "0.400 V driven vs 0.825 V allowed (margin 0.425 V)",
+      "name": "I2C low-level DC margin: TMP102 VOL into ESP32 VIL (0.25 x VDD)",
+      "source": "IF-002; TI TMP102 datasheet SBOS397 Section 7.5 (VOL max 0.4 V); ESP32-WROOM-32E datasheet Section 5.3 (VIL max = 0.25 x VDD = 0.825 V).",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "0.000 V (VIL limit 0.3 x V+ = 0.99 V)",
+      "name": "TMP102 ADD0 address-select DC level (ADD0 tied to GND -> address 0x48)",
+      "source": "IF-004; TI TMP102 datasheet SBOS397 Section 8 Detailed Description (ADD0 = GND selects slave address 1001000b = 0x48). U2.5 is on GND in the netlist.",
+      "status": "pass"
+    },
+    {
+      "expected": {},
+      "measured_v": "unverified - EN (U1.8) is tied directly to the +3V3 net and the R3 (10 kOhm) / C4 (1 uF) RC network cannot be placed under the MVP no-new-footprint rule (PWR-008), so no RC time constant or POR release threshold exists to evaluate",
+      "name": "ESP32 EN power-on-reset level and RC delay",
+      "source": null,
+      "status": "unverified"
+    },
+    {
+      "expected": {},
+      "measured_v": "unverified - no LED or current-limiting resistor exists in the netlist, pin table, or selected-component list, so there is no LED branch to analyze",
+      "name": "LED indicator forward-voltage / drive-current check",
+      "source": null,
+      "status": "unverified"
+    },
+    {
+      "expected": {},
+      "measured_v": "unverified - the design contains no resistive divider (no analog sense, feedback, or level-shift divider in the netlist or BOM), so no divider ratio can be evaluated",
+      "name": "Resistive divider output level check",
+      "source": null,
+      "status": "unverified"
+    },
+    {
+      "expected": {},
+      "measured_v": "unverified - J1 is a USB_B_Micro receptacle with no CC pins, and the proposed USB-C receptacle plus R4/R5 5.1 kOhm Rd resistors cannot be placed under the MVP no-new-footprint rule (IF-006), so no CC node voltage exists",
+      "name": "USB-C CC pull-down (Rd = 5.1 kOhm) sink advertisement level",
+      "source": null,
+      "status": "unverified"
+    },
+    {
+      "available_ma": 600.0,
+      "margin_percent": 20.0,
+      "name": "+3V3 rail current budget vs AP2112K-3.3 output capability (proposed U3)",
+      "required_ma": 500.0,
+      "source": "PWR-003; Diodes Inc. AP2112 datasheet Features / Electrical Characteristics (IOUT max 600 mA) vs the 500 mA board budget required by ESP32-WROOM-32E datasheet Section 5.2.",
+      "status": "pass"
+    },
+    {
+      "available_ma": 600.0,
+      "margin_percent": 649.9,
+      "name": "+3V3 typical load sum (U1 Wi-Fi active 80 mA + U2 quiescent 0.01 mA) vs AP2112K-3.3 600 mA",
+      "required_ma": 80.01,
+      "source": "PWR-003; ESP32-WROOM-32E datasheet Section 5.4 Current Consumption (80 mA typ, Wi-Fi active), TMP102 SBOS397 Section 7.5 (10 uA quiescent), AP2112 datasheet (600 mA max).",
+      "status": "pass"
+    },
+    {
+      "available_ma": 1800.0,
+      "margin_percent": 260.0,
+      "name": "J1 micro-B VBUS contact current rating vs 500 mA peak board draw",
+      "required_ma": 500.0,
+      "source": "PWR-001/PWR-003; Amphenol ICC 10118194-0001LF product drawing Electrical characteristics table (1.8 A per power contact).",
+      "status": "pass"
+    },
+    {
+      "available_ma": 500.0,
+      "margin_percent": 0.0,
+      "name": "5 V input current vs USB 2.0 high-power port limit (linear LDO, 1:1 input/output current)",
+      "required_ma": 500.0,
+      "source": "PWR-003; USB 2.0 Specification Section 7.2.1 (high-power bus-powered function limited to 5 unit loads = 500 mA). A linear AP2112 LDO passes load current 1:1, so a 500 mA 3V3 budget draws ~500 mA (plus 55 uA quiescent) from VBUS, leaving no margin against the port limit; either a switching converter, a lower current budget, or USB-C/BC1.2 negotiation for >500 mA is required.",
+      "status": "failed"
+    },
+    {
+      "available_ma": 3.0,
+      "margin_percent": 386.2,
+      "name": "I2C pull-up current through 4.7 kOhm vs minimum open-drain sink capability at VOL = 0.4 V",
+      "required_ma": 0.617,
+      "source": "IF-003; NXP UM10204 I2C-bus Specification Rev. 6 Section 6.1 (IOL min 3 mA at VOL = 0.4 V for standard/fast mode). I_pullup = (3.3 V - 0.4 V) / 4.7 kOhm = 0.617 mA per line, well below the guaranteed sink current.",
+      "status": "pass"
+    },
+    {
+      "available_ma": 30.3,
+      "margin_percent": 4216.5,
+      "name": "R1/R2 4.7 kOhm pull-up power derating vs 0603 rated power (expressed as equivalent current at 3.3 V)",
+      "required_ma": 0.702,
+      "source": "IF-003; Yageo RC-L series datasheet Electrical characteristics table, RC0603 row (0.1 W rated). Worst-case dissipation = 3.3 V^2 / 4.7 kOhm = 2.32 mW = 2.3% of rating; equivalent allowed current at 3.3 V is 0.1 W / 3.3 V = 30.3 mA.",
+      "status": "pass"
+    },
+    {
+      "available_ma": 30.3,
+      "margin_percent": 9081.8,
+      "name": "R3 10 kOhm EN pull-up current and dissipation vs 0603 rating (expressed as equivalent current at 3.3 V)",
+      "required_ma": 0.33,
+      "source": "PWR-008; Yageo RC-L series datasheet Electrical characteristics table, RC0603 row (0.1 W rated). I = 3.3 V / 10 kOhm = 0.33 mA, P = 1.09 mW = 1.1% of rating (value analysis only; part not placeable in the MVP).",
+      "status": "pass"
+    },
+    {
+      "available_ma": "n/a",
+      "margin_percent": "unverified - no junction-to-ambient thermal resistance or power-dissipation rating for the SOT-23-5 AP2112 package is present in the declared prior-stage specifications, so allowable dissipation at the +85 degC ambient of TEMP-001 cannot be computed in closed form",
+      "name": "AP2112K-3.3 LDO thermal dissipation margin at 500 mA from 5 V",
+      "required_ma": "n/a - dissipation is 0.85 W ((5.0 V - 3.3 V) x 0.5 A), not a current quantity",
+      "source": null,
+      "status": "unverified"
+    },
+    {
+      "available_ma": 600.0,
+      "margin_percent": 5999900.0,
+      "name": "TMP102 supply-current contribution to the 3V3 budget vs its own rating context",
+      "required_ma": 0.01,
+      "source": "PWR-003; TI TMP102 datasheet SBOS397 Section 7.5 Electrical Characteristics (10 uA typical quiescent, serial bus inactive) against the AP2112K-3.3 600 mA capability.",
+      "status": "pass"
+    }
+  ]
+}

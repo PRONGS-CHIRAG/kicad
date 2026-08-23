@@ -200,8 +200,10 @@ def build_simulation_prompt(
         (
             "Perform only closed-form power, regulator, LED, divider, pull-up, and "
             "rating-margin analysis. Use exactly one status per test: pass, failed, or "
-            "unverified. Numeric values must include units. Tests with a pass or failed verdict "
-            "must cite either a requirement ID (PREFIX-NNN) or a datasheet source; unverified "
+            "unverified. Free-form expected measurement values must include units; required_ma, "
+            "available_ma, margin_percent, and measured_v already encode their units in the field "
+            "name. Tests with a pass or failed verdict must cite either a requirement ID "
+            "(PREFIX-NNN) or a datasheet source; unverified "
             "tests must state a concise explicit reason in the measured result text; unverified "
             "is not a silent escape hatch."
         ),

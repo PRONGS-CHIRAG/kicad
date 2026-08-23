@@ -1,0 +1,42 @@
+{
+  "critical_nets": [
+    "USB_D+",
+    "USB_D-",
+    "SDA",
+    "SCL",
+    "+3V3",
+    "GND"
+  ],
+  "placements": [
+    {
+      "rationale": "USB_B_Micro receptacle pushed to the right board edge (outline ends at x=145) so the plug mating face overhangs the board edge; rotated 180 deg so the pin field faces inboard toward U1, giving the shortest USB_D+/USB_D- run and vertical centering (y=67.5 = board mid-height) for a symmetric, strain-relieved connector entry. Not routed.",
+      "reference": "J1",
+      "rotation": 180.0,
+      "x": 139.0,
+      "y": 67.5
+    },
+    {
+      "rationale": "ESP32-WROOM-32 module kept on the left third with rotation 0 so its integrated PCB antenna points at the nearest board edge (x=35) and hangs over the least amount of copper, while its GPIO21/GPIO22 and USB_D+/USB_D- sides face right toward U2 and J1. y=67.5 centers it vertically, leaving clearance to the 35/100 mm outline edges. Not routed.",
+      "reference": "U1",
+      "rotation": 0.0,
+      "x": 65.0,
+      "y": 67.5
+    },
+    {
+      "rationale": "TMP102 placed between U1 and J1 but offset ~7.5 mm above the U1-J1 centerline, so the SDA/SCL pair to U1.3/U1.4 stays short (~33 mm, well within 400 kHz fast-mode budget) without crossing the USB differential pair, which runs along the centerline from J1 to U1. Offsetting the sensor away from the ESP32 body and the USB power entry also reduces self-heating error on the temperature reading; rotation 0 keeps VCC/GND on the rail side and SDA/SCL/ADD0 facing U1. Not routed.",
+      "reference": "U2",
+      "rotation": 0.0,
+      "x": 98.0,
+      "y": 60.0
+    }
+  ],
+  "unrouted_nets": [
+    "+3V3",
+    "GND",
+    "USB_D+",
+    "USB_D-",
+    "VBUS",
+    "SDA",
+    "SCL"
+  ]
+}
