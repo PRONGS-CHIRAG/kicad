@@ -8,8 +8,9 @@ import pytest
 from pydantic import ValidationError
 
 from app.config import Settings, settings
+from app.kicad.erc import KicadCli
 from app.kicad.reader import Component, Pin, ProjectState, read_project
-from app.models import ErcReport
+from app.models import ErcReport, Violation
 from app.team.prompts import build_project_manager_prompt
 from app.team.registry import AGENTS, get_agent
 from app.team.schemas import (
@@ -278,10 +279,13 @@ def test_design_context_builds_and_renders_the_pin_table(tmp_path) -> None:
 def test_design_context_includes_board_footprint_inventory() -> None:
     directory = Path(__file__).parents[2] / "fixtures" / "projects" / "esp32_i2c_board"
     state = read_project(directory)
+    drc_baseline = KicadCli("/usr/bin/kicad-cli").run_drc_baseline(
+        directory / "esp32_i2c_board.kicad_pcb", passes=1
+    )
     context = DesignContext.from_project(
         state,
         ErcReport(ran=True),
-        ErcReport(ran=True),
+        drc_baseline,
         directory / "esp32_i2c_board.kicad_pcb",
     )
     assert context.board is not None
@@ -298,8 +302,65 @@ def test_design_context_includes_board_footprint_inventory() -> None:
     )
     assert "Placed footprints (only these existing references can be moved):" in prompt
     assert "J1 | 120 | 75" in prompt
+    u1 = next(item for item in context.board.footprints if item.reference == "U1")
+    assert u1.extent is not None
+    assert u1.extent[2] - u1.extent[0] == 18.0
+    assert u1.extent[3] - u1.extent[1] == 13.0
+    assert "extent (min_x,min_y,max_x,max_y)" in prompt
+    assert drc_baseline.violations
+    assert drc_baseline.violations[0].description in prompt
     assert "MVP layout cannot add new footprints" in prompt
     assert "schematic symbol has no board footprint" in prompt
+
+
+def test_design_context_surfaces_verbatim_drc_baseline_in_layout_prompt() -> None:
+    directory = Path(__file__).parents[2] / "fixtures" / "projects" / "esp32_i2c_board"
+    state = read_project(directory)
+    baseline = ErcReport(
+        ran=True,
+        violations=[
+            Violation(
+                severity="error",
+                type="clearance",
+                description="Clearance violation (netclass 'Default' clearance 0.2000 mm; actual 0.1400 mm)",
+                items=["Pad 1 of U1", "Pad 2 of U2"],
+            )
+        ],
+    )
+    context = DesignContext.from_project(
+        state,
+        ErcReport(ran=True),
+        baseline,
+        directory / "esp32_i2c_board.kicad_pcb",
+    )
+    project = ProjectSpec(project_id="board", current_stage="pcb_layout", design_context=context)
+    prompt = get_agent("pcb_layout").build_prompt(
+        project,
+        AgentTask(task_id="layout-drc", assigned_agent="pcb_layout", objective="place parts"),
+        {},
+    )
+    assert "Baseline KiCad DRC violations (verbatim evidence):" in prompt
+    assert baseline.violations[0].description in prompt
+    assert "Both manufacturer-profile limits and KiCad's enforced constraints apply" in prompt
+    assert "stricter applicable constraint governs" in prompt
+
+
+def test_layout_prompt_does_not_invent_drc_constraints() -> None:
+    directory = Path(__file__).parents[2] / "fixtures" / "projects" / "esp32_i2c_board"
+    state = read_project(directory)
+    context = DesignContext.from_project(
+        state,
+        ErcReport(ran=True),
+        ErcReport(ran=True),
+        directory / "esp32_i2c_board.kicad_pcb",
+    )
+    project = ProjectSpec(project_id="board", current_stage="pcb_layout", design_context=context)
+    prompt = get_agent("pcb_layout").build_prompt(
+        project,
+        AgentTask(task_id="layout-no-drc", assigned_agent="pcb_layout", objective="place parts"),
+        {},
+    )
+    assert "Baseline KiCad DRC violations: none reported; do not invent constraint values." in prompt
 
 
 def test_duplicate_requirement_ids_are_rejected() -> None:

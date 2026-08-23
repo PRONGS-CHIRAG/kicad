@@ -68,6 +68,8 @@ class AgentSpec:
         context: DesignContext | None = None,
     ) -> str:
         allowed = self.inputs_for(prior_outputs)
+        if prior_outputs.get("rework_findings"):
+            allowed["rework_findings"] = prior_outputs["rework_findings"]
         filtered_task = task.model_copy(update={"inputs": [_to_input(value) for value in allowed.values()]})
         design_context = (
             context or project.design_context or DesignContext(erc_baseline={"errors": 0, "warnings": 0})

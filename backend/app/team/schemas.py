@@ -82,10 +82,20 @@ class CheckCounts(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class BoardDrcViolation(BaseModel):
+    severity: str
+    type: str
+    description: str
+    items: list[str] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class BoardFootprint(BaseModel):
     reference: str
     x_mm: float
     y_mm: float
+    extent: tuple[float, float, float, float] | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -95,6 +105,7 @@ class BoardContext(BaseModel):
     width_mm: float
     height_mm: float
     footprints: list[BoardFootprint] = Field(default_factory=list)
+    drc_violations: list[BoardDrcViolation] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -117,7 +128,7 @@ class DesignContext(BaseModel):
         board_path: Path | str | None = None,
     ) -> DesignContext:
         from ..kicad import sexpr
-        from ..kicad.board import board_outline, footprint_reference, load
+        from ..kicad.board import board_outline, footprint_extent, footprint_reference, load
 
         components = [
             DesignComponent(
@@ -152,13 +163,33 @@ class DesignContext(BaseModel):
                     y_mm = float(str(at[2]))
                 except ValueError:
                     continue
-                footprints.append(BoardFootprint(reference=reference, x_mm=x_mm, y_mm=y_mm))
+                footprints.append(
+                    BoardFootprint(
+                        reference=reference,
+                        x_mm=x_mm,
+                        y_mm=y_mm,
+                        extent=footprint_extent(footprint),
+                    )
+                )
             footprints.sort(key=lambda item: item.reference)
             board = BoardContext(
                 outline=(min_x, min_y, max_x, max_y),
                 width_mm=max_x - min_x,
                 height_mm=max_y - min_y,
                 footprints=footprints,
+                drc_violations=(
+                    [
+                        BoardDrcViolation(
+                            severity=violation.severity,
+                            type=violation.type,
+                            description=violation.description,
+                            items=list(violation.items),
+                        )
+                        for violation in drc_baseline.violations
+                    ]
+                    if drc_baseline is not None
+                    else []
+                ),
             )
         return cls(
             components=components,

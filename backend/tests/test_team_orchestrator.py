@@ -11,8 +11,9 @@ from app.kicad.reader import read_project
 from app.models import ErcReport
 from app.team.cli import _print_report
 from app.team.fallbacks import qa_release_fallback
-from app.team.orchestrator import OrchestratorOptions, TeamOrchestrator
+from app.team.orchestrator import CANONICAL_ORDER, OrchestratorOptions, TeamOrchestrator
 from app.team.profiles import get_profile
+from app.team.registry import get_agent
 from app.team.runner import StubAgentRunner
 from app.team.schemas import (
     AgentResult,
@@ -175,6 +176,54 @@ def test_failed_agent_gate_preserves_timeout_reason(tmp_path: Path) -> None:
 
     assert not gate.passed
     assert gate.findings[0].actual == reason
+
+
+def test_routed_rework_inputs_are_scoped_and_structured(tmp_path: Path) -> None:
+    class RecordingRunner:
+        def __init__(self) -> None:
+            self.inputs: list[dict[str, object]] = []
+
+        def run(self, spec, task, project, inputs, project_version):
+            captured = dict(inputs or {})
+            self.inputs.append(captured)
+            return AgentResult(
+                task_id=task.task_id,
+                agent=spec.id,
+                status="stub",
+                output=None,
+                runner="recording",
+            )
+
+    finding = CheckFinding(
+        rule="no new DRC violations",
+        actual="Clearance violation (netclass 'Default' clearance 0.2000 mm; actual 0.1400 mm)",
+        expected="none",
+        kicad_object="DRC",
+        evidence_source="kicad-cli DRC",
+        severity="error",
+    )
+    runner = RecordingRunner()
+    orchestrator = TeamOrchestrator(runner, run_id="rework", workspace_dir=tmp_path)
+    project = ProjectSpec(project_id="demo", current_stage="pcb_layout")
+    spec = get_agent("pcb_layout")
+    first = orchestrator._run_stage(spec, project, {}, "rework:0")
+    assert first.output is None
+    assert "rework_findings" not in runner.inputs[0]
+    second = orchestrator._run_stage(spec, project, {}, "rework:0", [finding])
+    assert second.output is None
+    assert runner.inputs[1]["rework_findings"] == [finding.model_dump(mode="json")]
+    prompt = spec.build_prompt(project, orchestrator._task(spec.id), runner.inputs[1])
+    assert "deterministic gate or a real KiCad run" in prompt
+    assert "do not argue with, negotiate, or override the gate decision" in prompt
+    assert finding.actual in prompt
+
+
+def test_project_manager_accepts_annotated_canonical_workflow() -> None:
+    workflow = [f"{stage}: details" for stage in CANONICAL_ORDER]
+    assert TeamOrchestrator._normalize_workflow(workflow) == list(CANONICAL_ORDER)
+    assert TeamOrchestrator._is_subsequence(TeamOrchestrator._normalize_workflow(workflow))
+    invented = [*workflow[:2], "invented_stage: details", *workflow[3:]]
+    assert not TeamOrchestrator._is_subsequence(TeamOrchestrator._normalize_workflow(invented))
 
 
 def test_stub_workflow_reaches_exact_review_wording(tmp_path: Path, monkeypatch) -> None:

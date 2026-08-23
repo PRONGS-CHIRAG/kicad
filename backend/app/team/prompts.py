@@ -26,13 +26,21 @@ def render_design_context(context: DesignContext) -> str:
         )
         if context.board.footprints:
             lines.append("Placed footprints (only these existing references can be moved):")
-            lines.append("reference | x | y")
+            lines.append("reference | x | y | extent (min_x,min_y,max_x,max_y)")
             lines.extend(
-                f"{footprint.reference} | {footprint.x_mm:g} | {footprint.y_mm:g}"
+                f"{footprint.reference} | {footprint.x_mm:g} | {footprint.y_mm:g} | "
+                f"{_format_extent(footprint.extent)}"
                 for footprint in context.board.footprints
             )
         else:
             lines.append("Placed footprints: none")
+        if context.board.drc_violations:
+            lines.append("Baseline KiCad DRC violations (verbatim evidence):")
+            for violation in context.board.drc_violations:
+                lines.append(f"{violation.severity} | {violation.type} | {violation.description}")
+                lines.extend(f"  item: {item}" for item in violation.items)
+        else:
+            lines.append("Baseline KiCad DRC violations: none reported; do not invent constraint values.")
         lines.append(
             "MVP layout cannot add new footprints; report symbols without footprints as limitations."
         )
@@ -52,6 +60,12 @@ def render_design_context(context: DesignContext) -> str:
     return "\n".join(lines)
 
 
+def _format_extent(extent: tuple[float, float, float, float] | None) -> str:
+    if extent is None:
+        return "unavailable"
+    return ",".join(f"{value:g}" for value in extent)
+
+
 def _prompt(
     role: str,
     project: ProjectSpec,
@@ -62,13 +76,20 @@ def _prompt(
     read_only: bool = False,
 ) -> str:
     prior = json.dumps(inputs, default=str, sort_keys=True)
+    rework_instruction = ""
+    if inputs.get("rework_findings"):
+        rework_instruction = (
+            " This is a routed rework invocation. The findings below came from a deterministic gate "
+            "or a real KiCad run and are authoritative: address each finding in the new proposal; do "
+            "not argue with, negotiate, or override the gate decision."
+        )
     restriction = (
         "You are read-only: produce findings, not fixes. Do not modify the project."
         if read_only
         else "Propose changes only; do not modify the project."
     )
     return f"""You are the {role} on a virtual PCB engineering team.
-{instruction}
+{instruction}{rework_instruction}
 
 Project specification:
 {project.model_dump_json(exclude={"schema_version", "design_context"})}
@@ -182,8 +203,12 @@ def build_pcb_layout_prompt(
         (
             "Propose placement only within the MVP scope. Only references in the placed-footprint "
             "inventory can be moved; this MVP cannot add new footprints to the board. If a schematic "
-            "symbol has no board footprint, report it as a limitation rather than placing it. Do not "
-            "claim routing that was not performed."
+            "symbol has no board footprint, report it as a limitation rather than placing it. The "
+            "inventory extents are derived from the actual pads and graphic geometry; use them for "
+            "spacing decisions. Both manufacturer-profile limits and KiCad's enforced constraints "
+            "apply, and the stricter applicable constraint governs. Baseline DRC values above are "
+            "actual report evidence, not assumptions; if none were reported, do not invent them. Do "
+            "not claim routing that was not performed."
         ),
     )
 

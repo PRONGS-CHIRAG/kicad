@@ -26,6 +26,7 @@ from .schemas import (
     AgentResult,
     AgentTask,
     Architecture,
+    CheckFinding,
     ComponentSelection,
     EvidenceRecord,
     LayoutProposal,
@@ -96,10 +97,17 @@ class TeamOrchestrator:
         results: dict[str, AgentResult] = {}
         gates: dict[str, StageCheckResult] = {}
         returns: dict[str, int] = {}
+        rework_findings: dict[str, list[CheckFinding]] = {}
         events: list[dict[str, object]] = []
         queue = list(CANONICAL_ORDER)
         project_version = f"{self.run_id}:0"
-        pm_result = self._run_stage(get_agent("project_manager"), project, outputs, project_version)
+        pm_result = self._run_stage(
+            get_agent("project_manager"),
+            project,
+            outputs,
+            project_version,
+            rework_findings.get("project_manager"),
+        )
         results["project_manager"] = pm_result
         self._record_result("project_manager", pm_result, project_version)
         if pm_result.output is not None:
@@ -126,7 +134,13 @@ class TeamOrchestrator:
             stage = queue.pop(0)
             if stage == "pcb_layout" and queue and queue[0] == "simulation" and settings.team_parallel:
                 queue.pop(0)
-                pair = self._run_parallel(("pcb_layout", "simulation"), project, outputs, project_version)
+                pair = self._run_parallel(
+                    ("pcb_layout", "simulation"),
+                    project,
+                    outputs,
+                    project_version,
+                    rework_findings,
+                )
                 for sibling in ("pcb_layout", "simulation"):
                     result = pair[sibling]
                     results[sibling] = result
@@ -146,7 +160,9 @@ class TeamOrchestrator:
                     gate = self._evaluate_stage(sibling, result, project, outputs, project_version)
                     gates[sibling] = gate
                     self._write_gate(sibling, gate)
-                    if not gate.passed:
+                    if gate.passed:
+                        rework_findings.pop(sibling, None)
+                    else:
                         target = self._route(sibling, gate)
                         returns[target] = returns.get(target, 0) + 1
                         if returns[target] > 2:
@@ -157,10 +173,17 @@ class TeamOrchestrator:
                             )
                             return self._report(project, results, gates, events, "needs_human_review")
                         self._event(events, "route_failure", {"from": sibling, "to": target})
+                        rework_findings[target] = list(gate.findings)
                         self._enqueue_remainder(queue, target)
                 continue
             spec = get_agent(stage)
-            result = self._run_stage(spec, project, outputs, project_version)
+            result = self._run_stage(
+                spec,
+                project,
+                outputs,
+                project_version,
+                rework_findings.get(stage),
+            )
             results[stage] = result
             self._record_result(stage, result, project_version)
             if self._read_only_violation(spec, result):
@@ -179,6 +202,7 @@ class TeamOrchestrator:
             gates[stage] = gate
             self._write_gate(stage, gate)
             if gate.passed:
+                rework_findings.pop(stage, None)
                 continue
             target = self._route(stage, gate)
             returns[target] = returns.get(target, 0) + 1
@@ -186,6 +210,7 @@ class TeamOrchestrator:
                 self._event(events, "return_trip_cap", {"agent": target, "findings": gate.findings})
                 return self._report(project, results, gates, events, "needs_human_review")
             self._event(events, "route_failure", {"from": stage, "to": target})
+            rework_findings[target] = list(gate.findings)
             self._enqueue_remainder(queue, target)
 
         release_status = (
@@ -245,14 +270,16 @@ class TeamOrchestrator:
         project: ProjectSpec,
         outputs: Mapping[str, object],
         project_version: str,
+        rework_findings: Mapping[str, list[CheckFinding]] | None = None,
     ) -> dict[str, AgentResult]:
+        rework_findings = rework_findings or {}
         if isinstance(self.runner, DevinAgentRunner):
             invocations = {
                 stage: self.runner.start(
                     get_agent(stage),
                     self._task(stage),
                     project,
-                    get_agent(stage).inputs_for(outputs),
+                    self._stage_inputs(get_agent(stage), outputs, rework_findings.get(stage)),
                     project_version,
                 )
                 for stage in stages
@@ -265,7 +292,7 @@ class TeamOrchestrator:
                     get_agent(stage),
                     self._task(stage),
                     project,
-                    get_agent(stage).inputs_for(outputs),
+                    self._stage_inputs(get_agent(stage), outputs, rework_findings.get(stage)),
                     project_version,
                 )
                 for stage in stages
@@ -286,8 +313,29 @@ class TeamOrchestrator:
         project: ProjectSpec,
         outputs: Mapping[str, object],
         project_version: str,
+        rework_findings: list[CheckFinding] | None = None,
     ) -> AgentResult:
-        return self.runner.run(spec, self._task(spec.id), project, spec.inputs_for(outputs), project_version)
+        return self.runner.run(
+            spec,
+            self._task(spec.id),
+            project,
+            self._stage_inputs(spec, outputs, rework_findings),
+            project_version,
+        )
+
+    @staticmethod
+    def _stage_inputs(
+        spec: AgentSpec,
+        outputs: Mapping[str, object],
+        rework_findings: list[CheckFinding] | None = None,
+    ) -> dict[str, object]:
+        inputs = spec.inputs_for(outputs)
+        if rework_findings:
+            inputs["rework_findings"] = [
+                finding.model_dump(mode="json") if isinstance(finding, BaseModel) else finding
+                for finding in rework_findings
+            ]
+        return inputs
 
     def _gate(
         self,
@@ -531,7 +579,11 @@ class TeamOrchestrator:
 
     @staticmethod
     def _normalize_workflow(workflow: list[str]) -> list[str]:
-        return [_ALIASES.get(stage, stage) for stage in workflow]
+        normalized = []
+        for stage in workflow:
+            bare_stage = stage.split(":", 1)[0].strip()
+            normalized.append(_ALIASES.get(bare_stage, bare_stage))
+        return normalized
 
     @staticmethod
     def _is_subsequence(workflow: list[str]) -> bool:

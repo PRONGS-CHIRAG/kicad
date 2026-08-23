@@ -21,6 +21,7 @@ treat the resulting unconnected items as pending work rather than a regression.
 from __future__ import annotations
 
 import logging
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -158,7 +159,7 @@ def _set_pad_net(pad: list, number: int | None, name: str | None) -> None:
 
 
 def _footprint_extent(footprint: list) -> tuple[float, float, float, float] | None:
-    """Bounding box of a placed footprint, from its silkscreen body rectangle."""
+    """Bounding box of a placed footprint's pads and graphic geometry."""
     at = sexpr.find(footprint, "at")
     if at is None or len(at) < 3:
         return None
@@ -166,23 +167,85 @@ def _footprint_extent(footprint: list) -> tuple[float, float, float, float] | No
         ox, oy = float(str(at[1])), float(str(at[2]))
     except ValueError:
         return None
-    half_w, half_h = 2.0, 2.0
-    for rect in sexpr.find_all(footprint, "fp_rect"):
-        start, end = sexpr.find(rect, "start"), sexpr.find(rect, "end")
-        if start is None or end is None:
-            continue
+    try:
+        rotation = float(str(at[3])) if len(at) > 3 else 0.0
+    except ValueError:
+        rotation = 0.0
+    layer = sexpr.find(footprint, "layer")
+    mirrored = layer is not None and len(layer) > 1 and str(layer[1]) == "B.Cu"
+
+    def rotate(point: tuple[float, float], angle: float) -> tuple[float, float]:
+        radians = math.radians(angle)
+        x, y = point
+        return (x * math.cos(radians) - y * math.sin(radians), x * math.sin(radians) + y * math.cos(radians))
+
+    def absolute(point: tuple[float, float]) -> tuple[float, float]:
+        local = (-point[0], point[1]) if mirrored else point
+        x, y = rotate(local, rotation)
+        return (ox + x, oy + y)
+
+    points: list[tuple[float, float]] = []
+
+    def number_pair(node: list | None) -> tuple[float, float] | None:
+        if node is None or len(node) < 3:
+            return None
         try:
-            xs = [abs(float(str(start[1]))), abs(float(str(end[1])))]
-            ys = [abs(float(str(start[2]))), abs(float(str(end[2])))]
-        except (ValueError, IndexError):
+            return float(str(node[1])), float(str(node[2]))
+        except (TypeError, ValueError):
+            return None
+
+    for pad in sexpr.find_all(footprint, "pad"):
+        center = number_pair(sexpr.find(pad, "at"))
+        size = number_pair(sexpr.find(pad, "size"))
+        if center is None or size is None:
             continue
-        half_w, half_h = max(half_w, *xs), max(half_h, *ys)
-    return (ox - half_w, oy - half_h, ox + half_w, oy + half_h)
+        pad_at = sexpr.find(pad, "at")
+        try:
+            pad_rotation = float(str(pad_at[3])) if pad_at is not None and len(pad_at) > 3 else 0.0
+        except ValueError:
+            pad_rotation = 0.0
+        half_x, half_y = size[0] / 2, size[1] / 2
+        for corner in (
+            (center[0] - half_x, center[1] - half_y),
+            (center[0] - half_x, center[1] + half_y),
+            (center[0] + half_x, center[1] - half_y),
+            (center[0] + half_x, center[1] + half_y),
+        ):
+            points.append(absolute(rotate(corner, pad_rotation)))
+
+    for kind in ("fp_rect", "fp_line", "fp_arc", "fp_circle"):
+        for graphic in sexpr.find_all(footprint, kind):
+            for key in ("start", "mid", "end", "center"):
+                point = number_pair(sexpr.find(graphic, key))
+                if point is not None:
+                    points.append(absolute(point))
+            if kind == "fp_circle":
+                center = number_pair(sexpr.find(graphic, "center"))
+                end = number_pair(sexpr.find(graphic, "end"))
+                if center is not None and end is not None:
+                    radius = ((end[0] - center[0]) ** 2 + (end[1] - center[1]) ** 2) ** 0.5
+                    for edge in (
+                        (center[0] - radius, center[1]),
+                        (center[0] + radius, center[1]),
+                        (center[0], center[1] - radius),
+                        (center[0], center[1] + radius),
+                    ):
+                        points.append(absolute(edge))
+    for polygon in sexpr.find_all(footprint, "fp_poly"):
+        pts = sexpr.find(polygon, "pts")
+        if pts is not None:
+            for point in sexpr.find_all(pts, "xy"):
+                parsed = number_pair(point)
+                if parsed is not None:
+                    points.append(absolute(parsed))
+
+    if not points:
+        return None
+    xs, ys = zip(*points, strict=True)
+    return (min(xs), min(ys), max(xs), max(ys))
 
 
 def footprint_extent(footprint: list) -> tuple[float, float, float, float] | None:
-    if not sexpr.find_all(footprint, "fp_rect"):
-        return None
     return _footprint_extent(footprint)
 
 
