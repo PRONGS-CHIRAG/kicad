@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from app.kicad.reader import ProjectState, read_project
@@ -25,6 +26,7 @@ from app.team.schemas import (
     Architecture,
     ComponentSelection,
     DesignContext,
+    PowerRequirements,
     ProjectSpec,
     RequirementsDoc,
     SimulationReport,
@@ -84,6 +86,39 @@ def test_requirements_gate_passes_and_rejects_duplicate_or_missing_unit() -> Non
         }
     )
     assert not check_requirements(invalid, "rev-1").passed
+
+
+def test_captured_live_requirements_accept_qualifying_summary_prose() -> None:
+    payload = json.loads((Path(__file__).parent / "fixtures" / "live_requirements.json").read_text())
+    result = check_requirements(RequirementsDoc.model_validate(payload), "live-rev")
+    assert result.passed, result.findings
+
+
+def test_prose_only_summary_is_a_warning_not_an_error() -> None:
+    document = _requirements().model_copy(
+        update={
+            "power": PowerRequirements(
+                input="", logic_voltage="regulated logic rail", maximum_current_ma=None
+            )
+        }
+    )
+    result = check_requirements(document, "rev-1")
+    assert result.passed
+    assert any(finding.severity == "warning" for finding in result.findings)
+
+
+def test_conflicting_values_for_same_power_statement_fail() -> None:
+    document = _requirements().model_copy(
+        update={
+            "requirements": [
+                *_requirements().requirements,
+                _requirements().requirements[0].model_copy(update={"id": "PWR-002", "value": 5}),
+            ]
+        }
+    )
+    result = check_requirements(document, "rev-1")
+    assert not result.passed
+    assert any(finding.rule == "conflicting requirements" for finding in result.findings)
 
 
 def test_architecture_gate_passes_and_rejects_unknown_connection() -> None:

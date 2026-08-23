@@ -89,6 +89,55 @@ def finding(
 _finding = finding
 
 
+_QUANTITY_RE = re.compile(
+    r"(?<![A-Za-z0-9])([-+]?\d+(?:\.\d+)?)\s*"
+    r"(µf|μf|uf|ma|mv|v|kohm|kω|k|khz|hz|pf|nf|mm|ohm|ω)?",
+    re.IGNORECASE,
+)
+_PROTOCOL_RE = re.compile(r"(?<![A-Za-z0-9])(USB-C|I2C|UART)(?=[^A-Za-z0-9]|$)", re.IGNORECASE)
+_UNIT_ALIASES = {
+    "μf": "uf",
+    "µf": "uf",
+    "uf": "uf",
+    "ma": "ma",
+    "mv": "mv",
+    "v": "v",
+    "kohm": "kohm",
+    "kω": "kohm",
+    "k": "kohm",
+    "khz": "khz",
+    "hz": "hz",
+    "pf": "pf",
+    "nf": "nf",
+    "mm": "mm",
+    "ohm": "ohm",
+    "ω": "ohm",
+}
+
+
+def _normalise_unit(unit: str | None) -> str | None:
+    return _UNIT_ALIASES.get(unit.replace(" ", "").lower()) if unit else None
+
+
+def _quantities(value: object, unit_hint: str | None = None) -> list[tuple[float, str | None]]:
+    text = str(value)
+    return [
+        (float(match.group(1)), _normalise_unit(match.group(2)) or _normalise_unit(unit_hint))
+        for match in _QUANTITY_RE.finditer(text)
+    ]
+
+
+def _quantity_matches(summary: tuple[float, str | None], requirement: Requirement) -> bool:
+    amount, unit = summary
+    requirement_quantity = _quantities(requirement.value, requirement.unit)
+    if not requirement_quantity or unit is None:
+        return False
+    expected, expected_unit = requirement_quantity[0]
+    return unit == expected_unit and abs(amount - expected) <= max(
+        1e-9, 1e-3 * max(abs(amount), abs(expected), 1.0)
+    )
+
+
 def check_requirements(document: RequirementsDoc, project_version: str) -> StageCheckResult:
     findings: list[CheckFinding] = []
     seen: set[str] = set()
@@ -164,10 +213,20 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
         statements[key] = requirement.value
     power_requirements = by_category.get("power", [])
     if document.power.logic_voltage and power_requirements:
-        expected_voltage = document.power.logic_voltage.replace(" ", "").removesuffix("V").lower()
-        if not any(
-            str(requirement.value).replace(" ", "").removesuffix("V").lower() == expected_voltage
-            for requirement in power_requirements
+        summary_quantities = _quantities(document.power.logic_voltage)
+        if not summary_quantities:
+            findings.append(
+                _finding(
+                    "grouped summary is machine-checkable",
+                    document.power.logic_voltage,
+                    "numeric quantity with unit",
+                    "power.logic_voltage",
+                    "requirements",
+                    "warning",
+                )
+            )
+        elif not any(
+            _quantity_matches(summary_quantities[0], requirement) for requirement in power_requirements
         ):
             findings.append(
                 _finding(
@@ -184,25 +243,40 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
         f"{requirement.statement} {requirement.value}".lower() for requirement in interface_requirements
     )
     for interface in document.interfaces:
-        if interface.type and interface.type.lower() not in interface_text:
+        protocol = _PROTOCOL_RE.search(interface.type or "")
+        voltage_quantities = _quantities(interface.voltage)
+        if not protocol and not voltage_quantities:
+            findings.append(
+                _finding(
+                    "grouped summary is machine-checkable",
+                    interface.type or interface.voltage,
+                    "numeric quantity or supported protocol token",
+                    "interfaces",
+                    "requirements",
+                    "warning",
+                )
+            )
+        elif protocol and protocol.group(1).lower() not in interface_text:
             findings.append(
                 _finding(
                     "grouped and identified requirements agree",
-                    interface.type,
-                    "interface requirement",
+                    protocol.group(1),
+                    "interface requirement statement",
                     "interfaces",
                     "requirements",
                     "error",
                 )
             )
-        if interface.voltage and interface.voltage.replace(" ", "").lower() not in interface_text.replace(
-            " ", ""
+        if voltage_quantities and not any(
+            _quantity_matches(quantity, requirement)
+            for quantity in voltage_quantities
+            for requirement in (*interface_requirements, *power_requirements)
         ):
             findings.append(
                 _finding(
                     "grouped and identified requirements agree",
                     interface.voltage,
-                    "interface voltage requirement",
+                    "interface or power requirement quantity",
                     "interfaces",
                     "requirements",
                     "error",
