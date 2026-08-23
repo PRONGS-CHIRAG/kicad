@@ -28,6 +28,7 @@ from app.team.schemas import (
     AgentTask,
     Architecture,
     ComponentSelection,
+    ComponentSpecification,
     DesignContext,
     InterfaceRequirement,
     PowerRequirements,
@@ -265,6 +266,11 @@ def test_gated_agent_prompts_state_the_vocabulary_they_emit() -> None:
             "temperature=TEMP",
             "acceptance/test=TEST",
             "PREFIX-NNN",
+        ),
+        "components": (
+            "bare Library:Name library identifier",
+            "no parentheses, commentary, or alternatives",
+            "reason or verified_constraints",
         ),
         "simulation": ("pass, failed, or unverified", "Numeric values must include units"),
         "verification": (
@@ -607,6 +613,133 @@ def test_components_gate_uses_real_fixture_context_and_requires_provenance() -> 
         ]
     )
     assert check_components(failing, context, project_version="rev-1").passed is False
+
+
+def test_captured_ninth_live_components_accept_annotations_and_partial_bounds() -> None:
+    payload = json.loads((Path(__file__).parent / "fixtures" / "live_components_ninth.json").read_text())
+    selection = ComponentSelection.model_validate(payload)
+    result = check_components(selection, project_version="ninth-live")
+    assert result.passed, result.findings
+    assert any(
+        finding.rule == "numeric specification bound missing" and finding.severity == "warning"
+        for finding in result.findings
+    )
+
+
+def test_components_require_bare_identifiers_and_real_specification_evidence() -> None:
+    project, _ = _project()
+    context = project.design_context
+    assert context is not None
+    malformed_symbol = ComponentSelection(
+        components=[
+            {
+                "reference_group": "J1",
+                "manufacturer_part": "part",
+                "quantity": 1,
+                "symbol": "not a library identifier",
+                "footprint": "Connector_USB:USB_C",
+                "reason": "",
+                "verified_constraints": [],
+            }
+        ]
+    )
+    result = check_components(malformed_symbol, context, project_version="rev-1")
+    assert not result.passed
+    assert any(finding.rule == "symbol identifier is well formed" for finding in result.findings)
+
+    missing_provenance = malformed_symbol.model_copy(
+        update={
+            "components": [
+                malformed_symbol.components[0].model_copy(
+                    update={
+                        "symbol": "Device:R",
+                        "specifications": [
+                            ComponentSpecification(
+                                parameter="resistance",
+                                unit="ohm",
+                                source="",
+                                page_or_section="",
+                                minimum=1,
+                                typical="-",
+                                maximum="-",
+                            )
+                        ],
+                    }
+                )
+            ]
+        }
+    )
+    result = check_components(missing_provenance, context, project_version="rev-1")
+    assert not result.passed
+    assert any(finding.rule == "numeric specification provenance" for finding in result.findings)
+
+    no_numeric_bound = missing_provenance.model_copy(
+        update={
+            "components": [
+                missing_provenance.components[0].model_copy(
+                    update={
+                        "specifications": [
+                            ComponentSpecification(
+                                parameter="resistance",
+                                unit="ohm",
+                                source="datasheet",
+                                page_or_section="table 1",
+                                minimum="n/a",
+                                typical="none",
+                                maximum="not specified",
+                            )
+                        ],
+                    }
+                )
+            ]
+        }
+    )
+    result = check_components(no_numeric_bound, context, project_version="rev-1")
+    assert not result.passed
+    assert any(finding.rule == "numeric specification bounds" for finding in result.findings)
+
+
+def test_components_parse_reference_groups_and_allow_symbol_substitution() -> None:
+    project, _ = _project()
+    context = project.design_context
+    assert context is not None
+    selection = ComponentSelection(
+        components=[
+            {
+                "reference_group": "J1, U1 (CC1, CC2)",
+                "manufacturer_part": "part",
+                "quantity": 1,
+                "symbol": "Connector:USB_C",
+                "footprint": "Connector_USB:USB_C",
+                "reason": "",
+                "verified_constraints": [],
+            }
+        ]
+    )
+    result = check_components(selection, context, project_version="rev-1")
+    assert result.passed
+    assert any(
+        finding.rule == "existing schematic symbol matches"
+        and finding.kicad_object == "J1"
+        and finding.severity == "warning"
+        for finding in result.findings
+    )
+
+    absent = selection.model_copy(
+        update={
+            "components": [
+                selection.components[0].model_copy(update={"reference_group": "U99 (new proposal)"})
+            ]
+        }
+    )
+    result = check_components(absent, context, project_version="rev-1")
+    assert not result.passed
+    assert any(
+        finding.rule == "component references exist"
+        and finding.actual == "U99"
+        and finding.severity == "error"
+        for finding in result.findings
+    )
 
 
 def test_schematic_gate_uses_fixture_state_and_erc() -> None:

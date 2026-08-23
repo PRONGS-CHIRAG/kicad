@@ -1,0 +1,782 @@
+{
+  "components": [
+    {
+      "footprint": "Connector_USB:USB_C_Receptacle_GCT_USB4105-GF-A_16P_TopMnt_Horizontal",
+      "manufacturer_part": "GCT USB4105-GF-A",
+      "quantity": 1,
+      "reason": "Implements USB_C_INPUT per PWR-001, replacing the USB_B_Micro symbol currently on J1. 16-pin USB 2.0-only Type-C receptacle: exposes VBUS, GND, CC1, CC2, D+/D- (both A6/B6 and A7/B7 pairs shorted at the symbol) and no SS pairs, which is exactly the pin set the architecture needs and keeps routing feasible on a 2-layer stackup (COST-001, MECH-003). Through-hole/SMT hybrid edge-mount part with board-edge alignment pegs, standard commodity availability. NOTE: this is a symbol/footprint substitution on J1 - it must be confirmed that J1 is not a protected object before the schematic designer applies it (TEST-004).",
+      "reference_group": "J1",
+      "specifications": [
+        {
+          "maximum": 20.0,
+          "minimum": "-",
+          "page_or_section": "Electrical Characteristics",
+          "parameter": "Rated voltage",
+          "source": "GCT USB4105 datasheet",
+          "typical": "-",
+          "unit": "V DC"
+        },
+        {
+          "maximum": 5.0,
+          "minimum": "-",
+          "page_or_section": "Electrical Characteristics",
+          "parameter": "Rated current (VBUS/GND power contacts)",
+          "source": "GCT USB4105 datasheet",
+          "typical": "-",
+          "unit": "A"
+        },
+        {
+          "maximum": 0.5,
+          "minimum": "-",
+          "page_or_section": "Electrical Characteristics",
+          "parameter": "Rated current (signal contacts)",
+          "source": "GCT USB4105 datasheet",
+          "typical": "-",
+          "unit": "A"
+        },
+        {
+          "maximum": 40.0,
+          "minimum": "-",
+          "page_or_section": "Electrical Characteristics",
+          "parameter": "Contact resistance",
+          "source": "GCT USB4105 datasheet",
+          "typical": "-",
+          "unit": "mOhm"
+        },
+        {
+          "maximum": "-",
+          "minimum": 10000.0,
+          "page_or_section": "Mechanical Characteristics",
+          "parameter": "Durability (mating cycles)",
+          "source": "GCT USB4105 datasheet",
+          "typical": "-",
+          "unit": "cycles"
+        },
+        {
+          "maximum": 85.0,
+          "minimum": -30.0,
+          "page_or_section": "Mechanical/Environmental Characteristics",
+          "parameter": "Operating temperature",
+          "source": "GCT USB4105 datasheet",
+          "typical": "-",
+          "unit": "degC"
+        }
+      ],
+      "symbol": "Connector:USB_C_Receptacle_USB2.0",
+      "verified_constraints": [
+        "PWR-001: USB-C receptacle supplying 5 V VBUS",
+        "PWR-003: VBUS contact current rating exceeds the 500 mA USB default budget",
+        "IF-004: provides D+/D- pair to U1.USB_D+/USB_D-",
+        "COST-001: commodity edge-mount receptacle, no BGA",
+        "MECH-003: USB 2.0-only variant, no SS pairs, routable in 2 layers"
+      ]
+    },
+    {
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "manufacturer_part": "Yageo RC0603FR-075K1L",
+      "quantity": 2,
+      "reason": "USB_CC_PULLDOWNS block: 5.1 kOhm from each of CC1 and CC2 to GND is the USB Type-C specified Rd termination that advertises a default-power sink to the source, which is what makes a Type-C host supply 5 V on VBUS at all. Two separate resistors (not one shared) so cable orientation is detected in either flip. 1% thin-film 0603 keeps the value inside the Rd window over tolerance.",
+      "reference_group": "R1, R2 (CC1, CC2)",
+      "specifications": [
+        {
+          "maximum": 5.151,
+          "minimum": 5.049,
+          "page_or_section": "Product Selection Guide",
+          "parameter": "Resistance",
+          "source": "Yageo RC-L series datasheet",
+          "typical": 5.1,
+          "unit": "kOhm"
+        },
+        {
+          "maximum": 1.0,
+          "minimum": -1.0,
+          "page_or_section": "Product Selection Guide",
+          "parameter": "Tolerance",
+          "source": "Yageo RC-L series datasheet",
+          "typical": "-",
+          "unit": "%"
+        },
+        {
+          "maximum": 0.1,
+          "minimum": "-",
+          "page_or_section": "Power Rating table",
+          "parameter": "Rated power (0603, 70 degC)",
+          "source": "Yageo RC-L series datasheet",
+          "typical": "-",
+          "unit": "W"
+        },
+        {
+          "maximum": 75.0,
+          "minimum": "-",
+          "page_or_section": "Electrical Characteristics",
+          "parameter": "Maximum working voltage",
+          "source": "Yageo RC-L series datasheet",
+          "typical": "-",
+          "unit": "V"
+        },
+        {
+          "maximum": 155.0,
+          "minimum": -55.0,
+          "page_or_section": "Electrical Characteristics",
+          "parameter": "Operating temperature",
+          "source": "Yageo RC-L series datasheet",
+          "typical": "-",
+          "unit": "degC"
+        }
+      ],
+      "symbol": "Device:R",
+      "verified_constraints": [
+        "PWR-001: enables 5 V VBUS delivery from a Type-C source (Rd = 5.1 k)",
+        "PWR-003: advertises USB default power sink, consistent with the 500 mA budget",
+        "COST-001: commodity 0603 chip resistor"
+      ]
+    },
+    {
+      "footprint": "Package_TO_SOT_SMD:SOT-223-3_TabPin2",
+      "manufacturer_part": "AMS1117-3.3",
+      "quantity": 1,
+      "reason": "LDO_3V3 block: fixed 3.3 V LDO fed from 5 V VBUS. Chosen for 1 A output capability (block asks for 800 mA available against 520 mA required) and for the SOT-223 tab package, which the architecture explicitly identified as the acceptable thermal option with copper pour - at 5 V in / 3.3 V out and 500 mA the dissipation is (5.0-3.3) x 0.5 = 0.85 W, so the tab must be tied to a GND copper area on both layers. Output tolerance is well inside the +/-5% of PWR-002, and only 2 external 10 uF capacitors are required, keeping BOM cost low. If tighter thermal margin is wanted, a 5 V-to-3.3 V synchronous buck is the alternative, but that adds an inductor and violates the COST-001 preference for commodity linear regulation.",
+      "reference_group": "U3",
+      "specifications": [
+        {
+          "maximum": 3.365,
+          "minimum": 3.235,
+          "page_or_section": "Electrical Characteristics (fixed 3.3 V)",
+          "parameter": "Output voltage",
+          "source": "AMS1117 datasheet (Advanced Monolithic Systems)",
+          "typical": 3.3,
+          "unit": "V"
+        },
+        {
+          "maximum": 1.0,
+          "minimum": "-",
+          "page_or_section": "Absolute Maximum Ratings / Features",
+          "parameter": "Output current",
+          "source": "AMS1117 datasheet",
+          "typical": "-",
+          "unit": "A"
+        },
+        {
+          "maximum": 1.3,
+          "minimum": "-",
+          "page_or_section": "Electrical Characteristics",
+          "parameter": "Dropout voltage (I_OUT = 1 A)",
+          "source": "AMS1117 datasheet",
+          "typical": 1.1,
+          "unit": "V"
+        },
+        {
+          "maximum": 15.0,
+          "minimum": "-",
+          "page_or_section": "Absolute Maximum Ratings",
+          "parameter": "Input voltage (absolute maximum)",
+          "source": "AMS1117 datasheet",
+          "typical": "-",
+          "unit": "V"
+        },
+        {
+          "maximum": "-",
+          "minimum": "-",
+          "page_or_section": "Electrical Characteristics",
+          "parameter": "Line regulation",
+          "source": "AMS1117 datasheet",
+          "typical": 0.2,
+          "unit": "%"
+        },
+        {
+          "maximum": "-",
+          "minimum": "-",
+          "page_or_section": "Electrical Characteristics",
+          "parameter": "Load regulation",
+          "source": "AMS1117 datasheet",
+          "typical": 0.4,
+          "unit": "%"
+        },
+        {
+          "maximum": "-",
+          "minimum": "-",
+          "page_or_section": "Thermal Characteristics",
+          "parameter": "Junction-to-ambient thermal resistance (SOT-223, on PCB)",
+          "source": "AMS1117 datasheet",
+          "typical": 80.0,
+          "unit": "degC/W"
+        },
+        {
+          "maximum": 125.0,
+          "minimum": 0.0,
+          "page_or_section": "Absolute Maximum Ratings",
+          "parameter": "Operating junction temperature",
+          "source": "AMS1117 datasheet",
+          "typical": "-",
+          "unit": "degC"
+        }
+      ],
+      "symbol": "Regulator_Linear:AMS1117-3.3",
+      "verified_constraints": [
+        "PWR-002: fixed 3.3 V output, tolerance within +/-5%",
+        "PWR-002: 5 V input is within the input voltage range and above dropout",
+        "PWR-003: 1 A rating covers the 500 mA budget with margin",
+        "PWR-004: requires 10 uF input and 10 uF output capacitors, provided by C1/C2",
+        "COST-001: commodity SOT-223 LDO, no BGA"
+      ]
+    },
+    {
+      "footprint": "Capacitor_SMD:C_0805_2012Metric",
+      "manufacturer_part": "Murata GRM21BR61C106KE15L",
+      "quantity": 3,
+      "reason": "10 uF X5R 0805 serving three roles: VBUS_INPUT_FILTER bulk, LDO_3V3 output capacitor (required for regulator stability), and the RAIL_3V3_DECOUPLING bulk capacitor mandated by PWR-004. 16 V rating gives 3.2x derating on the 5 V VBUS node and ~5x on +3V3, so the DC-bias capacitance loss of the X5R dielectric stays modest. 0805 is chosen over 0603 for exactly that DC-bias/effective-capacitance reason at 10 uF.",
+      "reference_group": "C1 (VBUS bulk), C2 (LDO output), C3 (+3V3 bulk)",
+      "specifications": [
+        {
+          "maximum": 12.0,
+          "minimum": 8.0,
+          "page_or_section": "Part number / Specifications",
+          "parameter": "Capacitance",
+          "source": "Murata GRM21BR61C106KE15 datasheet",
+          "typical": 10.0,
+          "unit": "uF"
+        },
+        {
+          "maximum": 10.0,
+          "minimum": -10.0,
+          "page_or_section": "Specifications (K code)",
+          "parameter": "Tolerance",
+          "source": "Murata GRM21BR61C106KE15 datasheet",
+          "typical": "-",
+          "unit": "%"
+        },
+        {
+          "maximum": 16.0,
+          "minimum": "-",
+          "page_or_section": "Specifications",
+          "parameter": "Rated voltage",
+          "source": "Murata GRM21BR61C106KE15 datasheet",
+          "typical": "-",
+          "unit": "V DC"
+        },
+        {
+          "maximum": 15.0,
+          "minimum": -15.0,
+          "page_or_section": "Temperature Characteristics",
+          "parameter": "Dielectric / temperature characteristic (X5R)",
+          "source": "Murata GRM21BR61C106KE15 datasheet",
+          "typical": "-",
+          "unit": "% capacitance change"
+        },
+        {
+          "maximum": 85.0,
+          "minimum": -55.0,
+          "page_or_section": "Temperature Characteristics",
+          "parameter": "Operating temperature (X5R)",
+          "source": "Murata GRM21BR61C106KE15 datasheet",
+          "typical": "-",
+          "unit": "degC"
+        }
+      ],
+      "symbol": "Device:C",
+      "verified_constraints": [
+        "PWR-004: provides the >=10 uF bulk capacitor on the +3V3 rail",
+        "PWR-002: satisfies the LDO output capacitor requirement",
+        "16 V rating >= 3x the 5 V VBUS working voltage",
+        "COST-001: commodity MLCC"
+      ]
+    },
+    {
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "manufacturer_part": "Murata GRM188R71H104KA93D",
+      "quantity": 4,
+      "reason": "100 nF X7R 0603 local decoupling required by PWR-004 at every IC power pin (U1.3V3 and U2.VCC, each to be placed within 5 mm of the pin), plus one high-frequency bypass on the VBUS input filter alongside the 10 uF bulk. The fourth part is the optional EN_PULLUP RC capacitor from U1.EN to GND, which together with the 10 kOhm pull-up gives a ~1 ms power-on delay so EN releases after the +3V3 rail is valid; it is listed as optional pending the architecture's open question on EN RC scope. X7R chosen over X5R for the wider stable temperature range, matching the TEMP-001 ambient span.",
+      "reference_group": "C4 (U1.3V3), C5 (U2.VCC), C6 (VBUS HF), C7 (EN RC, optional)",
+      "specifications": [
+        {
+          "maximum": 110.0,
+          "minimum": 90.0,
+          "page_or_section": "Part number / Specifications",
+          "parameter": "Capacitance",
+          "source": "Murata GRM188R71H104KA93 datasheet",
+          "typical": 100.0,
+          "unit": "nF"
+        },
+        {
+          "maximum": 10.0,
+          "minimum": -10.0,
+          "page_or_section": "Specifications (K code)",
+          "parameter": "Tolerance",
+          "source": "Murata GRM188R71H104KA93 datasheet",
+          "typical": "-",
+          "unit": "%"
+        },
+        {
+          "maximum": 50.0,
+          "minimum": "-",
+          "page_or_section": "Specifications",
+          "parameter": "Rated voltage",
+          "source": "Murata GRM188R71H104KA93 datasheet",
+          "typical": "-",
+          "unit": "V DC"
+        },
+        {
+          "maximum": 15.0,
+          "minimum": -15.0,
+          "page_or_section": "Temperature Characteristics",
+          "parameter": "Dielectric / temperature characteristic (X7R)",
+          "source": "Murata GRM188R71H104KA93 datasheet",
+          "typical": "-",
+          "unit": "% capacitance change"
+        },
+        {
+          "maximum": 125.0,
+          "minimum": -55.0,
+          "page_or_section": "Temperature Characteristics",
+          "parameter": "Operating temperature (X7R)",
+          "source": "Murata GRM188R71H104KA93 datasheet",
+          "typical": "-",
+          "unit": "degC"
+        }
+      ],
+      "symbol": "Device:C",
+      "verified_constraints": [
+        "PWR-004: 100 nF ceramic per IC power pin (U1, U2)",
+        "TEMP-001: X7R stable over -55 to +125 degC, covering -25 to +85 degC",
+        "50 V rating >= 10x the 5 V/3.3 V working voltages",
+        "COST-001: commodity MLCC"
+      ]
+    },
+    {
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "manufacturer_part": "Yageo RC0603FR-0710KL",
+      "quantity": 1,
+      "reason": "EN_PULLUP block: 10 kOhm from U1.EN to +3V3 per PWR-005, so the module is enabled at power-on instead of EN being hard-tied to the rail (which is the present netlist state - U1.8 sits directly on +3V3). 10 kOhm draws only 330 uA from the rail and pairs with optional C7 for a power-on delay. 1% part for a defined RC time constant.",
+      "reference_group": "R3 (EN pull-up)",
+      "specifications": [
+        {
+          "maximum": 10.1,
+          "minimum": 9.9,
+          "page_or_section": "Product Selection Guide",
+          "parameter": "Resistance",
+          "source": "Yageo RC-L series datasheet",
+          "typical": 10.0,
+          "unit": "kOhm"
+        },
+        {
+          "maximum": 1.0,
+          "minimum": -1.0,
+          "page_or_section": "Product Selection Guide",
+          "parameter": "Tolerance",
+          "source": "Yageo RC-L series datasheet",
+          "typical": "-",
+          "unit": "%"
+        },
+        {
+          "maximum": 0.1,
+          "minimum": "-",
+          "page_or_section": "Power Rating table",
+          "parameter": "Rated power (0603, 70 degC)",
+          "source": "Yageo RC-L series datasheet",
+          "typical": "-",
+          "unit": "W"
+        },
+        {
+          "maximum": 155.0,
+          "minimum": -55.0,
+          "page_or_section": "Electrical Characteristics",
+          "parameter": "Operating temperature",
+          "source": "Yageo RC-L series datasheet",
+          "typical": "-",
+          "unit": "degC"
+        }
+      ],
+      "symbol": "Device:R",
+      "verified_constraints": [
+        "PWR-005: 10 kOhm nominal pull-up from U1.EN to +3V3",
+        "Static current 3.3 V / 10 k = 0.33 mA, within the block's 0.4 mA budget",
+        "COST-001: commodity 0603 chip resistor"
+      ]
+    },
+    {
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "manufacturer_part": "Yageo RC0603FR-074K7L",
+      "quantity": 2,
+      "reason": "I2C_PULLUPS block: 4.7 kOhm from each of SDA and SCL to +3V3 per IF-002. With a two-node bus (U1 master, U2 slave) the bus capacitance is well under the 400 pF I2C limit, so 4.7 k gives a rise time of roughly 0.85 x R x C = ~1 us at 100 pF - comfortably inside the 1000 ns standard-mode budget of IF-001. Sink current at V_OL is under 0.7 mA per line, inside both devices' open-drain ratings.",
+      "reference_group": "R4 (SDA pull-up), R5 (SCL pull-up)",
+      "specifications": [
+        {
+          "maximum": 4.747,
+          "minimum": 4.653,
+          "page_or_section": "Product Selection Guide",
+          "parameter": "Resistance",
+          "source": "Yageo RC-L series datasheet",
+          "typical": 4.7,
+          "unit": "kOhm"
+        },
+        {
+          "maximum": 1.0,
+          "minimum": -1.0,
+          "page_or_section": "Product Selection Guide",
+          "parameter": "Tolerance",
+          "source": "Yageo RC-L series datasheet",
+          "typical": "-",
+          "unit": "%"
+        },
+        {
+          "maximum": 0.1,
+          "minimum": "-",
+          "page_or_section": "Power Rating table",
+          "parameter": "Rated power (0603, 70 degC)",
+          "source": "Yageo RC-L series datasheet",
+          "typical": "-",
+          "unit": "W"
+        },
+        {
+          "maximum": 155.0,
+          "minimum": -55.0,
+          "page_or_section": "Electrical Characteristics",
+          "parameter": "Operating temperature",
+          "source": "Yageo RC-L series datasheet",
+          "typical": 155.0,
+          "unit": "degC"
+        }
+      ],
+      "symbol": "Device:R",
+      "verified_constraints": [
+        "IF-002: 4.7 kOhm pull-up on SDA and on SCL to +3V3",
+        "IF-001: rise time supports >=100 kHz standard mode at the expected bus capacitance",
+        "Combined pull-up current ~1.4 mA, within the block's 1.5 mA budget",
+        "COST-001: commodity 0603 chip resistor"
+      ]
+    },
+    {
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "manufacturer_part": "Yageo RC0603JR-070RL",
+      "quantity": 1,
+      "reason": "ADDR_SELECT block: 0 Ohm jumper tying U2.ADD0 to GND to fix the TMP102 address at 0x48 per IF-003. The net list already places U2.5 on GND, so this part is a placement/option component rather than a functional addition - it lets the address be changed to 0x49 later by moving the jumper to +3V3 without a board respin. If the schematic designer prefers a hard copper tie, this line can be dropped from the BOM with no requirement impact.",
+      "reference_group": "R6 (ADD0 strap)",
+      "specifications": [
+        {
+          "maximum": 0.05,
+          "minimum": "-",
+          "page_or_section": "Jumper (0 Ohm) specification",
+          "parameter": "Resistance (jumper)",
+          "source": "Yageo RC-L series datasheet",
+          "typical": "-",
+          "unit": "Ohm"
+        },
+        {
+          "maximum": 1.0,
+          "minimum": "-",
+          "page_or_section": "Jumper specification",
+          "parameter": "Rated current (0603 jumper)",
+          "source": "Yageo RC-L series datasheet",
+          "typical": "-",
+          "unit": "A"
+        },
+        {
+          "maximum": 155.0,
+          "minimum": -55.0,
+          "page_or_section": "Electrical Characteristics",
+          "parameter": "Operating temperature",
+          "source": "Yageo RC-L series datasheet",
+          "typical": "-",
+          "unit": "degC"
+        }
+      ],
+      "symbol": "Device:R",
+      "verified_constraints": [
+        "IF-003: ADD0 tied low, selecting TMP102 address 0x48",
+        "COST-001: commodity 0603 jumper resistor"
+      ]
+    },
+    {
+      "footprint": "RF_Module:ESP32-WROOM-32",
+      "manufacturer_part": "Espressif ESP32-WROOM-32E-N4",
+      "quantity": 1,
+      "reason": "MCU_ESP32 block: concrete part behind the existing abstract U1 symbol. The -32E-N4 is the current production variant (4 MB flash, ESP32-D0WD-V3 die) of the module already declared, so no netlist change is needed for pins 3V3/GND/GPIO21/GPIO22/GPIO25/EN. Runs directly from the +3V3 LDO rail and drives the I2C bus at 3.3 V logic. Two caveats for the schematic designer: (a) the module has an antenna keep-out that must overhang the board edge, which the 110 x 65 mm outline easily accommodates; (b) ESP32-D0WD has NO native USB peripheral, so the USB_D+/USB_D- pins on the abstract symbol do not correspond to real module pins - see U4 below.",
+      "reference_group": "U1",
+      "specifications": [
+        {
+          "maximum": 3.6,
+          "minimum": 3.0,
+          "page_or_section": "Section: Electrical Characteristics",
+          "parameter": "Supply voltage",
+          "source": "ESP32-WROOM-32E/32UE datasheet",
+          "typical": 3.3,
+          "unit": "V"
+        },
+        {
+          "maximum": "-",
+          "minimum": 500.0,
+          "page_or_section": "Section: Electrical Characteristics",
+          "parameter": "Recommended power supply current capability",
+          "source": "ESP32-WROOM-32E/32UE datasheet",
+          "typical": "-",
+          "unit": "mA"
+        },
+        {
+          "maximum": 500.0,
+          "minimum": "-",
+          "page_or_section": "Section: Electrical Characteristics (current consumption)",
+          "parameter": "Peak current during RF transmission",
+          "source": "ESP32-WROOM-32E/32UE datasheet",
+          "typical": "-",
+          "unit": "mA"
+        },
+        {
+          "maximum": 85.0,
+          "minimum": -40.0,
+          "page_or_section": "Section: Electrical Characteristics",
+          "parameter": "Operating ambient temperature",
+          "source": "ESP32-WROOM-32E/32UE datasheet",
+          "typical": "-",
+          "unit": "degC"
+        },
+        {
+          "maximum": "-",
+          "minimum": "-",
+          "page_or_section": "Section: Physical Dimensions",
+          "parameter": "Module dimensions",
+          "source": "ESP32-WROOM-32E/32UE datasheet",
+          "typical": "18.0 x 25.5 x 3.1",
+          "unit": "mm"
+        },
+        {
+          "maximum": "-",
+          "minimum": "-",
+          "page_or_section": "Section: Ordering Information (N4 suffix)",
+          "parameter": "Integrated SPI flash",
+          "source": "ESP32-WROOM-32E/32UE datasheet",
+          "typical": 4.0,
+          "unit": "MB"
+        }
+      ],
+      "symbol": "MCU:ESP32-WROOM-32 (existing schematic symbol; RF_Module:ESP32-WROOM-32E recommended if symbol substitution is permitted)",
+      "verified_constraints": [
+        "PWR-002: 3.3 V supply, inside the module's 3.0-3.6 V range",
+        "PWR-003: recommended supply current 500 mA matches the USB default budget; Wi-Fi TX peak is below the LDO's 1 A rating",
+        "PWR-004: 100 nF local decoupling (C4) plus 10 uF bulk (C3) provided",
+        "PWR-005: EN pulled up via R3",
+        "IF-001: GPIO21/GPIO22 support the I2C master function at 3.3 V logic",
+        "TEMP-001: -40 to +85 degC operating range covers -25 to +85 degC",
+        "COST-001: castellated/land-pattern module, no BGA"
+      ]
+    },
+    {
+      "footprint": "Package_TO_SOT_SMD:SOT-563",
+      "manufacturer_part": "Texas Instruments TMP102AIDRLR",
+      "quantity": 1,
+      "reason": "TEMP_SENSOR_TMP102 block: concrete part behind the existing U2 symbol. Digital I2C temperature sensor with accuracy far better than the +/-2 degC of TEMP-001 across the whole -25 to +85 degC window, 3.3 V-compatible supply, and ADD0 pin for the 0x48 address strap required by IF-003. 10 uA quiescent current makes its contribution to the VBUS budget negligible (block budget 0.02 mA). SOT-563 is the standard commodity package; it should be placed away from the LDO and the ESP32 module so self-heating from those parts does not bias the ambient reading.",
+      "reference_group": "U2",
+      "specifications": [
+        {
+          "maximum": 3.6,
+          "minimum": 1.4,
+          "page_or_section": "Recommended Operating Conditions",
+          "parameter": "Supply voltage",
+          "source": "TI TMP102 datasheet (SBOS397)",
+          "typical": 3.3,
+          "unit": "V"
+        },
+        {
+          "maximum": 0.5,
+          "minimum": -0.5,
+          "page_or_section": "Electrical Characteristics: Temperature Measurement",
+          "parameter": "Temperature accuracy (-25 to +85 degC)",
+          "source": "TI TMP102 datasheet (SBOS397)",
+          "typical": "-",
+          "unit": "degC"
+        },
+        {
+          "maximum": 3.0,
+          "minimum": -3.0,
+          "page_or_section": "Electrical Characteristics: Temperature Measurement",
+          "parameter": "Temperature accuracy (-40 to +125 degC)",
+          "source": "TI TMP102 datasheet (SBOS397)",
+          "typical": "-",
+          "unit": "degC"
+        },
+        {
+          "maximum": 125.0,
+          "minimum": -40.0,
+          "page_or_section": "Electrical Characteristics",
+          "parameter": "Specified measurement range",
+          "source": "TI TMP102 datasheet (SBOS397)",
+          "typical": "-",
+          "unit": "degC"
+        },
+        {
+          "maximum": "-",
+          "minimum": "-",
+          "page_or_section": "Electrical Characteristics",
+          "parameter": "Resolution",
+          "source": "TI TMP102 datasheet (SBOS397)",
+          "typical": 0.0625,
+          "unit": "degC/LSB"
+        },
+        {
+          "maximum": 26.0,
+          "minimum": "-",
+          "page_or_section": "Electrical Characteristics: Power Supply",
+          "parameter": "Quiescent current (serial bus inactive)",
+          "source": "TI TMP102 datasheet (SBOS397)",
+          "typical": 10.0,
+          "unit": "uA"
+        },
+        {
+          "maximum": 4.0,
+          "minimum": "-",
+          "page_or_section": "Electrical Characteristics: Power Supply",
+          "parameter": "Shutdown current",
+          "source": "TI TMP102 datasheet (SBOS397)",
+          "typical": 0.5,
+          "unit": "uA"
+        },
+        {
+          "maximum": 3400.0,
+          "minimum": "-",
+          "page_or_section": "Electrical Characteristics: Digital Interface",
+          "parameter": "I2C clock frequency",
+          "source": "TI TMP102 datasheet (SBOS397)",
+          "typical": "-",
+          "unit": "kHz"
+        },
+        {
+          "maximum": "-",
+          "minimum": "-",
+          "page_or_section": "Table: Address Pin Connection",
+          "parameter": "I2C address with ADD0 tied to GND",
+          "source": "TI TMP102 datasheet (SBOS397)",
+          "typical": "0x48",
+          "unit": "address"
+        }
+      ],
+      "symbol": "Sensor_Temperature:TMP102 (existing schematic symbol Sensor:TMP102)",
+      "verified_constraints": [
+        "PWR-006: VCC on +3V3 (within 1.4-3.6 V range), GND on GND",
+        "TEMP-001: specified accuracy better than +/-2 degC over -25 to +85 degC",
+        "IF-001/IF-002: I2C interface at 3.3 V, standard mode and above",
+        "IF-003: ADD0 low selects address 0x48",
+        "PWR-004: 100 nF local decoupling (C5) provided",
+        "COST-001: commodity SOT-563 package, no BGA"
+      ]
+    },
+    {
+      "footprint": "Package_TO_SOT_SMD:SOT-23-6",
+      "manufacturer_part": "STMicroelectronics USBLC6-2SC6",
+      "quantity": 1,
+      "reason": "VBUS_INPUT_FILTER / USB_DATA_LINK ESD element. The connector is the only user-touchable interface on the board, and the block explicitly calls for 'bulk_and_esd'. USBLC6-2SC6 is the standard choice: two low-capacitance rail-to-rail TVS channels for D+/D- plus a VBUS clamp in one SOT-23-6, with only 1.5 pF line capacitance so it does not disturb the 90 Ohm full-speed pair of IF-004. Placed immediately at J1, before the pair fans out. Flagged for the systems owner: this is a NEW component, so it needs approval under the propose-changes-only mandate and confirmation that it does not touch a protected object.",
+      "reference_group": "D1",
+      "specifications": [
+        {
+          "maximum": 5.25,
+          "minimum": "-",
+          "page_or_section": "Absolute Maximum Ratings",
+          "parameter": "Reverse standoff voltage",
+          "source": "ST USBLC6-2 datasheet (DS2764)",
+          "typical": "-",
+          "unit": "V"
+        },
+        {
+          "maximum": "-",
+          "minimum": 6.0,
+          "page_or_section": "Electrical Characteristics",
+          "parameter": "Breakdown voltage (I_R = 1 mA)",
+          "source": "ST USBLC6-2 datasheet (DS2764)",
+          "typical": "-",
+          "unit": "V"
+        },
+        {
+          "maximum": 2.5,
+          "minimum": "-",
+          "page_or_section": "Electrical Characteristics",
+          "parameter": "Line capacitance (V_R = 0 V, F = 1 MHz)",
+          "source": "ST USBLC6-2 datasheet (DS2764)",
+          "typical": 1.5,
+          "unit": "pF"
+        },
+        {
+          "maximum": "-",
+          "minimum": 15.0,
+          "page_or_section": "Features / Absolute Maximum Ratings",
+          "parameter": "ESD withstand (IEC 61000-4-2 air discharge)",
+          "source": "ST USBLC6-2 datasheet (DS2764)",
+          "typical": "-",
+          "unit": "kV"
+        },
+        {
+          "maximum": "-",
+          "minimum": 8.0,
+          "page_or_section": "Features / Absolute Maximum Ratings",
+          "parameter": "ESD withstand (IEC 61000-4-2 contact discharge)",
+          "source": "ST USBLC6-2 datasheet (DS2764)",
+          "typical": "-",
+          "unit": "kV"
+        },
+        {
+          "maximum": 150.0,
+          "minimum": -55.0,
+          "page_or_section": "Absolute Maximum Ratings",
+          "parameter": "Operating junction temperature",
+          "source": "ST USBLC6-2 datasheet (DS2764)",
+          "typical": "-",
+          "unit": "degC"
+        }
+      ],
+      "symbol": "Power_Protection:USBLC6-2SC6",
+      "verified_constraints": [
+        "IF-004: 1.5 pF typical line capacitance preserves USB 2.0 full-speed signal integrity",
+        "PWR-001/PWR-003: VBUS clamp rated above the 5 V rail, no series current limit added",
+        "COST-001: commodity SOT-23-6, no BGA"
+      ]
+    },
+    {
+      "footprint": "Package_DFN_QFN:QFN-28-1EP_5x5mm_P0.5mm_EP3.35x3.35mm",
+      "manufacturer_part": "Silicon Labs CP2102N-A02-GQFN28",
+      "quantity": 1,
+      "reason": "The netlist wires J1.D+/D- straight to U1.USB_D+/USB_D-, but ESP32-WROOM-32 (ESP32-D0WD die) has no USB peripheral - those pins do not exist on the real module, so as drawn the USB_D+/USB_D- nets cannot be built and will not satisfy IF-004. A USB-UART bridge is the standard resolution: CP2102N sits between the connector's D+/D- and the module's UART0 (TXD0/RXD0), and its RTS/DTR lines can drive the EN and IO0 straps for auto-programming. It needs only a 100 nF + 4.7 uF supply decoupling network and runs from VBUS or +3V3 with an internal regulator, so it is cheap and 2-layer friendly. This part is CONDITIONAL: it requires the systems owner to approve a new block plus a change to the U1 symbol's exposed pins (UART instead of USB), which is outside the current abstract symbol. The alternative resolution - leaving D+/D- as abstract symbol pins - must then be recorded as an explicit ERC waiver against TEST-001/IF-004.",
+      "reference_group": "U4 (conditional - resolves the 'ESP32 native USB' open question)",
+      "specifications": [
+        {
+          "maximum": 5.25,
+          "minimum": 3.0,
+          "page_or_section": "Electrical Characteristics: Absolute Maximum / Recommended Operating Conditions",
+          "parameter": "Supply voltage (VIO/VDD regulator input)",
+          "source": "Silicon Labs CP2102N datasheet",
+          "typical": 3.3,
+          "unit": "V"
+        },
+        {
+          "maximum": "-",
+          "minimum": "-",
+          "page_or_section": "Features / USB Function Controller",
+          "parameter": "USB specification supported",
+          "source": "Silicon Labs CP2102N datasheet",
+          "typical": 12.0,
+          "unit": "Mbps"
+        },
+        {
+          "maximum": 3.0,
+          "minimum": "-",
+          "page_or_section": "Features / Asynchronous Serial Data Bus",
+          "parameter": "Maximum UART baud rate",
+          "source": "Silicon Labs CP2102N datasheet",
+          "typical": "-",
+          "unit": "Mbaud"
+        },
+        {
+          "maximum": 85.0,
+          "minimum": -40.0,
+          "page_or_section": "Electrical Characteristics",
+          "parameter": "Operating ambient temperature",
+          "source": "Silicon Labs CP2102N datasheet",
+          "typical": "-",
+          "unit": "degC"
+        }
+      ],
+      "symbol": "Interface_USB:CP2102N-A02-GQFN28",
+      "verified_constraints": [
+        "IF-004: USB 2.0 full-speed device, 12 Mbps, D+/D- differential pair",
+        "PWR-002/PWR-003: can be powered from VBUS or +3V3; operating supply current is a small fraction of the 500 mA budget",
+        "COST-001: QFN-28 with 0.5 mm pitch, no BGA, no blind/buried vias"
+      ]
+    }
+  ]
+}

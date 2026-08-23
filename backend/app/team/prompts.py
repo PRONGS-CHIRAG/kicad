@@ -132,7 +132,9 @@ def build_components_prompt(
         inputs,
         (
             "Select concrete parts for the declared blocks. Do not invent numeric "
-            "specifications; identify sources."
+            "specifications; identify sources. The symbol and footprint fields must each "
+            "be a bare Library:Name library identifier with no parentheses, commentary, "
+            "or alternatives. Put explanations in reason or verified_constraints instead."
         ),
     )
 

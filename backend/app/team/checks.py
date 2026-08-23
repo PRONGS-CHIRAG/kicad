@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime, timezone
@@ -629,10 +630,34 @@ def check_components(
     project_version: str,
 ) -> StageCheckResult:
     findings: list[CheckFinding] = []
-    library_name = re.compile(r"^[^:\s]+:[^:\s]+$")
-    known = {component.reference: component for component in context.components} if context else {}
+    known_reference = {component.reference: component for component in context.components} if context else {}
+
+    def library_identifier(value: str) -> str | None:
+        match = re.fullmatch(r"\s*(?P<identifier>[^:\s()]+:[^:\s()]+)(?:\s*\([^)]*\))?\s*", value)
+        return match.group("identifier") if match else None
+
+    def references(value: str) -> list[str]:
+        without_annotations = re.sub(r"\([^)]*\)", " ", value)
+        return list(dict.fromkeys(re.findall(r"\b[A-Za-z]+\d+\b", without_annotations)))
+
+    def real_bound(value: str | float) -> bool:
+        if isinstance(value, bool):
+            return False
+        if isinstance(value, (int, float)):
+            return math.isfinite(float(value))
+        normalized = value.strip().lower()
+        if normalized in {"", "-", "–", "—", "n/a", "none", "not specified"}:
+            return False
+        return bool(
+            re.search(
+                r"(?<![a-z0-9])(?:0x[0-9a-f]+|[-+]?(?:\d+(?:\.\d*)?|\.\d+))(?![a-z0-9])",
+                normalized,
+            )
+        )
+
     for component in selection.components:
-        if not library_name.fullmatch(component.symbol):
+        symbol = library_identifier(component.symbol)
+        if symbol is None:
             findings.append(
                 finding(
                     "symbol identifier is well formed",
@@ -643,7 +668,8 @@ def check_components(
                     "error",
                 )
             )
-        if not library_name.fullmatch(component.footprint):
+        footprint = library_identifier(component.footprint)
+        if footprint is None:
             findings.append(
                 finding(
                     "footprint identifier is well formed",
@@ -655,31 +681,86 @@ def check_components(
                 )
             )
         for specification in component.specifications or []:
-            values = specification.model_dump(mode="json")
-            required = {"source", "page_or_section", "minimum", "typical", "maximum"}
-            missing = sorted(key for key in required if not values.get(key))
-            if missing:
+            metadata_missing = [
+                key for key in ("source", "page_or_section") if not getattr(specification, key).strip()
+            ]
+            if metadata_missing:
                 findings.append(
                     finding(
                         "numeric specification provenance",
-                        missing,
-                        [],
+                        metadata_missing,
+                        ["source", "page_or_section"],
                         component.reference_group,
                         "component selection",
                         "error",
                     )
                 )
-        if component.reference_group in known and component.symbol != known[component.reference_group].lib_id:
+            # Datasheets may omit individual bounds; require provenance and one concrete value,
+            # while reporting each omitted bound as advisory information.
+            missing_bounds = [
+                bound
+                for bound in ("minimum", "typical", "maximum")
+                if not real_bound(getattr(specification, bound))
+            ]
+            if len(missing_bounds) == 3:
+                findings.append(
+                    finding(
+                        "numeric specification bounds",
+                        missing_bounds,
+                        "at least one numeric bound",
+                        component.reference_group,
+                        "component selection",
+                        "error",
+                    )
+                )
+            for bound in missing_bounds:
+                findings.append(
+                    finding(
+                        "numeric specification bound missing",
+                        bound,
+                        "numeric value or explicit not-specified marker",
+                        component.reference_group,
+                        "component selection",
+                        "warning",
+                    )
+                )
+        component_references = references(component.reference_group)
+        if not component_references:
             findings.append(
                 finding(
-                    "existing schematic symbol matches",
-                    component.symbol,
-                    known[component.reference_group].lib_id,
+                    "component references exist",
+                    component.reference_group,
+                    "schematic reference",
                     component.reference_group,
                     "schematic",
                     "error",
                 )
             )
+        for reference in component_references:
+            if reference not in known_reference:
+                if context is not None:
+                    findings.append(
+                        finding(
+                            "component references exist",
+                            reference,
+                            "schematic reference",
+                            reference,
+                            "schematic",
+                            "error",
+                        )
+                    )
+                continue
+            if symbol is not None and symbol != known_reference[reference].lib_id:
+                findings.append(
+                    finding(
+                        "existing schematic symbol matches",
+                        symbol,
+                        known_reference[reference].lib_id,
+                        reference,
+                        "schematic",
+                        "warning",
+                    )
+                )
     return _check("components", findings, project_version, "component checker")
 
 
