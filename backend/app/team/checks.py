@@ -17,6 +17,7 @@ from ..kicad.state import diff_states
 from ..models import ErcReport
 from .profiles import ManufacturerProfile, get_profile
 from .schemas import (
+    REQUIREMENT_CATEGORY_PREFIXES,
     Architecture,
     CheckFinding,
     ComponentSelection,
@@ -88,13 +89,37 @@ def finding(
 
 _finding = finding
 
+_CATEGORY_ALIASES = {
+    "power": "power",
+    "supply": "power",
+    "interface": "interface",
+    "communication": "interface",
+    "mechanical": "mechanical",
+    "physical": "mechanical",
+    "manufacturing": "manufacturing",
+    "fabrication": "manufacturing",
+    "cost": "cost",
+    "budget": "cost",
+    "temperature": "temperature",
+    "thermal": "temperature",
+    "test": "test",
+    "acceptance": "test",
+    "acceptance/test": "test",
+    "acceptance test": "test",
+    "validation": "test",
+}
+_REQUIREMENT_ID_RE = re.compile(
+    rf"\b(?:{'|'.join(REQUIREMENT_CATEGORY_PREFIXES.values())})-\d{{3}}\b",
+    re.IGNORECASE,
+)
+
 
 _QUANTITY_RE = re.compile(
     r"(?<![A-Za-z0-9])([-+]?\d+(?:\.\d+)?)\s*"
     r"(µf|μf|uf|ma|mv|v|kohm|kω|k|khz|hz|pf|nf|mm|ohm|ω)?",
     re.IGNORECASE,
 )
-_PROTOCOL_RE = re.compile(r"(?<![A-Za-z0-9])(USB-C|I2C|UART)(?=[^A-Za-z0-9]|$)", re.IGNORECASE)
+_PROTOCOL_RE = re.compile(r"(?<![A-Za-z0-9])(USB(?:-C|\s+TYPE-C)|I2C|UART)(?=[^A-Za-z0-9]|$)", re.IGNORECASE)
 _UNIT_ALIASES = {
     "μf": "uf",
     "µf": "uf",
@@ -138,18 +163,56 @@ def _quantity_matches(summary: tuple[float, str | None], requirement: Requiremen
     )
 
 
+def _canonical_category(category: str) -> str | None:
+    return _CATEGORY_ALIASES.get(category.strip().lower())
+
+
+def _measurements_equal(left: str, right: str) -> bool:
+    left_quantities = _quantities(left)
+    right_quantities = _quantities(right)
+    if left_quantities and right_quantities:
+        left_amount, left_unit = left_quantities[0]
+        right_amount, right_unit = right_quantities[0]
+        return left_unit == right_unit and abs(left_amount - right_amount) <= max(
+            1e-9, 1e-3 * max(abs(left_amount), abs(right_amount), 1.0)
+        )
+    return re.sub(r"\s+", "", left).lower() == re.sub(r"\s+", "", right).lower()
+
+
+def _is_unverified_status(status: str) -> bool:
+    normalized = status.strip().lower().replace("_", " ").replace("-", " ")
+    return normalized.startswith(("unverified", "not verified", "unknown", "unvalidated"))
+
+
+def _is_pass_status(status: str) -> bool:
+    return status.strip().lower().replace("_", " ") in {"pass", "passed", "ok"}
+
+
+def _canonical_protocol(token: str) -> str:
+    return "USB-C" if token.strip().lower().replace(" ", "-") == "usb-type-c" else token.upper()
+
+
 def check_requirements(document: RequirementsDoc, project_version: str) -> StageCheckResult:
     findings: list[CheckFinding] = []
     seen: set[str] = set()
-    prefixes = {
-        "power": "PWR",
-        "interface": "IF",
-        "mechanical": "MECH",
-        "test": "TEST",
-    }
     by_category: dict[str, list[Requirement]] = {}
+    unknown_categories: set[str] = set()
     for requirement in document.requirements:
-        by_category.setdefault(requirement.category.lower(), []).append(requirement)
+        category = _canonical_category(requirement.category)
+        if category is None:
+            unknown_categories.add(requirement.category)
+            findings.append(
+                _finding(
+                    "recognized requirement category",
+                    requirement.category,
+                    sorted(_CATEGORY_ALIASES),
+                    requirement.id,
+                    "requirements",
+                    "warning",
+                )
+            )
+        else:
+            by_category.setdefault(category, []).append(requirement)
         if requirement.id in seen:
             findings.append(
                 _finding(
@@ -162,8 +225,8 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
                 )
             )
         seen.add(requirement.id)
-        prefix = prefixes.get(requirement.category.lower())
-        if prefix is None or not re.fullmatch(rf"{prefix}-\d{{3}}", requirement.id):
+        prefix = REQUIREMENT_CATEGORY_PREFIXES.get(_canonical_category(requirement.category) or "")
+        if prefix is not None and not re.fullmatch(rf"{prefix}-\d{{3}}", requirement.id):
             findings.append(
                 _finding(
                     "requirement ID matches category",
@@ -198,7 +261,10 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
             )
     statements: dict[tuple[str, str], object] = {}
     for requirement in document.requirements:
-        key = (requirement.category.lower(), requirement.statement.lower())
+        key = (
+            _canonical_category(requirement.category) or requirement.category.lower(),
+            requirement.statement.lower(),
+        )
         if key in statements and statements[key] != requirement.value:
             findings.append(
                 _finding(
@@ -241,7 +307,7 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
     interface_requirements = by_category.get("interface", [])
     interface_text = " ".join(
         f"{requirement.statement} {requirement.value}".lower() for requirement in interface_requirements
-    )
+    ).replace("usb type-c", "usb-c")
     for interface in document.interfaces:
         protocol = _PROTOCOL_RE.search(interface.type or "")
         voltage_quantities = _quantities(interface.voltage)
@@ -256,11 +322,11 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
                     "warning",
                 )
             )
-        elif protocol and protocol.group(1).lower() not in interface_text:
+        elif protocol and _canonical_protocol(protocol.group(1)).lower() not in interface_text:
             findings.append(
                 _finding(
                     "grouped and identified requirements agree",
-                    protocol.group(1),
+                    _canonical_protocol(protocol.group(1)),
                     "interface requirement statement",
                     "interfaces",
                     "requirements",
@@ -295,7 +361,7 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
                 "mechanical requirement IDs",
                 "mechanical",
                 "requirements",
-                "error",
+                "warning" if unknown_categories else "error",
             )
         )
     if document.acceptance_tests and not by_category.get("test"):
@@ -306,7 +372,7 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
                 "TEST requirement IDs",
                 "acceptance_tests",
                 "requirements",
-                "error",
+                "warning" if unknown_categories else "error",
             )
         )
     return _check("requirements", findings, project_version, "requirements parser")
@@ -349,7 +415,11 @@ def check_architecture(
             continue
         source = next(block for block in architecture.blocks if block.id == connection.from_block)
         target = next(block for block in architecture.blocks if block.id == connection.to_block)
-        if source.output_voltage and target.input_voltage and source.output_voltage != target.input_voltage:
+        if (
+            source.output_voltage
+            and target.input_voltage
+            and not _measurements_equal(source.output_voltage, target.input_voltage)
+        ):
             findings.append(
                 _finding(
                     "connected block voltage compatibility",
@@ -631,7 +701,9 @@ def check_simulation(
 ) -> StageCheckResult:
     findings: list[CheckFinding] = []
     requirement_ids = (
-        {requirement.id for requirement in requirements.requirements} if requirements is not None else set()
+        {requirement.id.upper() for requirement in requirements.requirements}
+        if requirements is not None
+        else set()
     )
     for test in report.tests:
         numeric_values: list[object]
@@ -656,7 +728,7 @@ def check_simulation(
                     "error",
                 )
             )
-        if "unverified" in test.status.lower():
+        if _is_unverified_status(test.status):
             findings.append(
                 _finding(
                     "simulation model available",
@@ -668,9 +740,9 @@ def check_simulation(
                 )
             )
         source = test.source or ""
-        requirement_match = re.search(r"\b((?:PWR|IF|MECH|TEST)-\d{3})\b", source)
+        requirement_match = _REQUIREMENT_ID_RE.search(source)
         traceable = (
-            bool(requirement_match and requirement_match.group(1) in requirement_ids)
+            bool(requirement_match and requirement_match.group(0).upper() in requirement_ids)
             or "datasheet" in source.lower()
         )
         if not traceable:
@@ -796,7 +868,7 @@ def check_manufacturing(
                 "error",
             )
         )
-    if report.fabrication_ready and report.dfm_status != "passed":
+    if report.fabrication_ready and not _is_pass_status(report.dfm_status):
         findings.append(
             _finding(
                 "profile values used",

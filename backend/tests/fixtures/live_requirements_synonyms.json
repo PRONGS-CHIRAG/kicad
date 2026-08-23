@@ -1,0 +1,155 @@
+{
+  "acceptance_tests": [
+    "Run ERC on the corrected schematic and verify zero unresolved errors; review every warning.",
+    "Inspect the schematic/netlist and verify USB Type-C input, regulated 3.3 V, common ground, ESP32 power, TMP102 power, SDA, SCL, and ADD0 connectivity.",
+    "Verify SDA connects TMP102 SDA to ESP32 GPIO21 and SCL connects TMP102 SCL to ESP32 GPIO22 at 3.3 V logic levels.",
+    "Verify USB D+ and D- are either fully implemented for a supported data function or explicitly unused.",
+    "Run DRC on the completed two-layer layout and verify zero unresolved errors; review every warning.",
+    "Measure the powered board's 3.3 V rail and verify correct operation from nominal 5 V USB Type-C input.",
+    "Read the TMP102 from the ESP32 over I2C and confirm a plausible, stable temperature value.",
+    "Check that the finished outline is no larger than 110 mm by 65 mm and passes generic_two_layer manufacturing checks."
+  ],
+  "constraints": [
+    "Propose requirements only; do not modify the project or produce circuit design.",
+    "Return the design to schematic engineering before layout because the current USB Micro-B connector conflicts with the USB-C requirement.",
+    "Complete and validate sensor power, I2C connectivity, and USB-C power connectivity before PCB layout.",
+    "Use the generic_two_layer manufacturer profile.",
+    "Do not approve release while ERC or DRC errors remain unresolved."
+  ],
+  "interfaces": [
+    {
+      "devices": 1,
+      "type": "USB Type-C power input",
+      "voltage": "5 V nominal"
+    },
+    {
+      "devices": 1,
+      "type": "I2C",
+      "voltage": "3.3 V"
+    }
+  ],
+  "mechanical": {
+    "layers": 2,
+    "maximum_height_mm": 65.0,
+    "maximum_width_mm": 110.0
+  },
+  "power": {
+    "input": "USB Type-C, nominal 5 V sink input",
+    "logic_voltage": "3.3 V regulated",
+    "maximum_current_ma": null
+  },
+  "requirements": [
+    {
+      "category": "power",
+      "id": "PWR-001",
+      "source": "Project request: USB-C power.",
+      "statement": "The PCB shall accept nominal 5 V power through a USB Type-C receptacle configured as a power sink.",
+      "unit": "V",
+      "value": 5
+    },
+    {
+      "category": "power",
+      "id": "PWR-002",
+      "source": "ESP32-WROOM-32 and TMP102 logic supply requirement; current net list omits TMP102 VCC.",
+      "statement": "The PCB shall provide a regulated 3.3 V logic rail to the ESP32 module and TMP102 sensor.",
+      "unit": "V",
+      "value": 3.3
+    },
+    {
+      "category": "power",
+      "id": "PWR-003",
+      "source": "Current nets show TMP102 VCC absent and TMP102 ADD0 connected to GND.",
+      "statement": "All required ESP32 and TMP102 supply and ground pins shall have intentional power-net connections, including TMP102 VCC and GND.",
+      "unit": "boolean",
+      "value": true
+    },
+    {
+      "category": "interface",
+      "id": "IF-001",
+      "source": "Project request conflicts with current J1 USB_B_Micro.",
+      "statement": "The external power connector shall be USB Type-C; the listed USB Micro-B connector shall not remain in the release design.",
+      "unit": "connector type",
+      "value": "USB Type-C"
+    },
+    {
+      "category": "interface",
+      "id": "IF-002",
+      "source": "Project request and provided ESP32/TMP102 pin table.",
+      "statement": "The TMP102 shall communicate with the ESP32 over one 3.3 V I2C bus using GPIO21 as SDA and GPIO22 as SCL.",
+      "unit": "I2C bus",
+      "value": 1
+    },
+    {
+      "category": "interface",
+      "id": "IF-003",
+      "source": "TMP102 address selection requirement; current net list connects U2.5 ADD0 to GND.",
+      "statement": "The TMP102 ADD0 pin shall be intentionally strapped to a valid logic level so its I2C address is deterministic and documented.",
+      "unit": "boolean",
+      "value": true
+    },
+    {
+      "category": "interface",
+      "id": "IF-004",
+      "source": "Current design lists USB_D+ and USB_D- connections although the project requests USB-C power.",
+      "statement": "USB D+ and D- shall either be intentionally connected end-to-end for a supported USB data function or explicitly marked unused; they shall not be unintentionally floating or partially connected.",
+      "unit": "boolean",
+      "value": true
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-001",
+      "source": "Provided board outline from (35,35) to (145,100).",
+      "statement": "The finished board outline shall not exceed the current 110 mm width by 65 mm height envelope.",
+      "unit": "mm",
+      "value": "110 x 65"
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-002",
+      "source": "Manufacturer profile: generic_two_layer.",
+      "statement": "The PCB shall use a two-layer stackup compatible with the generic_two_layer manufacturer profile.",
+      "unit": "layers",
+      "value": 2
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-001",
+      "source": "ERC baseline: 10 errors and 8 warnings.",
+      "statement": "Release ERC shall report zero unresolved errors; every remaining warning shall be reviewed and explicitly accepted with rationale or eliminated.",
+      "unit": "unresolved ERC errors",
+      "value": 0
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-002",
+      "source": "DRC baseline: 5 errors and 13 warnings.",
+      "statement": "Release DRC shall report zero unresolved errors; every remaining warning shall be reviewed and explicitly accepted with rationale or eliminated.",
+      "unit": "unresolved DRC errors",
+      "value": 0
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-003",
+      "source": "Current net list has incomplete power and I2C connectivity.",
+      "statement": "Connectivity inspection shall confirm the 5 V input path, regulated 3.3 V rail, common ground, ESP32 supply, TMP102 supply, and both I2C signals are complete with no unintended opens or shorts.",
+      "unit": "boolean",
+      "value": true
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-004",
+      "source": "Project goal: ESP32 temperature-monitoring PCB with an I2C sensor.",
+      "statement": "Powered functional validation shall demonstrate ESP32 communication with the TMP102 and acquisition of a plausible temperature reading over I2C.",
+      "unit": "boolean",
+      "value": true
+    },
+    {
+      "category": "acceptance",
+      "id": "TEST-005",
+      "source": "Manufacturer profile: generic_two_layer.",
+      "statement": "Manufacturing review shall pass the generic_two_layer profile checks for board outline, layer count, clearances, routing, and fabrication readiness.",
+      "unit": "boolean",
+      "value": true
+    }
+  ]
+}

@@ -96,7 +96,15 @@ def build_requirements_prompt(
         context,
         task,
         inputs,
-        "Convert the request into measurable electrical, interface, mechanical, and acceptance requirements.",
+        (
+            "Convert the request into measurable requirements. Use exactly these canonical "
+            "categories and ID prefixes: power=PWR, interface=IF, mechanical=MECH, "
+            "manufacturing=MFG, cost=COST, temperature=TEMP, acceptance/test=TEST. "
+            "Every ID must use the literal PREFIX-NNN format (for example PWR-001 or "
+            "TEST-002). Synonyms such as supply, communication, physical, fabrication, "
+            "budget, thermal, validation, and acceptance are accepted, but prefer the "
+            "canonical category names."
+        ),
     )
 
 
@@ -164,7 +172,12 @@ def build_simulation_prompt(
         context,
         task,
         inputs,
-        "Perform only closed-form power, regulator, LED, divider, pull-up, and rating-margin analysis.",
+        (
+            "Perform only closed-form power, regulator, LED, divider, pull-up, and "
+            "rating-margin analysis. Use exactly one status per test: pass, failed, or "
+            "unverified. Numeric values must include units, and source must name either "
+            "a requirement ID (PREFIX-NNN) or a datasheet source."
+        ),
     )
 
 
@@ -179,7 +192,8 @@ def build_verification_prompt(
         inputs,
         (
             "Independently report requirement and ERC/DRC findings. Every finding needs "
-            "rule, actual, expected, object, evidence, and severity."
+            "rule, actual, expected, object, evidence, and severity. Use decision status "
+            "passed, failed, or unverified, and finding severity error, warning, or info."
         ),
         read_only=True,
     )
@@ -196,7 +210,8 @@ def build_manufacturing_prompt(
         inputs,
         (
             "Check the named manufacturer profile and report manufacturability findings "
-            "without claiming unsupported readiness."
+            "without claiming unsupported readiness. Use dfm_status passed, failed, or "
+            "unverified; finding severity must be error, warning, or info."
         ),
         read_only=True,
     )
@@ -211,6 +226,11 @@ def build_qa_release_prompt(
         context,
         task,
         inputs,
-        "Apply the final release gate and report the package manifest. Never silently fix design errors.",
+        (
+            "Apply the final release gate and report the package manifest. Never silently "
+            "fix design errors. Use release_status ready for engineering review, "
+            "needs_human_review, or approved, and provide every named checklist item as "
+            "a boolean."
+        ),
         read_only=True,
     )

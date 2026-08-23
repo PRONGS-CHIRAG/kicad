@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from app.kicad.reader import ProjectState, read_project
 from app.models import ErcReport
 from app.team.checks import (
@@ -21,11 +23,13 @@ from app.team.checks import (
 )
 from app.team.fallbacks import fallback_for, requirements_fallback
 from app.team.profiles import get_profile
+from app.team.registry import get_agent
 from app.team.schemas import (
     AgentTask,
     Architecture,
     ComponentSelection,
     DesignContext,
+    InterfaceRequirement,
     PowerRequirements,
     ProjectSpec,
     RequirementsDoc,
@@ -94,6 +98,92 @@ def test_captured_live_requirements_accept_qualifying_summary_prose() -> None:
     assert result.passed, result.findings
 
 
+def test_second_captured_live_requirements_accept_category_synonyms() -> None:
+    payload = json.loads((Path(__file__).parent / "fixtures" / "live_requirements_synonyms.json").read_text())
+    result = check_requirements(RequirementsDoc.model_validate(payload), "live-synonyms-rev")
+    assert result.passed, result.findings
+
+
+@pytest.mark.parametrize(
+    ("category", "requirement_id"),
+    [
+        ("supply", "PWR-001"),
+        ("communication", "IF-001"),
+        ("physical", "MECH-001"),
+        ("fabrication", "MFG-001"),
+        ("budget", "COST-001"),
+        ("thermal", "TEMP-001"),
+        ("validation", "TEST-001"),
+        ("acceptance", "TEST-001"),
+        ("acceptance/test", "TEST-001"),
+        ("test", "TEST-001"),
+    ],
+)
+def test_requirement_category_synonyms_use_canonical_prefix(category: str, requirement_id: str) -> None:
+    document = _requirements().model_copy(
+        update={
+            "requirements": [
+                _requirements()
+                .requirements[0]
+                .model_copy(update={"category": category, "id": requirement_id})
+            ]
+        }
+    )
+    result = check_requirements(document, "rev-1")
+    assert result.passed, result.findings
+
+
+def test_unknown_requirement_category_is_a_warning() -> None:
+    document = _requirements().model_copy(
+        update={
+            "requirements": [
+                _requirements()
+                .requirements[0]
+                .model_copy(update={"category": "electromagnetic", "id": "PWR-001"})
+            ],
+            "acceptance_tests": ["verify the board"],
+        }
+    )
+    result = check_requirements(document, "rev-1")
+    assert result.passed
+    assert any(finding.severity == "warning" for finding in result.findings)
+
+
+def test_known_category_with_wrong_prefix_still_fails() -> None:
+    document = _requirements().model_copy(
+        update={
+            "requirements": [
+                _requirements().requirements[0].model_copy(update={"category": "supply", "id": "IF-001"})
+            ]
+        }
+    )
+    result = check_requirements(document, "rev-1")
+    assert not result.passed
+    assert any(finding.rule == "requirement ID matches category" for finding in result.findings)
+
+
+def test_usb_type_c_protocol_spelling_is_normalized() -> None:
+    document = _requirements().model_copy(
+        update={
+            "requirements": [
+                _requirements()
+                .requirements[0]
+                .model_copy(
+                    update={
+                        "category": "communication",
+                        "id": "IF-001",
+                        "statement": "USB-C power input",
+                        "value": "USB-C",
+                        "unit": "connector type",
+                    }
+                )
+            ],
+            "interfaces": [InterfaceRequirement(type="USB Type-C power input", voltage="", devices=1)],
+        }
+    )
+    assert check_requirements(document, "rev-1").passed
+
+
 def test_prose_only_summary_is_a_warning_not_an_error() -> None:
     document = _requirements().model_copy(
         update={
@@ -119,6 +209,48 @@ def test_conflicting_values_for_same_power_statement_fail() -> None:
     result = check_requirements(document, "rev-1")
     assert not result.passed
     assert any(finding.rule == "conflicting requirements" for finding in result.findings)
+
+
+def test_negative_requirement_value_fails() -> None:
+    document = _requirements().model_copy(
+        update={"requirements": [_requirements().requirements[0].model_copy(update={"value": -1})]}
+    )
+    result = check_requirements(document, "rev-1")
+    assert not result.passed
+    assert any(finding.rule == "range validation" for finding in result.findings)
+
+
+def test_gated_agent_prompts_state_the_vocabulary_they_emit() -> None:
+    project, _ = _project()
+    task_inputs = {
+        "requirements": (
+            "power=PWR",
+            "interface=IF",
+            "mechanical=MECH",
+            "manufacturing=MFG",
+            "cost=COST",
+            "temperature=TEMP",
+            "acceptance/test=TEST",
+            "PREFIX-NNN",
+        ),
+        "simulation": ("pass, failed, or unverified", "Numeric values must include units"),
+        "verification": (
+            "severity error, warning, or info",
+            "decision status passed, failed, or unverified",
+        ),
+        "manufacturing": (
+            "dfm_status passed, failed, or unverified",
+            "finding severity must be error, warning, or info",
+        ),
+        "qa_release": ("ready for engineering review", "needs_human_review", "approved"),
+    }
+    for agent_id, expected in task_inputs.items():
+        prompt = get_agent(agent_id).build_prompt(
+            project,
+            AgentTask(task_id=f"{agent_id}-prompt", assigned_agent=agent_id, objective="check"),
+            {},
+        )
+        assert all(fragment in prompt for fragment in expected), agent_id
 
 
 def test_architecture_gate_passes_and_rejects_unknown_connection() -> None:
@@ -190,7 +322,7 @@ def test_simulation_gate_passes_with_units_and_fails_without_assumptions() -> No
                 "name": "rail",
                 "expected": {"nominal": "3.3 V"},
                 "measured_v": "unverified V",
-                "status": "unverified",
+                "status": "UNVERIFIED; no model",
                 "source": "requirement PWR-001",
             }
         ],
@@ -204,6 +336,17 @@ def test_simulation_gate_passes_with_units_and_fails_without_assumptions() -> No
     )
     assert not check_simulation(unknown_requirement, _requirements(), project_version="rev-1").passed
     assert not check_simulation(SimulationReport(tests=[]), project_version="rev-1").passed
+
+
+def test_architecture_voltage_formatting_is_not_a_gate_failure() -> None:
+    architecture = Architecture(
+        blocks=[
+            {"id": "source", "type": "source", "requirement_ids": ["PWR-001"], "output_voltage": "3.3V"},
+            {"id": "load", "type": "load", "input_voltage": "3.3 V"},
+        ],
+        connections=[{"from": "source", "to": "load", "signal": "logic"}],
+    )
+    assert check_architecture(_requirements(), architecture, "rev-1").passed
 
 
 def test_verification_gate_passes_and_rejects_missing_evidence() -> None:
@@ -236,7 +379,7 @@ def test_manufacturing_gate_refuses_unknown_profile() -> None:
     assert not check_manufacturing(ManufacturingReport(**report), "unknown", "rev-1").passed
     known = ManufacturingReport(
         manufacturer_profile="generic_two_layer",
-        dfm_status="passed",
+        dfm_status="PASS",
         findings=[],
         fabrication_ready=True,
         profile_provenance=get_profile("generic_two_layer").provenance,

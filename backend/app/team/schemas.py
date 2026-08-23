@@ -17,6 +17,15 @@ SCHEMA_VERSION = "1.0"
 # Pydantic's schema generator. Nested values are still represented by JSON
 # containers and are serialized by the evidence store.
 JsonValue = str | int | float | bool | None | list[object] | dict[str, object]
+REQUIREMENT_CATEGORY_PREFIXES = {
+    "power": "PWR",
+    "interface": "IF",
+    "mechanical": "MECH",
+    "manufacturing": "MFG",
+    "cost": "COST",
+    "temperature": "TEMP",
+    "test": "TEST",
+}
 
 
 class TeamModel(BaseModel):
@@ -37,8 +46,8 @@ class Requirement(BaseModel):
 
     @model_validator(mode="after")
     def require_identifier(self) -> Requirement:
-        if not re.fullmatch(r"(PWR|IF|MECH|TEST)-\d{3}", self.id):
-            raise ValueError("requirement id must match PWR-001, IF-002, MECH-003, or TEST-004")
+        if not re.fullmatch(rf"({'|'.join(REQUIREMENT_CATEGORY_PREFIXES.values())})-\d{{3}}", self.id):
+            raise ValueError("requirement id must match a known PREFIX-NNN format")
         return self
 
 
