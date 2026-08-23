@@ -1,0 +1,231 @@
+{
+  "blocks": [
+    {
+      "id": "usb_c_input",
+      "input_voltage": "5 V VBUS from external USB host/charger (4.75-5.25 V)",
+      "output_voltage": "5 V VBUS",
+      "power_available_ma": 500.0,
+      "power_required_ma": 0.0,
+      "required_inputs": [
+        "External USB-C cable: VBUS 5 V, D+, D-, CC1, CC2, GND"
+      ],
+      "required_outputs": [
+        "VBUS_5V rail",
+        "USB_D+ / USB_D- differential pair (90 Ohm, matched within 5 mm)",
+        "GND"
+      ],
+      "requirement_ids": [
+        "PWR-001",
+        "PWR-004",
+        "IF-005",
+        "IF-006",
+        "MECH-003"
+      ],
+      "type": "USB-C receptacle (power input + USB 2.0 FS data), replaces USB_B_Micro J1; CC1/CC2 5.1 kOhm pull-downs for UFP 5V default; edge-flush placement with 3 mm keepout"
+    },
+    {
+      "id": "vreg_3v3",
+      "input_voltage": "5 V VBUS",
+      "output_voltage": "3.3 V",
+      "power_available_ma": 600.0,
+      "power_required_ma": 500.0,
+      "required_inputs": [
+        "VBUS_5V rail",
+        "GND"
+      ],
+      "required_outputs": [
+        "+3V3 rail (>=600 mA, <50 mVpp ripple)"
+      ],
+      "requirement_ids": [
+        "PWR-002",
+        "PWR-003",
+        "PWR-005",
+        "PWR-006"
+      ],
+      "type": "5V-to-3.3V LDO regulator, >=600 mA continuous (e.g. AP2112K-class not sufficient; use 600 mA+ LDO such as AP7361C/TLV757P-3.3), with 10 uF bulk input (VBUS) and output (+3V3) capacitors and 100 nF locals"
+    },
+    {
+      "id": "esp32_mcu",
+      "input_voltage": "3.3 V",
+      "output_voltage": null,
+      "power_available_ma": 0.0,
+      "power_required_ma": 500.0,
+      "required_inputs": [
+        "+3V3 rail",
+        "GND",
+        "USB_D+ / USB_D- differential pair from usb_c_input",
+        "EN signal from en_reset_rc"
+      ],
+      "required_outputs": [
+        "I2C_SDA (GPIO21)",
+        "I2C_SCL (GPIO22)",
+        "Spare GPIO25 (3.3 V logic)"
+      ],
+      "requirement_ids": [
+        "PWR-003",
+        "PWR-005",
+        "IF-001",
+        "IF-006",
+        "IF-007",
+        "MECH-004"
+      ],
+      "type": "ESP32-WROOM-32 module (U1): Wi-Fi MCU, I2C master on GPIO21/GPIO22, native USB D+/D- endpoint, spare GPIO25; antenna keepout >=15x15 mm copper-free at board edge; 100 nF per supply pin + local bulk decoupling"
+    },
+    {
+      "id": "tmp102_sensor",
+      "input_voltage": "3.3 V",
+      "output_voltage": null,
+      "power_available_ma": 0.0,
+      "power_required_ma": 1.0,
+      "required_inputs": [
+        "+3V3 rail",
+        "GND",
+        "I2C_SDA",
+        "I2C_SCL",
+        "ADD0 strap to GND"
+      ],
+      "required_outputs": [
+        "Temperature data over I2C (target address 0x48)"
+      ],
+      "requirement_ids": [
+        "IF-003",
+        "IF-004",
+        "PWR-005",
+        "TEMP-001",
+        "TEMP-002",
+        "TEMP-003"
+      ],
+      "type": "TMP102 I2C temperature sensor (U2): VCC->+3V3, GND->GND (fixing current miswiring), ADD0 strapped to GND via resistor for deterministic address 0x48; placed >=10 mm from ESP32 and regulator with minimal copper for thermal isolation; 100 nF local decoupling"
+    },
+    {
+      "id": "i2c_pullups",
+      "input_voltage": "3.3 V",
+      "output_voltage": null,
+      "power_available_ma": 0.0,
+      "power_required_ma": 2.0,
+      "required_inputs": [
+        "+3V3 rail",
+        "I2C_SDA",
+        "I2C_SCL"
+      ],
+      "required_outputs": [
+        "Passive bias holding SDA/SCL high when idle"
+      ],
+      "requirement_ids": [
+        "IF-001",
+        "IF-002",
+        "TEST-004"
+      ],
+      "type": "I2C pull-up network: 4.7 kOhm resistors from SDA and SCL to +3V3, sized for 100 kHz standard mode with one target device"
+    },
+    {
+      "id": "en_reset_rc",
+      "input_voltage": "3.3 V",
+      "output_voltage": null,
+      "power_available_ma": 0.0,
+      "power_required_ma": 1.0,
+      "required_inputs": [
+        "+3V3 rail",
+        "GND"
+      ],
+      "required_outputs": [
+        "EN signal with power-on-reset delay to U1.EN"
+      ],
+      "requirement_ids": [
+        "IF-007"
+      ],
+      "type": "ESP32 EN reset network: 10 kOhm pull-up from EN to +3V3 plus 100 nF from EN to GND (replaces the current direct EN-to-+3V3 tie)"
+    },
+    {
+      "id": "power_flags_erc",
+      "input_voltage": null,
+      "output_voltage": null,
+      "power_available_ma": 0.0,
+      "power_required_ma": 0.0,
+      "required_inputs": [],
+      "required_outputs": [
+        "ERC power-driven declaration on VBUS, +3V3, GND"
+      ],
+      "requirement_ids": [
+        "PWR-007",
+        "TEST-001"
+      ],
+      "type": "ERC power-flag set: exactly one PWR_FLAG on each of VBUS, +3V3, and GND (reassigning/removing the existing duplicate #FLG01/#FLG02 placement)"
+    }
+  ],
+  "connections": [
+    {
+      "from_block": "usb_c_input",
+      "signal": "VBUS_5V (5 V power rail, >=0.5 mm trace, 10 uF bulk cap)",
+      "to_block": "vreg_3v3"
+    },
+    {
+      "from_block": "usb_c_input",
+      "signal": "USB_D+/USB_D- (USB 2.0 full-speed 90 Ohm differential pair, length-matched within 5 mm, continuous GND plane underneath)",
+      "to_block": "esp32_mcu"
+    },
+    {
+      "from_block": "vreg_3v3",
+      "signal": "+3V3 (3.3 V power rail, >=0.5 mm trace)",
+      "to_block": "esp32_mcu"
+    },
+    {
+      "from_block": "vreg_3v3",
+      "signal": "+3V3 (3.3 V power rail, minimal copper spur for thermal isolation)",
+      "to_block": "tmp102_sensor"
+    },
+    {
+      "from_block": "vreg_3v3",
+      "signal": "+3V3 (pull-up bias)",
+      "to_block": "i2c_pullups"
+    },
+    {
+      "from_block": "vreg_3v3",
+      "signal": "+3V3 (pull-up bias)",
+      "to_block": "en_reset_rc"
+    },
+    {
+      "from_block": "esp32_mcu",
+      "signal": "I2C_SDA (GPIO21 <-> U2.SDA, 3.3 V open-drain, 100 kHz)",
+      "to_block": "tmp102_sensor"
+    },
+    {
+      "from_block": "esp32_mcu",
+      "signal": "I2C_SCL (GPIO22 -> U2.SCL, 3.3 V open-drain, 100 kHz)",
+      "to_block": "tmp102_sensor"
+    },
+    {
+      "from_block": "i2c_pullups",
+      "signal": "I2C_SDA / I2C_SCL pull-up bias (4.7 kOhm to +3V3)",
+      "to_block": "esp32_mcu"
+    },
+    {
+      "from_block": "en_reset_rc",
+      "signal": "EN (power-on reset, 10 kOhm pull-up + 100 nF RC)",
+      "to_block": "esp32_mcu"
+    },
+    {
+      "from_block": "usb_c_input",
+      "signal": "GND (common ground, continuous bottom-layer plane)",
+      "to_block": "vreg_3v3"
+    },
+    {
+      "from_block": "usb_c_input",
+      "signal": "GND (common ground plane)",
+      "to_block": "esp32_mcu"
+    },
+    {
+      "from_block": "usb_c_input",
+      "signal": "GND (common ground plane; also ADD0 strap reference)",
+      "to_block": "tmp102_sensor"
+    }
+  ],
+  "unresolved_questions": [
+    "PWR-003 (>=600 mA on 3.3 V for Wi-Fi TX peaks) vs PWR-004 (<=500 mA total from VBUS) conflict: peaks must be absorbed by bulk capacitance or the USB budget re-justified; confirm which requirement governs.",
+    "Concrete LDO part selection (>=600 mA, low dropout at 5 V input, <50 mVpp ripple) and its thermal dissipation (~0.85 W worst case at 500 mA) on a 2-layer board need component-engineer confirmation.",
+    "USB data endpoint: pin table names U1 pins 6/7 as USB_D+/USB_D-, but ESP32-WROOM-32 has no native USB; confirm whether these are GPIO-mapped, a serial-bridge IC should be added, or USB data is unused (power-only USB-C with D+/D- left NC).",
+    "ADD0 strap level proposed as GND (address 0x48) via 10 kOhm; confirm no address conflict constraints.",
+    "Target board size reduction to <=60 x 40 mm from 110 x 65 mm: confirm the smaller outline is adopted at layout stage given the 15x15 mm antenna keepout and USB-C edge keepout.",
+    "Specific USB-C receptacle part (16-pin USB 2.0-only type preferred for generic_two_layer manufacturability) to be chosen by the component engineer."
+  ]
+}

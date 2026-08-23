@@ -266,6 +266,101 @@ def test_architecture_gate_passes_and_rejects_unknown_connection() -> None:
     assert check_architecture(_requirements(), failing, "rev-1").passed is False
 
 
+def test_captured_live_architecture_passes_connectivity_and_budget_gate() -> None:
+    requirements = RequirementsDoc.model_validate(
+        json.loads((Path(__file__).parent / "fixtures" / "live_architecture_requirements.json").read_text())
+    )
+    architecture = Architecture.model_validate(
+        json.loads((Path(__file__).parent / "fixtures" / "live_architecture.json").read_text())
+    )
+    result = check_architecture(requirements, architecture, "live-architecture-rev")
+    assert result.passed, result.findings
+
+
+def test_architecture_missing_required_input_fails() -> None:
+    architecture = Architecture(
+        blocks=[
+            {
+                "id": "load",
+                "type": "sensor",
+                "required_inputs": ["MISSING_RAIL"],
+                "requirement_ids": ["PWR-001"],
+            }
+        ],
+        connections=[],
+    )
+    result = check_architecture(_requirements(), architecture, "rev-1")
+    assert not result.passed
+    assert any(finding.rule == "required input connectivity" for finding in result.findings)
+
+
+def test_architecture_non_converter_voltage_mismatch_fails() -> None:
+    architecture = Architecture(
+        blocks=[
+            {"id": "source", "type": "source", "output_voltage": "5 V"},
+            {"id": "load", "type": "load", "input_voltage": "3.3 V"},
+        ],
+        connections=[{"from": "source", "to": "load", "signal": "VCC"}],
+    )
+    result = check_architecture(_requirements(), architecture, "rev-1")
+    assert not result.passed
+    assert any(finding.rule == "connected block voltage compatibility" for finding in result.findings)
+
+
+def test_architecture_unmapped_functional_requirement_fails() -> None:
+    result = check_architecture(
+        _requirements(),
+        Architecture(blocks=[{"id": "block", "type": "source"}], connections=[]),
+        "rev-1",
+    )
+    assert not result.passed
+    assert any(finding.rule == "requirements map to blocks" for finding in result.findings)
+
+
+def test_architecture_total_power_draw_exceeding_rail_capacity_fails() -> None:
+    document = _requirements().model_copy(
+        update={
+            "requirements": [
+                _requirements()
+                .requirements[0]
+                .model_copy(update={"id": "PWR-003", "value": 500, "unit": "mA"})
+            ]
+        }
+    )
+    architecture = Architecture(
+        blocks=[
+            {"id": "first", "type": "load", "power_required_ma": 300, "requirement_ids": ["PWR-003"]},
+            {"id": "second", "type": "load", "power_required_ma": 250},
+        ],
+        connections=[],
+    )
+    result = check_architecture(document, architecture, "rev-1")
+    assert not result.passed
+    assert any(finding.rule == "power budget" for finding in result.findings)
+
+
+def test_architecture_board_level_requirement_mapping_is_only_a_warning() -> None:
+    document = _requirements().model_copy(
+        update={
+            "requirements": [
+                _requirements()
+                .requirements[0]
+                .model_copy(update={"category": "mechanical", "id": "MECH-001"})
+            ]
+        }
+    )
+    result = check_architecture(
+        document,
+        Architecture(blocks=[{"id": "block", "type": "source"}], connections=[]),
+        "rev-1",
+    )
+    assert result.passed
+    assert any(
+        finding.rule == "requirements map to blocks" and finding.severity == "warning"
+        for finding in result.findings
+    )
+
+
 def test_components_gate_uses_real_fixture_context_and_requires_provenance() -> None:
     project, _ = _project()
     context = project.design_context

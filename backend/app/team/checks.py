@@ -19,6 +19,7 @@ from .profiles import ManufacturerProfile, get_profile
 from .schemas import (
     REQUIREMENT_CATEGORY_PREFIXES,
     Architecture,
+    ArchitectureBlock,
     CheckFinding,
     ComponentSelection,
     DesignContext,
@@ -86,8 +87,6 @@ def finding(
         severity=severity,
     )
 
-
-_finding = finding
 
 _CATEGORY_ALIASES = {
     "power": "power",
@@ -196,13 +195,11 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
     findings: list[CheckFinding] = []
     seen: set[str] = set()
     by_category: dict[str, list[Requirement]] = {}
-    unknown_categories: set[str] = set()
     for requirement in document.requirements:
         category = _canonical_category(requirement.category)
         if category is None:
-            unknown_categories.add(requirement.category)
             findings.append(
-                _finding(
+                finding(
                     "recognized requirement category",
                     requirement.category,
                     sorted(_CATEGORY_ALIASES),
@@ -215,7 +212,7 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
             by_category.setdefault(category, []).append(requirement)
         if requirement.id in seen:
             findings.append(
-                _finding(
+                finding(
                     "unique requirement IDs",
                     requirement.id,
                     "unique",
@@ -228,7 +225,7 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
         prefix = REQUIREMENT_CATEGORY_PREFIXES.get(_canonical_category(requirement.category) or "")
         if prefix is not None and not re.fullmatch(rf"{prefix}-\d{{3}}", requirement.id):
             findings.append(
-                _finding(
+                finding(
                     "requirement ID matches category",
                     requirement.id,
                     f"{prefix or 'known-category'}-NNN",
@@ -239,7 +236,7 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
             )
         if requirement.value is not None and not requirement.unit:
             findings.append(
-                _finding(
+                finding(
                     "units normalized",
                     requirement.unit,
                     "unit present",
@@ -250,7 +247,7 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
             )
         if isinstance(requirement.value, (int, float)) and requirement.value < 0:
             findings.append(
-                _finding(
+                finding(
                     "range validation",
                     requirement.value,
                     "non-negative",
@@ -267,7 +264,7 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
         )
         if key in statements and statements[key] != requirement.value:
             findings.append(
-                _finding(
+                finding(
                     "conflicting requirements",
                     requirement.value,
                     statements[key],
@@ -282,7 +279,7 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
         summary_quantities = _quantities(document.power.logic_voltage)
         if not summary_quantities:
             findings.append(
-                _finding(
+                finding(
                     "grouped summary is machine-checkable",
                     document.power.logic_voltage,
                     "numeric quantity with unit",
@@ -295,7 +292,7 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
             _quantity_matches(summary_quantities[0], requirement) for requirement in power_requirements
         ):
             findings.append(
-                _finding(
+                finding(
                     "grouped and identified requirements agree",
                     document.power.logic_voltage,
                     [requirement.value for requirement in power_requirements],
@@ -313,7 +310,7 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
         voltage_quantities = _quantities(interface.voltage)
         if not protocol and not voltage_quantities:
             findings.append(
-                _finding(
+                finding(
                     "grouped summary is machine-checkable",
                     interface.type or interface.voltage,
                     "numeric quantity or supported protocol token",
@@ -324,7 +321,7 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
             )
         elif protocol and _canonical_protocol(protocol.group(1)).lower() not in interface_text:
             findings.append(
-                _finding(
+                finding(
                     "grouped and identified requirements agree",
                     _canonical_protocol(protocol.group(1)),
                     "interface requirement statement",
@@ -339,7 +336,7 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
             for requirement in (*interface_requirements, *power_requirements)
         ):
             findings.append(
-                _finding(
+                finding(
                     "grouped and identified requirements agree",
                     interface.voltage,
                     "interface or power requirement quantity",
@@ -355,27 +352,104 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
     )
     if any(value is not None for value in mechanical_values) and not by_category.get("mechanical"):
         findings.append(
-            _finding(
+            finding(
                 "grouped and identified requirements agree",
                 mechanical_values,
                 "mechanical requirement IDs",
                 "mechanical",
                 "requirements",
-                "warning" if unknown_categories else "error",
+                "warning",
             )
         )
     if document.acceptance_tests and not by_category.get("test"):
         findings.append(
-            _finding(
+            finding(
                 "grouped and identified requirements agree",
                 document.acceptance_tests,
                 "TEST requirement IDs",
                 "acceptance_tests",
                 "requirements",
-                "warning" if unknown_categories else "error",
+                "warning",
             )
         )
     return _check("requirements", findings, project_version, "requirements parser")
+
+
+_SIGNAL_TOKEN_RE = re.compile(r"[a-z0-9]+", re.IGNORECASE)
+_SIGNAL_GENERIC_TOKENS = {
+    "a",
+    "an",
+    "and",
+    "cable",
+    "common",
+    "continuous",
+    "data",
+    "differential",
+    "external",
+    "for",
+    "from",
+    "input",
+    "idle",
+    "of",
+    "on",
+    "output",
+    "over",
+    "pair",
+    "passive",
+    "plane",
+    "power",
+    "rail",
+    "signal",
+    "the",
+    "to",
+    "via",
+    "with",
+}
+
+
+def _signal_tokens(value: str) -> set[str]:
+    without_annotations = re.sub(r"\([^)]*\)", " ", value)
+    return {
+        token.lower()
+        for token in _SIGNAL_TOKEN_RE.findall(without_annotations)
+        if token.lower() not in _SIGNAL_GENERIC_TOKENS
+    }
+
+
+def _signal_matches(required: str, signal: str) -> bool:
+    return bool(_signal_tokens(required) & _signal_tokens(signal))
+
+
+def _signal_is_confident(required: str) -> bool:
+    without_annotations = re.sub(r"\([^)]*\)", " ", required)
+    if re.search(r"\b(?:gnd|vbus|vcc|3v3|sda|scl|en|add0|gpio)\b", without_annotations, re.I):
+        return True
+    return bool(re.search(r"\b[A-Za-z0-9]+[_/+*-][A-Za-z0-9_/+*-]*\b", without_annotations))
+
+
+def _unmatched_signal_severity(required: str, block: ArchitectureBlock) -> str:
+    lowered = required.lower()
+    if any(
+        marker in lowered
+        for marker in ("external", "spare", "passive", "declaration", "strap", "temperature data")
+    ):
+        return "warning"
+    if _signal_tokens(required) & _signal_tokens(block.type):
+        return "warning"
+    return "error" if _signal_is_confident(required) else "warning"
+
+
+def _is_power_signal(signal: str) -> bool:
+    normalized = re.sub(r"\([^)]*\)", " ", signal).lower()
+    if re.search(r"\bgnd\b", normalized):
+        return False
+    return bool(re.search(r"\b(?:vbus|vcc|3v3|power|rail|voltage)\b", normalized))
+
+
+def _is_converter(block: ArchitectureBlock) -> bool:
+    input_voltage = block.input_voltage
+    output_voltage = block.output_voltage
+    return bool(input_voltage and output_voltage and not _measurements_equal(input_voltage, output_voltage))
 
 
 def check_architecture(
@@ -384,26 +458,30 @@ def check_architecture(
     project_version: str,
 ) -> StageCheckResult:
     findings: list[CheckFinding] = []
-    block_ids = {block.id for block in architecture.blocks}
+    blocks = {block.id: block for block in architecture.blocks}
     mapped = {
         requirement_id for block in architecture.blocks for requirement_id in block.requirement_ids or []
     }
+    functional_categories = {"power", "interface", "temperature"}
     for requirement in document.requirements:
         if requirement.id not in mapped:
+            category = _canonical_category(requirement.category)
             findings.append(
-                _finding(
+                finding(
                     "requirements map to blocks",
                     requirement.id,
                     "mapped requirement ID",
                     "architecture",
                     "architecture",
-                    "error",
+                    "error" if category in functional_categories else "warning",
                 )
             )
+    incoming: dict[str, list[str]] = {block_id: [] for block_id in blocks}
+    outgoing: dict[str, list[str]] = {block_id: [] for block_id in blocks}
     for connection in architecture.connections:
-        if connection.from_block not in block_ids or connection.to_block not in block_ids:
+        if connection.from_block not in blocks or connection.to_block not in blocks:
             findings.append(
-                _finding(
+                finding(
                     "connected blocks exist",
                     connection.model_dump(mode="json"),
                     "known block IDs",
@@ -413,52 +491,89 @@ def check_architecture(
                 )
             )
             continue
-        source = next(block for block in architecture.blocks if block.id == connection.from_block)
-        target = next(block for block in architecture.blocks if block.id == connection.to_block)
+        incoming[connection.to_block].append(connection.signal)
+        outgoing[connection.from_block].append(connection.signal)
+        source = blocks[connection.from_block]
+        target = blocks[connection.to_block]
         if (
             source.output_voltage
             and target.input_voltage
+            and not _is_converter(target)
             and not _measurements_equal(source.output_voltage, target.input_voltage)
         ):
             findings.append(
-                _finding(
+                finding(
                     "connected block voltage compatibility",
                     f"{source.output_voltage}->{target.input_voltage}",
-                    "matching voltages",
+                    "compatible nominal voltages",
                     connection.signal,
                     "architecture",
-                    "error",
+                    "error" if _is_power_signal(connection.signal) else "warning",
                 )
             )
     for block in architecture.blocks:
-        required = set(block.required_inputs or []) | set(block.required_outputs or [])
-        assigned = set(block.requirement_ids or [])
-        for item in required - assigned:
+        for item in block.required_inputs or []:
+            if not any(_signal_matches(item, signal) for signal in incoming[block.id]):
+                findings.append(
+                    finding(
+                        "required input connectivity",
+                        item,
+                        "incoming connection",
+                        block.id,
+                        "architecture",
+                        _unmatched_signal_severity(item, block),
+                    )
+                )
+        for item in block.required_outputs or []:
+            if not any(_signal_matches(item, signal) for signal in outgoing[block.id]):
+                findings.append(
+                    finding(
+                        "required output connectivity",
+                        item,
+                        "outgoing connection",
+                        block.id,
+                        "architecture",
+                        _unmatched_signal_severity(item, block),
+                    )
+                )
+    total_required_ma = sum(
+        block.power_required_ma
+        for block in architecture.blocks
+        if block.power_required_ma is not None and not _is_converter(block)
+    )
+    capacities = [
+        quantity[0]
+        for requirement in document.requirements
+        if _canonical_category(requirement.category) == "power"
+        for quantity in _quantities(requirement.value, requirement.unit)
+        if quantity[1] == "ma"
+    ]
+    if document.power.maximum_current_ma is not None:
+        capacities.append(document.power.maximum_current_ma)
+    capacity = max(capacities, default=None)
+    if capacity is None:
+        if total_required_ma:
             findings.append(
-                _finding(
-                    "required inputs and outputs assigned",
-                    item,
-                    "assigned",
-                    block.id,
+                finding(
+                    "power budget capacity established",
+                    total_required_ma,
+                    "power requirement rail capability",
                     "architecture",
-                    "error",
+                    "requirements",
+                    "warning",
                 )
             )
-        if (
-            block.power_required_ma is not None
-            and block.power_available_ma is not None
-            and block.power_required_ma > block.power_available_ma
-        ):
-            findings.append(
-                _finding(
-                    "power budget",
-                    block.power_required_ma,
-                    block.power_available_ma,
-                    block.id,
-                    "architecture",
-                    "error",
-                )
+    elif total_required_ma > capacity:
+        findings.append(
+            finding(
+                "power budget",
+                total_required_ma,
+                capacity,
+                "architecture",
+                "requirements",
+                "error",
             )
+        )
     return _check("architecture", findings, project_version, "architecture checker")
 
 
@@ -474,7 +589,7 @@ def check_components(
     for component in selection.components:
         if not library_name.fullmatch(component.symbol):
             findings.append(
-                _finding(
+                finding(
                     "symbol identifier is well formed",
                     component.symbol,
                     "Library:Name",
@@ -485,7 +600,7 @@ def check_components(
             )
         if not library_name.fullmatch(component.footprint):
             findings.append(
-                _finding(
+                finding(
                     "footprint identifier is well formed",
                     component.footprint,
                     "Library:Name",
@@ -500,7 +615,7 @@ def check_components(
             missing = sorted(key for key in required if not values.get(key))
             if missing:
                 findings.append(
-                    _finding(
+                    finding(
                         "numeric specification provenance",
                         missing,
                         [],
@@ -511,7 +626,7 @@ def check_components(
                 )
         if component.reference_group in known and component.symbol != known[component.reference_group].lib_id:
             findings.append(
-                _finding(
+                finding(
                     "existing schematic symbol matches",
                     component.symbol,
                     known[component.reference_group].lib_id,
@@ -540,7 +655,7 @@ def check_schematic(
     for reference in expected_symbols:
         if reference not in after.components:
             findings.append(
-                _finding(
+                finding(
                     "expected symbols exist",
                     reference,
                     "present",
@@ -552,31 +667,31 @@ def check_schematic(
     for pin, net in expected.items():
         if after.pin_nets.get(pin) != net:
             findings.append(
-                _finding(
+                finding(
                     "pin-to-net assignment", after.pin_nets.get(pin), net, pin, "schematic state", "error"
                 )
             )
     if not erc.ran:
         findings.append(
-            _finding("ERC has run", False, True, str(after.schematic_path), "kicad-cli ERC", "error")
+            finding("ERC has run", False, True, str(after.schematic_path), "kicad-cli ERC", "error")
         )
     if files_changed:
         unexpected = unexpected_file_changes(files_changed, touches_pcb=False)
         if unexpected:
             findings.append(
-                _finding("unexpected changes", unexpected, [], "project files", "checkpoint diff", "error")
+                finding("unexpected changes", unexpected, [], "project files", "checkpoint diff", "error")
             )
     if erc_baseline is not None and erc.ran:
         new_errors = diff_violations(erc_baseline, erc).new_critical
         for violation in new_errors:
             findings.append(
-                _finding(
+                finding(
                     "no new ERC violations", violation.description, "none", "ERC", "kicad-cli ERC", "error"
                 )
             )
     if state_diff.removed_components:
         findings.append(
-            _finding(
+            finding(
                 "expected symbols exist",
                 state_diff.removed_components,
                 [],
@@ -615,7 +730,7 @@ def check_layout(
         if at is None or len(at) < 3:
             skipped_count += 1
             findings.append(
-                _finding(
+                finding(
                     "footprint extent available",
                     reference,
                     "measurable footprint extent",
@@ -629,7 +744,7 @@ def check_layout(
         if extent is None:
             skipped_count += 1
             findings.append(
-                _finding(
+                finding(
                     "footprint extent available",
                     reference,
                     "measurable footprint extent",
@@ -647,7 +762,7 @@ def check_layout(
             or extent[3] > max_y - manufacturer.copper_to_edge_clearance_mm
         ):
             findings.append(
-                _finding(
+                finding(
                     "edge clearance",
                     reference,
                     manufacturer.copper_to_edge_clearance_mm,
@@ -660,7 +775,7 @@ def check_layout(
         for other, other_box in boxes[index + 1 :]:
             if _boxes_overlap(box, other_box):
                 findings.append(
-                    _finding(
+                    finding(
                         "footprint overlap",
                         f"{reference},{other}",
                         "none",
@@ -679,14 +794,14 @@ def check_layout(
     for net in required_nets:
         if net not in names or net not in connected_names:
             findings.append(
-                _finding("required net connected", net, "present on board", net, str(board_path), "error")
+                finding("required net connected", net, "present on board", net, str(board_path), "error")
             )
     if drc_after is not None and not drc_after.ran:
-        findings.append(_finding("DRC has run", False, True, str(board_path), "kicad-cli DRC", "error"))
+        findings.append(finding("DRC has run", False, True, str(board_path), "kicad-cli DRC", "error"))
     if drc_before is not None and drc_after is not None:
         for violation in diff_violations(drc_before, drc_after).new_critical:
             findings.append(
-                _finding(
+                finding(
                     "no new DRC violations", violation.description, "none", "DRC", "kicad-cli DRC", "error"
                 )
             )
@@ -719,7 +834,7 @@ def check_simulation(
         ]
         if unitless:
             findings.append(
-                _finding(
+                finding(
                     "simulation values carry units",
                     unitless,
                     "unit-bearing values",
@@ -730,7 +845,7 @@ def check_simulation(
             )
         if _is_unverified_status(test.status):
             findings.append(
-                _finding(
+                finding(
                     "simulation model available",
                     test.status,
                     "verified model",
@@ -747,7 +862,7 @@ def check_simulation(
         )
         if not traceable:
             findings.append(
-                _finding(
+                finding(
                     "simulation range traceability",
                     source,
                     "datasheet or requirement source",
@@ -758,7 +873,7 @@ def check_simulation(
             )
     if not report.models and not report.assumptions:
         findings.append(
-            _finding(
+            finding(
                 "models and assumptions reported",
                 [],
                 "models or assumptions",
@@ -787,7 +902,7 @@ def check_verification(report: VerificationReport, project_version: str) -> Stag
         ]
         if missing:
             findings.append(
-                _finding(
+                finding(
                     "verification finding completeness",
                     missing,
                     [],
@@ -798,7 +913,7 @@ def check_verification(report: VerificationReport, project_version: str) -> Stag
             )
         if not item.evidence:
             findings.append(
-                _finding(
+                finding(
                     "verification evidence source",
                     {},
                     "non-empty evidence",
@@ -818,7 +933,7 @@ def check_manufacturing(
         profile = get_profile(profile_name)
     except ValueError:
         findings.append(
-            _finding(
+            finding(
                 "manufacturer profile defined",
                 profile_name,
                 "known profile",
@@ -830,7 +945,7 @@ def check_manufacturing(
         return _check("manufacturing", findings, project_version, "manufacturer checker")
     if report.manufacturer_profile != profile.name:
         findings.append(
-            _finding(
+            finding(
                 "profile named",
                 report.manufacturer_profile,
                 profile.name,
@@ -848,7 +963,7 @@ def check_manufacturing(
     }
     if report.profile_rules != expected_rules:
         findings.append(
-            _finding(
+            finding(
                 "profile values used",
                 report.profile_rules or {},
                 expected_rules,
@@ -859,7 +974,7 @@ def check_manufacturing(
         )
     if report.profile_provenance != profile.provenance:
         findings.append(
-            _finding(
+            finding(
                 "profile provenance exposed",
                 report.profile_provenance or "",
                 profile.provenance,
@@ -870,7 +985,7 @@ def check_manufacturing(
         )
     if report.fabrication_ready and not _is_pass_status(report.dfm_status):
         findings.append(
-            _finding(
+            finding(
                 "profile values used",
                 report.dfm_status,
                 "passed",
@@ -894,7 +1009,7 @@ def check_qa_release(
     actual_hash = release.release_hash
     if not actual_hash or actual_hash != expected_hash:
         findings.append(
-            _finding(
+            finding(
                 "release uses real file hashes",
                 actual_hash,
                 expected_hash,
@@ -906,7 +1021,7 @@ def check_qa_release(
     checklist = release.checklist
     if not checklist or set(checklist) != set(RELEASE_CHECKLIST_ITEMS) or not all(checklist.values()):
         findings.append(
-            _finding(
+            finding(
                 "release checklist",
                 checklist or {},
                 "all checklist items true",
@@ -917,7 +1032,7 @@ def check_qa_release(
         )
     if release.release_status == "approved" and findings:
         findings.append(
-            _finding(
+            finding(
                 "release checklist", "approved", "needs human review", "release", "release checklist", "error"
             )
         )
