@@ -220,6 +220,13 @@ one session per invocation. Keyless runs use the explicitly labelled `STUB` runn
 deterministic and never contacts Devin. Agents do not edit files or open pull requests; schematic
 and placement proposals are applied only through checkpointed, deterministic gates.
 
+The architecture gate's block-diagram connectivity and signal-name findings are advisory warnings:
+the block's free-text lists and connection labels are not authoritative design evidence. Authoritative
+connectivity comes from KiCAD ERC and DRC plus the verification stage against the real schematic and
+board. Structural findings such as invalid references, unmapped functional requirements, and clear
+power-capacity violations remain hard errors; a power estimate within 10% over capacity is reported
+as marginal rather than stopping the run.
+
 The background API provides `POST /api/team/runs` and status, report, evidence, and answer endpoints
 at `/api/team/runs/{run_id}`, `/report`, `/evidence`, and `/answer`. The equivalent CLI is:
 

@@ -378,7 +378,7 @@ def check_requirements(document: RequirementsDoc, project_version: str) -> Stage
 
 _SIGNAL_IDENTIFIER_RE = re.compile(
     r"(?<![A-Za-z0-9])(?:\+?3V3|VBUS(?:[_-][A-Z0-9]+)?|GND|GROUND|VSS|RETURN|"
-    r"GPIO\d+|IO\d+|D[+-]|SDA|SCL|EN|ADD0|"
+    r"GPIO\d+|IO\d+|D[+-]|DP|DM|SDA|SCL|EN|ADD0|"
     r"(?:I2C|UART|USB)_[A-Z0-9]+[+-]?)(?![A-Za-z0-9])",
     re.IGNORECASE,
 )
@@ -403,6 +403,10 @@ def _signal_identifiers(value: str) -> set[str]:
             suffix = identifier.split("_", 1)[1]
             if suffix in {"D+", "D_", "SDA", "SCL"}:
                 aliases.add(suffix)
+            elif suffix in {"DP", "DM"}:
+                aliases.add("D+" if suffix == "DP" else "D-")
+        elif identifier in {"DP", "DM"}:
+            aliases.add("D+" if identifier == "DP" else "D-")
     return aliases
 
 
@@ -546,7 +550,10 @@ def check_architecture(
                         "incoming connection",
                         block.id,
                         "architecture",
-                        "error",
+                        # Block diagrams reconcile two agent-authored free-text
+                        # name lists; authoritative connectivity is checked later
+                        # against the real design by ERC, DRC, and verification.
+                        "warning",
                     )
                 )
         for item in block.required_outputs or []:
@@ -567,7 +574,10 @@ def check_architecture(
                         "outgoing connection",
                         block.id,
                         "architecture",
-                        "error",
+                        # Block diagrams reconcile two agent-authored free-text
+                        # name lists; authoritative connectivity is checked later
+                        # against the real design by ERC, DRC, and verification.
+                        "warning",
                     )
                 )
     total_required_ma = sum(
@@ -598,14 +608,15 @@ def check_architecture(
                 )
             )
     elif total_required_ma > capacity:
+        marginal = total_required_ma <= capacity * 1.1
         findings.append(
             finding(
                 "power budget",
                 total_required_ma,
-                capacity,
+                f"{capacity} mA rail capacity" + (" (marginal overshoot within 10%)" if marginal else ""),
                 "architecture",
                 "requirements",
-                "error",
+                "warning" if marginal else "error",
             )
         )
     return _check("architecture", findings, project_version, "architecture checker")

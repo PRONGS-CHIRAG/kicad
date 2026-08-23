@@ -1,0 +1,502 @@
+{
+  "blocks": [
+    {
+      "id": "J1_USBC_RECEPTACLE",
+      "input_voltage": "5V_from_host (4.75-5.25 V)",
+      "output_voltage": "5V (VBUS)",
+      "power_available_ma": 500.0,
+      "power_required_ma": 0.0,
+      "required_inputs": [
+        "USB_HOST_CABLE"
+      ],
+      "required_outputs": [
+        "VBUS_RAW",
+        "GND",
+        "USB_DP_RAW",
+        "USB_DM_RAW",
+        "CC1",
+        "CC2",
+        "SHIELD"
+      ],
+      "requirement_ids": [
+        "PWR-001",
+        "PWR-005",
+        "MECH-003",
+        "IF-005"
+      ],
+      "type": "connector_usb_c_16pin_sink"
+    },
+    {
+      "id": "CC_TERMINATION",
+      "input_voltage": "3.3V logic level tolerant (CC pins)",
+      "output_voltage": null,
+      "power_available_ma": null,
+      "power_required_ma": 0.0,
+      "required_inputs": [
+        "CC1",
+        "CC2",
+        "GND"
+      ],
+      "required_outputs": [],
+      "requirement_ids": [
+        "PWR-002"
+      ],
+      "type": "usb_c_sink_cc_pulldowns_2x5k1"
+    },
+    {
+      "id": "VBUS_PROTECTION",
+      "input_voltage": "5V (VBUS_RAW)",
+      "output_voltage": "5V (VBUS_PROT)",
+      "power_available_ma": 1500.0,
+      "power_required_ma": 1.0,
+      "required_inputs": [
+        "VBUS_RAW",
+        "GND",
+        "USB_DP_RAW",
+        "USB_DM_RAW"
+      ],
+      "required_outputs": [
+        "VBUS_PROT",
+        "USB_DP",
+        "USB_DM"
+      ],
+      "requirement_ids": [
+        "PWR-007",
+        "IF-005"
+      ],
+      "type": "input_protection_esd_reverse_tvs_plus_ferrite"
+    },
+    {
+      "id": "VBUS_INPUT_FILTER",
+      "input_voltage": "5V (VBUS_PROT)",
+      "output_voltage": "5V (VBUS)",
+      "power_available_ma": null,
+      "power_required_ma": 0.0,
+      "required_inputs": [
+        "VBUS_PROT",
+        "GND"
+      ],
+      "required_outputs": [
+        "VBUS"
+      ],
+      "requirement_ids": [
+        "PWR-007",
+        "MFG-003"
+      ],
+      "type": "bulk_input_capacitance_1uF_plus_10uF"
+    },
+    {
+      "id": "PWRFLAG_VBUS",
+      "input_voltage": null,
+      "output_voltage": "5V (declared power_out on VBUS)",
+      "power_available_ma": null,
+      "power_required_ma": null,
+      "required_inputs": [
+        "VBUS"
+      ],
+      "required_outputs": [
+        "VBUS_DRIVEN"
+      ],
+      "requirement_ids": [
+        "PWR-008",
+        "TEST-006"
+      ],
+      "type": "erc_power_flag"
+    },
+    {
+      "id": "PWRFLAG_GND",
+      "input_voltage": null,
+      "output_voltage": "0V (declared power_out on GND)",
+      "power_available_ma": null,
+      "power_required_ma": null,
+      "required_inputs": [
+        "GND"
+      ],
+      "required_outputs": [
+        "GND_DRIVEN"
+      ],
+      "requirement_ids": [
+        "PWR-008",
+        "TEST-006"
+      ],
+      "type": "erc_power_flag"
+    },
+    {
+      "id": "LDO_3V3",
+      "input_voltage": "5V (VBUS, 4.75-5.25 V)",
+      "output_voltage": "3.3V +/-2% (+3V3)",
+      "power_available_ma": 1000.0,
+      "power_required_ma": 605.0,
+      "required_inputs": [
+        "VBUS",
+        "GND",
+        "EN_TIE_VBUS"
+      ],
+      "required_outputs": [
+        "+3V3",
+        "THERMAL_RELIEF_COPPER_100mm2"
+      ],
+      "requirement_ids": [
+        "PWR-003",
+        "PWR-004",
+        "PWR-005",
+        "TEMP-003",
+        "MECH-005",
+        "TEST-003"
+      ],
+      "type": "linear_regulator_fixed_3v3_1A_thermal_pad"
+    },
+    {
+      "id": "RAIL_3V3_DECOUPLING",
+      "input_voltage": "3.3V (+3V3)",
+      "output_voltage": "3.3V (+3V3, low-impedance)",
+      "power_available_ma": null,
+      "power_required_ma": 0.0,
+      "required_inputs": [
+        "+3V3",
+        "GND"
+      ],
+      "required_outputs": [
+        "+3V3_DECOUPLED"
+      ],
+      "requirement_ids": [
+        "PWR-006",
+        "TEST-003"
+      ],
+      "type": "decoupling_network_10uF_plus_100nF_local"
+    },
+    {
+      "id": "U1_ESP32_WROOM_32",
+      "input_voltage": "3.3V (3.0-3.6 V)",
+      "output_voltage": "3.3V logic",
+      "power_available_ma": 40.0,
+      "power_required_ma": 600.0,
+      "required_inputs": [
+        "+3V3_DECOUPLED",
+        "GND",
+        "EN_RC",
+        "USB_DP",
+        "USB_DM"
+      ],
+      "required_outputs": [
+        "I2C_SDA",
+        "I2C_SCL",
+        "GPIO25_TESTPOINT"
+      ],
+      "requirement_ids": [
+        "PWR-004",
+        "PWR-006",
+        "PWR-009",
+        "IF-001",
+        "IF-005",
+        "IF-006",
+        "IF-007",
+        "TEST-005"
+      ],
+      "type": "mcu_module_wifi_esp32_wroom_32"
+    },
+    {
+      "id": "EN_RESET_RC",
+      "input_voltage": "3.3V (+3V3)",
+      "output_voltage": "3.3V delayed rising (EN_RC)",
+      "power_available_ma": null,
+      "power_required_ma": 0.33,
+      "required_inputs": [
+        "+3V3_DECOUPLED",
+        "GND"
+      ],
+      "required_outputs": [
+        "EN_RC"
+      ],
+      "requirement_ids": [
+        "IF-006",
+        "TEST-001"
+      ],
+      "type": "reset_rc_network_10k_pullup_100nF"
+    },
+    {
+      "id": "I2C_PULLUPS",
+      "input_voltage": "3.3V (+3V3)",
+      "output_voltage": "3.3V open-drain bus idle high",
+      "power_available_ma": null,
+      "power_required_ma": 1.4,
+      "required_inputs": [
+        "+3V3_DECOUPLED",
+        "I2C_SDA",
+        "I2C_SCL"
+      ],
+      "required_outputs": [
+        "I2C_SDA_PU",
+        "I2C_SCL_PU"
+      ],
+      "requirement_ids": [
+        "IF-002",
+        "IF-003"
+      ],
+      "type": "bus_pullups_2x4k7_to_3v3"
+    },
+    {
+      "id": "U2_TMP102_SENSOR",
+      "input_voltage": "3.3V (1.4-3.6 V)",
+      "output_voltage": "3.3V logic (SDA open-drain)",
+      "power_available_ma": null,
+      "power_required_ma": 0.01,
+      "required_inputs": [
+        "+3V3_DECOUPLED",
+        "GND",
+        "I2C_SCL_PU",
+        "ADD0_STRAP"
+      ],
+      "required_outputs": [
+        "I2C_SDA_PU"
+      ],
+      "requirement_ids": [
+        "IF-001",
+        "IF-003",
+        "IF-004",
+        "PWR-006",
+        "PWR-009",
+        "MECH-005",
+        "TEMP-002",
+        "TEST-004"
+      ],
+      "type": "i2c_temperature_sensor_tmp102_addr_0x48"
+    },
+    {
+      "id": "U2_LOCAL_DECOUPLING",
+      "input_voltage": "3.3V (+3V3)",
+      "output_voltage": "3.3V (+3V3 local)",
+      "power_available_ma": null,
+      "power_required_ma": 0.0,
+      "required_inputs": [
+        "+3V3_DECOUPLED",
+        "GND"
+      ],
+      "required_outputs": [
+        "+3V3_U2_LOCAL"
+      ],
+      "requirement_ids": [
+        "PWR-006"
+      ],
+      "type": "decoupling_100nF_within_2mm"
+    },
+    {
+      "id": "ADD0_STRAP",
+      "input_voltage": "0V (GND reference)",
+      "output_voltage": "0V (logic low)",
+      "power_available_ma": null,
+      "power_required_ma": 0.0,
+      "required_inputs": [
+        "GND"
+      ],
+      "required_outputs": [
+        "ADD0_STRAP"
+      ],
+      "requirement_ids": [
+        "IF-004",
+        "TEST-004"
+      ],
+      "type": "address_strap_resistor_10k_to_gnd"
+    },
+    {
+      "id": "GPIO_TESTPOINT_HEADER",
+      "input_voltage": "3.3V logic",
+      "output_voltage": "3.3V logic",
+      "power_available_ma": null,
+      "power_required_ma": 0.0,
+      "required_inputs": [
+        "GPIO25_TESTPOINT",
+        "EN_RC",
+        "+3V3_DECOUPLED",
+        "GND"
+      ],
+      "required_outputs": [
+        "PROBE_ACCESS"
+      ],
+      "requirement_ids": [
+        "IF-007",
+        "TEST-001",
+        "TEST-003"
+      ],
+      "type": "test_point_header_gpio25_en_3v3_gnd"
+    },
+    {
+      "id": "USB_DIFF_PAIR_CHANNEL",
+      "input_voltage": "3.3V USB FS signalling",
+      "output_voltage": "3.3V USB FS signalling",
+      "power_available_ma": null,
+      "power_required_ma": null,
+      "required_inputs": [
+        "USB_DP",
+        "USB_DM",
+        "GND_POUR"
+      ],
+      "required_outputs": [
+        "USB_DP_MCU",
+        "USB_DM_MCU"
+      ],
+      "requirement_ids": [
+        "IF-005",
+        "MFG-001",
+        "MFG-005"
+      ],
+      "type": "routing_channel_usb_dp_dm_90ohm_diff"
+    },
+    {
+      "id": "GND_RETURN_SYSTEM",
+      "input_voltage": "0V",
+      "output_voltage": "0V (single-net reference)",
+      "power_available_ma": null,
+      "power_required_ma": null,
+      "required_inputs": [
+        "GND_DRIVEN"
+      ],
+      "required_outputs": [
+        "GND_POUR",
+        "GND"
+      ],
+      "requirement_ids": [
+        "MFG-005",
+        "MECH-002",
+        "MECH-004",
+        "TEST-002"
+      ],
+      "type": "bottom_layer_gnd_pour_with_stitching_vias"
+    }
+  ],
+  "connections": [
+    {
+      "from_block": "J1_USBC_RECEPTACLE",
+      "signal": "CC1/CC2 configuration channel (5.1 kOhm to GND, default 5 V/500 mA sink advertisement)",
+      "to_block": "CC_TERMINATION"
+    },
+    {
+      "from_block": "J1_USBC_RECEPTACLE",
+      "signal": "VBUS_RAW 5 V power, up to 500 mA, >=0.4 mm trace",
+      "to_block": "VBUS_PROTECTION"
+    },
+    {
+      "from_block": "J1_USBC_RECEPTACLE",
+      "signal": "USB_DP_RAW/USB_DM_RAW full-speed differential pair into ESD clamp",
+      "to_block": "VBUS_PROTECTION"
+    },
+    {
+      "from_block": "J1_USBC_RECEPTACLE",
+      "signal": "GND return and shield tie to board ground",
+      "to_block": "GND_RETURN_SYSTEM"
+    },
+    {
+      "from_block": "VBUS_PROTECTION",
+      "signal": "VBUS_PROT 5 V power after TVS/reverse protection",
+      "to_block": "VBUS_INPUT_FILTER"
+    },
+    {
+      "from_block": "VBUS_INPUT_FILTER",
+      "signal": "VBUS net ERC power-driver declaration",
+      "to_block": "PWRFLAG_VBUS"
+    },
+    {
+      "from_block": "VBUS_INPUT_FILTER",
+      "signal": "VBUS 5 V regulator input, 1 uF+ local input capacitance",
+      "to_block": "LDO_3V3"
+    },
+    {
+      "from_block": "LDO_3V3",
+      "signal": "+3V3 regulated 3.3 V power_out, >=600 mA capability",
+      "to_block": "RAIL_3V3_DECOUPLING"
+    },
+    {
+      "from_block": "RAIL_3V3_DECOUPLING",
+      "signal": "+3V3 rail to U1 pin 1 (10 uF bulk + 100 nF within 5 mm)",
+      "to_block": "U1_ESP32_WROOM_32"
+    },
+    {
+      "from_block": "RAIL_3V3_DECOUPLING",
+      "signal": "+3V3 rail branch to sensor domain",
+      "to_block": "U2_LOCAL_DECOUPLING"
+    },
+    {
+      "from_block": "U2_LOCAL_DECOUPLING",
+      "signal": "+3V3 to U2 pin 1 with 100 nF within 2 mm",
+      "to_block": "U2_TMP102_SENSOR"
+    },
+    {
+      "from_block": "RAIL_3V3_DECOUPLING",
+      "signal": "+3V3 through 10 kOhm pull-up for EN reset timing",
+      "to_block": "EN_RESET_RC"
+    },
+    {
+      "from_block": "EN_RESET_RC",
+      "signal": "EN_RC delayed 3.3 V reset release to U1 pin 8 (not tied directly to +3V3)",
+      "to_block": "U1_ESP32_WROOM_32"
+    },
+    {
+      "from_block": "RAIL_3V3_DECOUPLING",
+      "signal": "+3V3 bias for 4.7 kOhm SDA/SCL pull-ups",
+      "to_block": "I2C_PULLUPS"
+    },
+    {
+      "from_block": "U1_ESP32_WROOM_32",
+      "signal": "GPIO21 (SDA) / GPIO22 (SCL) open-drain bidirectional 3.3 V, <=400 kHz",
+      "to_block": "I2C_PULLUPS"
+    },
+    {
+      "from_block": "I2C_PULLUPS",
+      "signal": "I2C SDA (bidirectional) and SCL (input) 3.3 V bus, <400 pF total",
+      "to_block": "U2_TMP102_SENSOR"
+    },
+    {
+      "from_block": "ADD0_STRAP",
+      "signal": "ADD0 pulled low through 10 kOhm to select address 0x48",
+      "to_block": "U2_TMP102_SENSOR"
+    },
+    {
+      "from_block": "VBUS_PROTECTION",
+      "signal": "USB_DP/USB_DM protected differential pair",
+      "to_block": "USB_DIFF_PAIR_CHANNEL"
+    },
+    {
+      "from_block": "USB_DIFF_PAIR_CHANNEL",
+      "signal": "90 Ohm differential pair to U1 USB_D+/USB_D-, length matched within 5 mm",
+      "to_block": "U1_ESP32_WROOM_32"
+    },
+    {
+      "from_block": "U1_ESP32_WROOM_32",
+      "signal": "GPIO25 3.3 V bidirectional to test point (removes unconnected-pin ERC error)",
+      "to_block": "GPIO_TESTPOINT_HEADER"
+    },
+    {
+      "from_block": "GND_RETURN_SYSTEM",
+      "signal": "GND net ERC power-driver declaration",
+      "to_block": "PWRFLAG_GND"
+    },
+    {
+      "from_block": "GND_RETURN_SYSTEM",
+      "signal": "GND reference and thermal relief copper (>=100 mm2)",
+      "to_block": "LDO_3V3"
+    },
+    {
+      "from_block": "GND_RETURN_SYSTEM",
+      "signal": "GND to U1 pin 2 power_in plus module pad stitching",
+      "to_block": "U1_ESP32_WROOM_32"
+    },
+    {
+      "from_block": "GND_RETURN_SYSTEM",
+      "signal": "GND to U2 pin 2 power_in (currently unconnected in baseline netlist)",
+      "to_block": "U2_TMP102_SENSOR"
+    },
+    {
+      "from_block": "GND_RETURN_SYSTEM",
+      "signal": "Continuous bottom-layer return reference under the differential pair",
+      "to_block": "USB_DIFF_PAIR_CHANNEL"
+    }
+  ],
+  "unresolved_questions": [
+    "Which USB-C receptacle variant is approved (16-pin USB 2.0 power-only vs full 24-pin), given the baseline symbol is USB_B_Micro and the netlist has no CC pins?",
+    "May the ESP32 be programmed over native USB (D+/D- to U1 directly) or is a USB-UART bridge required? The baseline nets imply native USB, which the WROOM-32 module does not support in hardware.",
+    "Is a 1 A LDO acceptable for the >=600 mA peak requirement (PWR-004) while total VBUS draw stays <=500 mA average (PWR-005), or should a buck converter be used to reduce the 0.85 W dissipation?",
+    "Confirm whether the fixed 110 x 65 mm outline may be reduced; the block set needs far less area and the oversized board affects COST-001.",
+    "Should boot-mode strapping (GPIO0/BOOT button) be added, since no GPIO0 pin appears in the pin table but it is required for flashing?",
+    "Confirm 15 USD BOM target at 10 units and the 20 line-item cap include the added USB-C receptacle, ESD device, LDO, and passive network."
+  ]
+}

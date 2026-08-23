@@ -278,6 +278,13 @@ Stage outputs, gate evidence, events, and checkpoints are written outside the wo
 `settings.workspace_dir/team/<run_id>/`. The existing `fixtures/projects/esp32_i2c_demo` fixture
 supports the ESP32/I²C temperature-monitoring and USB-C demonstration request.
 
+The architecture gate treats block-diagram connectivity and signal-name reconciliation as advisory
+because those fields are free-text lists authored by the same agent, not authoritative design
+evidence. Authoritative connectivity is checked against the real design by KiCAD ERC, DRC, and the
+verification stage. Structural findings remain errors, including unmapped functional requirements
+and clear power-capacity violations; estimates within 10% over a stated rail capacity are reported
+as marginal warnings.
+
 The MVP does not route copper or run ngspice. Simulation uses closed-form arithmetic only, and
 layout checks use footprint extents only where the parser exposes trustworthy geometry. A release
 marked `ready for engineering review` is not guaranteed to work; physical prototyping and lab

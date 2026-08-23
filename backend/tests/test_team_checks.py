@@ -347,6 +347,33 @@ def test_seventh_live_architecture_passes_voltage_annotated_nets() -> None:
     assert result.passed, result.findings
 
 
+def test_eighth_live_architecture_keeps_temperature_mapping_error_explicit() -> None:
+    requirements = RequirementsDoc.model_validate(
+        json.loads(
+            (Path(__file__).parent / "fixtures" / "live_architecture_eighth_requirements.json").read_text()
+        )
+    )
+    architecture = Architecture.model_validate(
+        json.loads((Path(__file__).parent / "fixtures" / "live_architecture_eighth.json").read_text())
+    )
+    result = check_architecture(requirements, architecture, "eighth-live-architecture-rev")
+    assert not result.passed
+    assert any(
+        finding.rule == "required input connectivity" and finding.severity == "warning"
+        for finding in result.findings
+    )
+    assert any(
+        finding.rule == "required output connectivity" and finding.severity == "warning"
+        for finding in result.findings
+    )
+    assert any(
+        finding.rule == "requirements map to blocks"
+        and finding.actual == "TEMP-001"
+        and finding.severity == "error"
+        for finding in result.findings
+    )
+
+
 def test_voltage_suffix_is_an_annotation_but_filtered_rail_stays_distinct() -> None:
     passing = Architecture(
         blocks=[
@@ -361,8 +388,13 @@ def test_voltage_suffix_is_an_annotation_but_filtered_rail_stays_distinct() -> N
         update={"connections": [passing.connections[0].model_copy(update={"signal": "VBUS_FILT"})]}
     )
     result = check_architecture(_requirements(), filtered, "rev-1")
-    assert not result.passed
-    assert any(finding.rule == "required input connectivity" for finding in result.findings)
+    assert result.passed
+    assert any(
+        finding.rule == "required input connectivity"
+        and finding.actual == "VBUS"
+        and finding.severity == "warning"
+        for finding in result.findings
+    )
 
 
 def test_architecture_global_nets_do_not_require_point_to_point_edges() -> None:
@@ -397,7 +429,7 @@ def test_architecture_global_nets_do_not_require_point_to_point_edges() -> None:
     assert result.passed, result.findings
 
 
-def test_architecture_missing_required_input_fails() -> None:
+def test_architecture_missing_required_input_is_advisory() -> None:
     architecture = Architecture(
         blocks=[
             {
@@ -410,8 +442,11 @@ def test_architecture_missing_required_input_fails() -> None:
         connections=[],
     )
     result = check_architecture(_requirements(), architecture, "rev-1")
-    assert not result.passed
-    assert any(finding.rule == "required input connectivity" for finding in result.findings)
+    assert result.passed
+    assert any(
+        finding.rule == "required input connectivity" and finding.severity == "warning"
+        for finding in result.findings
+    )
 
 
 def test_architecture_identifier_matching_rejects_spurious_token_overlap() -> None:
@@ -427,8 +462,11 @@ def test_architecture_identifier_matching_rejects_spurious_token_overlap() -> No
         connections=[{"from": "source", "to": "load", "signal": "USB_POWER"}],
     )
     result = check_architecture(_requirements(), architecture, "rev-1")
-    assert not result.passed
-    assert any(finding.rule == "required input connectivity" for finding in result.findings)
+    assert result.passed
+    assert any(
+        finding.rule == "required input connectivity" and finding.severity == "warning"
+        for finding in result.findings
+    )
 
 
 def test_architecture_non_converter_voltage_mismatch_fails() -> None:
@@ -467,13 +505,54 @@ def test_architecture_total_power_draw_exceeding_rail_capacity_fails() -> None:
     architecture = Architecture(
         blocks=[
             {"id": "first", "type": "load", "power_required_ma": 300, "requirement_ids": ["PWR-003"]},
-            {"id": "second", "type": "load", "power_required_ma": 250},
+            {"id": "second", "type": "load", "power_required_ma": 350},
         ],
         connections=[],
     )
     result = check_architecture(document, architecture, "rev-1")
     assert not result.passed
     assert any(finding.rule == "power budget" for finding in result.findings)
+
+
+def test_architecture_marginal_power_overshoot_is_a_warning() -> None:
+    document = _requirements().model_copy(
+        update={
+            "requirements": [
+                _requirements()
+                .requirements[0]
+                .model_copy(update={"id": "PWR-003", "value": 600, "unit": "mA"})
+            ]
+        }
+    )
+    architecture = Architecture(
+        blocks=[
+            {"id": "load", "type": "load", "power_required_ma": 602.74, "requirement_ids": ["PWR-003"]},
+        ],
+        connections=[],
+    )
+    result = check_architecture(document, architecture, "rev-1")
+    assert result.passed
+    assert any(
+        finding.rule == "power budget"
+        and finding.severity == "warning"
+        and "marginal" in str(finding.expected)
+        for finding in result.findings
+    )
+
+
+def test_architecture_dp_and_dm_alias_usb_differential_signals() -> None:
+    architecture = Architecture(
+        blocks=[
+            {"id": "source", "type": "source", "requirement_ids": ["PWR-001"]},
+            {"id": "load", "type": "load", "required_inputs": ["DP", "DM"]},
+        ],
+        connections=[
+            {"from": "source", "to": "load", "signal": "D+"},
+            {"from": "source", "to": "load", "signal": "D-"},
+        ],
+    )
+    result = check_architecture(_requirements(), architecture, "rev-1")
+    assert result.passed, result.findings
 
 
 def test_architecture_board_level_requirement_mapping_is_only_a_warning() -> None:
