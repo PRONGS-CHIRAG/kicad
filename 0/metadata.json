@@ -1,0 +1,68 @@
+{
+  "cli_version": "0.10.2",
+  "checkpoint_id": "01M0PJC3QCFXSYDPCECCXNES5G",
+  "session_id": "7cad6a9b-ef6c-48f2-b3a8-b200c7723b2a",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-23T05:44:25.301779Z",
+  "branch": "feat/team-lane-ui",
+  "checkpoints_count": 2,
+  "save_step_count": 1,
+  "files_touched": [
+    "README.md",
+    "backend/app/api/routes.py",
+    "backend/app/api/team.py",
+    "context.md",
+    "frontend/src/app/page.tsx",
+    "frontend/src/components/stage-rail.tsx",
+    "frontend/src/components/team-brief.tsx",
+    "frontend/src/components/team-flow.tsx",
+    "frontend/src/components/team-release.tsx",
+    "frontend/src/components/team-stage.tsx",
+    "frontend/src/components/team-trace.tsx",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/stages.ts",
+    "frontend/src/lib/team.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5",
+  "turn_id": "c24f57543009",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 234,
+    "cache_creation_tokens": 288391,
+    "cache_read_tokens": 20132571,
+    "output_tokens": 121479,
+    "api_call_count": 113
+  },
+  "session_metrics": {
+    "turn_count": 2
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-23T05:44:25.162215Z",
+    "agent_lines": 2552,
+    "agent_removed": 94,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 2552,
+    "total_lines_changed": 2646,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2338,
+      "agent_lines_removed": 97
+    }
+  ]
+}

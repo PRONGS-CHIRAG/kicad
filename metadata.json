@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.10.2",
+  "checkpoint_id": "01M0PJC3QCFXSYDPCECCXNES5G",
+  "strategy": "manual-commit",
+  "branch": "feat/team-lane-ui",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "README.md",
+    "backend/app/api/routes.py",
+    "backend/app/api/team.py",
+    "context.md",
+    "frontend/src/app/page.tsx",
+    "frontend/src/components/stage-rail.tsx",
+    "frontend/src/components/team-brief.tsx",
+    "frontend/src/components/team-flow.tsx",
+    "frontend/src/components/team-release.tsx",
+    "frontend/src/components/team-stage.tsx",
+    "frontend/src/components/team-trace.tsx",
+    "frontend/src/lib/api.ts",
+    "frontend/src/lib/stages.ts",
+    "frontend/src/lib/team.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 234,
+    "cache_creation_tokens": 288391,
+    "cache_read_tokens": 20132571,
+    "output_tokens": 121479,
+    "api_call_count": 113
+  }
+}

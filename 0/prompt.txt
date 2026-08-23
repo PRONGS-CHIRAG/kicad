@@ -1,0 +1,5 @@
+pull all changes and run the app
+
+---
+
+change the ui and make it include the 10 agent stuff, it should be coherent and seamless and show exact flow
