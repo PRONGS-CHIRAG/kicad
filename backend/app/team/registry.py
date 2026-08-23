@@ -50,6 +50,12 @@ class AgentSpec:
     def devin_mode(self) -> str:
         return settings.devin_mode
 
+    @property
+    def timeout_seconds(self) -> float:
+        if self.id in {"project_manager", "requirements"}:
+            return settings.team_coordination_timeout_seconds
+        return settings.team_stage_timeout_seconds
+
     def inputs_for(self, prior_outputs: Mapping[str, object]) -> dict[str, object]:
         """Return only the prior-stage outputs declared by this agent."""
         return {stage: prior_outputs[stage] for stage in self.reads if stage in prior_outputs}

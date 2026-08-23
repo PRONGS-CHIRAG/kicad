@@ -63,6 +63,14 @@ class Settings(BaseSettings):
     )
     team_max_retries: int = Field(default=2, ge=0)
     team_stage_acu: int = Field(default=3, ge=1)
+    team_coordination_timeout_seconds: float = Field(
+        default=300.0,
+        description="Maximum wait for project-manager and requirements team sessions.",
+    )
+    team_stage_timeout_seconds: float = Field(
+        default=900.0,
+        description="Maximum wait for research, design, analysis, and release team sessions.",
+    )
     team_manufacturer_profile: str = "generic_two_layer"
     team_parallel: bool = True
 

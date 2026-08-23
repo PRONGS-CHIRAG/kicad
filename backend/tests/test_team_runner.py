@@ -10,7 +10,8 @@ from pathlib import Path
 import httpx
 import pytest
 
-from app.planning.devin import DevinClient, SessionHandle, SessionResult
+from app.config import settings
+from app.planning.devin import DevinClient, DevinError, SessionHandle, SessionResult
 from app.team.evidence import EvidenceStore
 from app.team.registry import AGENTS, get_agent
 from app.team.runner import DevinAgentRunner, StubAgentRunner
@@ -31,12 +32,14 @@ class FakeClient:
         self.starts: list[dict] = []
         self.waiting = 0
         self.max_waiting = 0
+        self.wait_timeouts: list[float | None] = []
 
     def start(self, prompt: str, title: str, schema: dict, **kwargs: object) -> SessionHandle:
         self.starts.append({"prompt": prompt, "title": title, "schema": schema, **kwargs})
         return SessionHandle(f"session-{len(self.starts)}", f"https://devin/{len(self.starts)}")
 
     def wait(self, handle: SessionHandle, timeout: float | None = None) -> SessionResult:
+        self.wait_timeouts.append(timeout)
         self.waiting += 1
         self.max_waiting = max(self.max_waiting, self.waiting)
         time.sleep(0.01)
@@ -88,6 +91,62 @@ def test_devin_runner_sends_identity_cost_and_mode() -> None:
     assert sent["max_acu"] == spec.max_acu
     assert sent["devin_mode"] == spec.devin_mode
     assert sent["schema"]["additionalProperties"] is False
+
+
+def test_each_agent_timeout_is_passed_to_client_wait(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "team_coordination_timeout_seconds", 301.0)
+    monkeypatch.setattr(settings, "team_stage_timeout_seconds", 901.0)
+
+    class TimeoutClient(FakeClient):
+        def wait(self, handle: SessionHandle, timeout: float | None = None) -> SessionResult:
+            self.wait_timeouts.append(timeout)
+            raise DevinError(f"session {handle.session_id} timed out")
+
+    for spec in AGENTS:
+        client = TimeoutClient()
+        invocation = DevinAgentRunner(client).start(
+            spec,
+            _task(spec.id),
+            ProjectSpec(project_id="demo", current_stage="team"),
+            None,
+            "rev-1",
+        )
+        DevinAgentRunner(client).wait(invocation)
+        expected = 301.0 if spec.id in {"project_manager", "requirements"} else 901.0
+        assert client.wait_timeouts == [expected]
+
+
+def test_team_timeout_defaults_are_resolved_from_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(settings, "team_coordination_timeout_seconds", 302.0)
+    monkeypatch.setattr(settings, "team_stage_timeout_seconds", 902.0)
+    assert get_agent("project_manager").timeout_seconds == 302.0
+    assert get_agent("components").timeout_seconds == 902.0
+
+    monkeypatch.setattr(settings, "team_stage_timeout_seconds", 903.0)
+    assert get_agent("components").timeout_seconds == 903.0
+
+
+def test_timeout_failure_names_timeout_and_session_url() -> None:
+    class TimeoutClient(FakeClient):
+        def wait(self, handle: SessionHandle, timeout: float | None = None) -> SessionResult:
+            self.wait_timeouts.append(timeout)
+            raise DevinError(
+                f"session {handle.session_id} timed out after {timeout:.0f}s "
+                f"while running (session URL: {handle.url})"
+            )
+
+    client = TimeoutClient()
+    runner = DevinAgentRunner(client)
+    result = runner.run(
+        get_agent("components"),
+        _task("components"),
+        ProjectSpec(project_id="demo", current_stage="team"),
+        None,
+        "rev-1",
+    )
+    assert result.status == "failed"
+    assert "timed out after" in result.unresolved_questions[0]
+    assert "https://devin/1" in result.unresolved_questions[0]
 
 
 def test_devin_runner_posts_team_session_fields_through_mock_transport(

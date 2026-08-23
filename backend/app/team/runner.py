@@ -78,8 +78,9 @@ class DevinAgentRunner:
         )
 
     def wait(self, invocation: DevinInvocation, timeout: float | None = None) -> AgentResult:
+        wait_timeout = timeout if timeout is not None else invocation.spec.timeout_seconds
         try:
-            session = self.client.wait(invocation.handle, timeout)
+            session = self.client.wait(invocation.handle, wait_timeout)
         except (DevinError, httpx.HTTPError) as exc:
             return self._finish(invocation, "failed", None, 0.0, str(exc))
         try:
@@ -99,7 +100,7 @@ class DevinAgentRunner:
                     max_acu=invocation.spec.max_acu,
                     devin_mode=invocation.spec.devin_mode,
                 )
-                retry_session = self.client.wait(retry_handle, timeout)
+                retry_session = self.client.wait(retry_handle, wait_timeout)
                 output = invocation.spec.output_model.model_validate(retry_session.output)
                 return self._finish(
                     invocation,

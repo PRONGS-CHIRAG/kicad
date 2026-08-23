@@ -154,6 +154,29 @@ def _baselines(directory: Path) -> tuple[ErcReport, ErcReport]:
     return cli.run_erc(state.schematic_path), cli.run_drc_baseline(directory / "esp32_i2c_board.kicad_pcb")
 
 
+def test_failed_agent_gate_preserves_timeout_reason(tmp_path: Path) -> None:
+    project, _ = _project(tmp_path)
+    orchestrator = TeamOrchestrator(
+        StubAgentRunner(),
+        run_id="timeout-reason",
+        workspace_dir=tmp_path / "workspace",
+    )
+    reason = "session components-1 still running after 900s (session URL: https://devin/components-1)"
+    result = AgentResult(
+        task_id="T-components",
+        agent="components",
+        status="failed",
+        runner="devin",
+        session_url="https://devin/components-1",
+        unresolved_questions=[reason],
+    )
+
+    gate = orchestrator._evaluate_stage("components", result, project, {}, "rev-1")
+
+    assert not gate.passed
+    assert gate.findings[0].actual == reason
+
+
 def test_stub_workflow_reaches_exact_review_wording(tmp_path: Path, monkeypatch) -> None:
     project, directory = _project(tmp_path)
     state = read_project(directory)

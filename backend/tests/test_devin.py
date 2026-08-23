@@ -22,6 +22,7 @@ from app.planning.devin import (
     UNRESOLVABLE_REASONS,
     DevinClient,
     DevinError,
+    SessionHandle,
     apply_answer,
     build_prompt,
     resolve_and_plan,
@@ -168,6 +169,14 @@ def test_it_polls_until_the_session_finishes(state, stub: _Stub) -> None:
 def test_a_session_that_never_finishes_falls_back_rather_than_hanging(state, stub: _Stub) -> None:
     stub.statuses = ["running"]
     assert resolve_clarification(state, ["U1", "U2"], "connect over I2C", PIN_QUESTION) is None
+
+
+def test_client_timeout_includes_session_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = DevinClient(timeout_seconds=0.001, poll_seconds=0.0)
+    monkeypatch.setattr(client, "session", lambda _session_id: {"status": "running"})
+
+    with pytest.raises(DevinError, match=r"timed out after 0s.*https://devin/session"):
+        client.wait(SessionHandle("session", "https://devin/session"))
 
 
 def test_an_errored_session_falls_back(state, stub: _Stub) -> None:

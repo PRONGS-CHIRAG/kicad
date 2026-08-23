@@ -286,8 +286,9 @@ class DevinClient:
                 raise DevinError(f"session {handle.session_id} ended as {status} with no structured output")
             if time.monotonic() >= deadline:
                 raise DevinError(
-                    f"session {handle.session_id} still {status} after "
-                    f"{(timeout if timeout is not None else self.timeout_seconds):.0f}s"
+                    f"session {handle.session_id} timed out after "
+                    f"{(timeout if timeout is not None else self.timeout_seconds):.0f}s "
+                    f"while {status} (session URL: {handle.url})"
                 )
             time.sleep(self.poll_seconds)
 

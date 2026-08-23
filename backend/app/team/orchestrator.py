@@ -207,7 +207,8 @@ class TeamOrchestrator:
         if self._read_only_violation(spec, result):
             return self._failure_gate(stage, "read-only stage produced a design mutation", project_version)
         if result.output is None:
-            return self._failure_gate(stage, "agent stage failed", project_version)
+            reason = result.unresolved_questions[0] if result.unresolved_questions else "agent stage failed"
+            return self._failure_gate(stage, reason, project_version)
         outputs[stage] = result.output
         self.evidence.write_stage_output(stage, result.output)
         return self._gate(stage, result.output, project, outputs, project_version)
