@@ -3,7 +3,7 @@
   "checkpoint_id": "01M0SKQB4ZW8CPC4CJFN2VMF0E",
   "strategy": "manual-commit",
   "branch": "feat/team-lane-ui",
-  "checkpoints_count": 11,
+  "checkpoints_count": 12,
   "files_touched": [
     ".dockerignore",
     ".github/workflows/deploy-backend.yml",
@@ -39,13 +39,20 @@
       "compact_transcript": "/1/transcript.jsonl",
       "content_hash": "/1/content_hash.txt",
       "prompt": "/1/prompt.txt"
+    },
+    {
+      "metadata": "/2/metadata.json",
+      "transcript": "/2/full.jsonl",
+      "compact_transcript": "/2/transcript.jsonl",
+      "content_hash": "/2/content_hash.txt",
+      "prompt": "/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 456,
-    "cache_creation_tokens": 345596,
-    "cache_read_tokens": 33015489,
-    "output_tokens": 154785,
-    "api_call_count": 222
+    "input_tokens": 510,
+    "cache_creation_tokens": 421585,
+    "cache_read_tokens": 35011067,
+    "output_tokens": 173387,
+    "api_call_count": 248
   }
 }

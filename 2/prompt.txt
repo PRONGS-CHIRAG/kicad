@@ -1,0 +1,16 @@
+understand this and in pitch.md tell me content to put on my pitch presentation. Judging Criteria
+
+What you built:
+- Autonomy: Trigger to artifact with nobody touching it in between
+- Verification: The system knows a good result from a bad one on its own
+- Artifacts: Output someone in that industry could actually use
+
+How you pitch it:
+- Clarity: If we can't follow it, we can't credit it
+- Problem: Which industry, who's stuck, and why it has a feedback loop
+- Approach: The strategy you went in with, and how it changed as you built
+- Solution: What you ended up with, and the logic behind it also 1 slide on tech stack and use of devin
+
+---
+
+resume
