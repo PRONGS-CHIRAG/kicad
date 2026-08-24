@@ -1,0 +1,287 @@
+{
+  "cli_version": "0.10.2",
+  "checkpoint_id": "01M0SKQB4ZW8CPC4CJFN2VMF0E",
+  "session_id": "e8104ba1-8ef9-46ce-854b-f6da47b1a4e9",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-24T10:05:45.767109Z",
+  "branch": "feat/team-lane-ui",
+  "checkpoints_count": 26,
+  "save_step_count": 26,
+  "files_touched": [
+    ".dockerignore",
+    "DEMO.md",
+    "backend/app/api/team.py",
+    "backend/app/config.py",
+    "backend/app/kicad/board.py",
+    "backend/app/team/checks.py",
+    "backend/app/team/fallbacks.py",
+    "backend/app/team/orchestrator.py",
+    "backend/app/team/prompts.py",
+    "backend/app/team/registry.py",
+    "backend/app/team/runner.py",
+    "backend/app/team/schemas.py",
+    "backend/tests/fixtures/live_architecture_boundary_blocks.json",
+    "backend/tests/fixtures/live_requirements_boundary.json",
+    "backend/tests/test_team_checks.py",
+    "backend/tests/test_team_orchestrator.py",
+    "backend/tests/test_team_schemas.py",
+    "frontend/src/components/team-flow.tsx",
+    "frontend/src/lib/team.ts",
+    "scripts/replay_team_run.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5",
+  "turn_id": "5533f50e5c57",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 512,
+    "cache_creation_tokens": 467693,
+    "cache_read_tokens": 53572937,
+    "output_tokens": 157884,
+    "api_call_count": 255
+  },
+  "session_metrics": {
+    "turn_count": 26
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-24T10:05:45.694494Z",
+    "agent_lines": 1452,
+    "agent_removed": 52,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 142,
+    "total_committed": 1452,
+    "total_lines_changed": 1646,
+    "agent_percentage": 91.3730255164034,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 2899,
+      "user_lines_removed": 142,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".dockerignore": 5,
+        ".github/workflows/deploy-backend.yml": 55,
+        "DEMO.md": 318,
+        "DEPLOY.md": 336,
+        "backend/app/api/team.py": 7,
+        "backend/app/config.py": 8,
+        "backend/app/team/checks.py": 236,
+        "backend/app/team/orchestrator.py": 104,
+        "backend/app/team/prompts.py": 72,
+        "backend/app/team/registry.py": 34,
+        "backend/app/team/runner.py": 16,
+        "backend/app/team/schemas.py": 10,
+        "backend/tests/fixtures/live_architecture_shared_rails.json": 285,
+        "backend/tests/fixtures/live_components_symbol_swap.json": 335,
+        "backend/tests/fixtures/live_layout_critical_nets.json": 39,
+        "backend/tests/fixtures/live_requirements_18.json": 190,
+        "backend/tests/fixtures/live_simulation_margins.json": 93,
+        "backend/tests/test_team_checks.py": 84,
+        "backend/tests/test_team_orchestrator.py": 121,
+        "backend/tests/test_team_schemas.py": 37,
+        "fly.toml": 54,
+        "frontend/src/components/team-flow.tsx": 45,
+        "frontend/src/lib/team.ts": 62,
+        "pitch.md": 353
+      },
+      "user_removed_per_file": {
+        "DEMO.md": 70,
+        "backend/app/api/team.py": 1,
+        "backend/app/team/checks.py": 41,
+        "backend/app/team/orchestrator.py": 3,
+        "backend/app/team/prompts.py": 3,
+        "backend/app/team/registry.py": 2,
+        "backend/app/team/runner.py": 2,
+        "backend/tests/test_team_schemas.py": 2,
+        "frontend/src/components/team-flow.tsx": 10,
+        "frontend/src/lib/team.ts": 8
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 3958,
+      "agent_lines_removed": 173
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4050,
+      "agent_lines_removed": 180
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4084,
+      "agent_lines_removed": 181
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4084,
+      "agent_lines_removed": 181
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4084,
+      "agent_lines_removed": 181
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4154,
+      "agent_lines_removed": 182
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4228,
+      "agent_lines_removed": 189
+    },
+    {
+      "checkpoint_number": 9,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4228,
+      "agent_lines_removed": 189
+    },
+    {
+      "checkpoint_number": 10,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4363,
+      "agent_lines_removed": 189
+    },
+    {
+      "checkpoint_number": 11,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4363,
+      "agent_lines_removed": 189
+    },
+    {
+      "checkpoint_number": 12,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4363,
+      "agent_lines_removed": 189
+    },
+    {
+      "checkpoint_number": 13,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4363,
+      "agent_lines_removed": 189
+    },
+    {
+      "checkpoint_number": 14,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4363,
+      "agent_lines_removed": 189
+    },
+    {
+      "checkpoint_number": 15,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4363,
+      "agent_lines_removed": 189
+    },
+    {
+      "checkpoint_number": 16,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4363,
+      "agent_lines_removed": 189
+    },
+    {
+      "checkpoint_number": 17,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4424,
+      "agent_lines_removed": 189
+    },
+    {
+      "checkpoint_number": 18,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4424,
+      "agent_lines_removed": 189
+    },
+    {
+      "checkpoint_number": 19,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4424,
+      "agent_lines_removed": 189
+    },
+    {
+      "checkpoint_number": 20,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4424,
+      "agent_lines_removed": 189
+    },
+    {
+      "checkpoint_number": 21,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4424,
+      "agent_lines_removed": 189
+    },
+    {
+      "checkpoint_number": 22,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4424,
+      "agent_lines_removed": 189
+    },
+    {
+      "checkpoint_number": 23,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4424,
+      "agent_lines_removed": 189
+    },
+    {
+      "checkpoint_number": 24,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4424,
+      "agent_lines_removed": 189
+    },
+    {
+      "checkpoint_number": 25,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4424,
+      "agent_lines_removed": 189
+    },
+    {
+      "checkpoint_number": 26,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4493,
+      "agent_lines_removed": 194
+    },
+    {
+      "checkpoint_number": 27,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 4493,
+      "agent_lines_removed": 194
+    }
+  ]
+}

@@ -3,7 +3,7 @@
   "checkpoint_id": "01M0SKQB4ZW8CPC4CJFN2VMF0E",
   "strategy": "manual-commit",
   "branch": "feat/team-lane-ui",
-  "checkpoints_count": 12,
+  "checkpoints_count": 38,
   "files_touched": [
     ".dockerignore",
     ".github/workflows/deploy-backend.yml",
@@ -11,19 +11,24 @@
     "DEPLOY.md",
     "backend/app/api/team.py",
     "backend/app/config.py",
+    "backend/app/kicad/board.py",
     "backend/app/team/checks.py",
+    "backend/app/team/fallbacks.py",
     "backend/app/team/orchestrator.py",
     "backend/app/team/prompts.py",
     "backend/app/team/registry.py",
     "backend/app/team/runner.py",
     "backend/app/team/schemas.py",
+    "backend/tests/fixtures/live_architecture_boundary_blocks.json",
     "backend/tests/fixtures/live_architecture_shared_rails.json",
     "backend/tests/fixtures/live_requirements_18.json",
+    "backend/tests/fixtures/live_requirements_boundary.json",
     "backend/tests/test_team_checks.py",
     "backend/tests/test_team_orchestrator.py",
     "backend/tests/test_team_schemas.py",
     "frontend/src/components/team-flow.tsx",
-    "frontend/src/lib/team.ts"
+    "frontend/src/lib/team.ts",
+    "scripts/replay_team_run.py"
   ],
   "sessions": [
     {
@@ -46,13 +51,20 @@
       "compact_transcript": "/2/transcript.jsonl",
       "content_hash": "/2/content_hash.txt",
       "prompt": "/2/prompt.txt"
+    },
+    {
+      "metadata": "/3/metadata.json",
+      "transcript": "/3/full.jsonl",
+      "compact_transcript": "/3/transcript.jsonl",
+      "content_hash": "/3/content_hash.txt",
+      "prompt": "/3/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 510,
-    "cache_creation_tokens": 421585,
-    "cache_read_tokens": 35011067,
-    "output_tokens": 173387,
-    "api_call_count": 248
+    "input_tokens": 1022,
+    "cache_creation_tokens": 889278,
+    "cache_read_tokens": 88584004,
+    "output_tokens": 331271,
+    "api_call_count": 503
   }
 }
