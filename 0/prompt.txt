@@ -1,0 +1,9 @@
+i want to deploy it, can u give me exact instructions to deploy frontend and backend
+
+---
+
+resume
+
+---
+
+for backend tell me steps for web ui not cli
