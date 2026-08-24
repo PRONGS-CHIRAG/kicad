@@ -1,0 +1,188 @@
+{
+  "cli_version": "0.10.2",
+  "checkpoint_id": "01M0SKQB4ZW8CPC4CJFN2VMF0E",
+  "session_id": "acf1e67e-656c-448b-acaa-fc6be5746b5a",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-24T10:05:44.64125Z",
+  "branch": "feat/team-lane-ui",
+  "checkpoints_count": 9,
+  "save_step_count": 8,
+  "files_touched": [
+    ".dockerignore",
+    ".github/workflows/deploy-backend.yml",
+    "DEMO.md",
+    "DEPLOY.md",
+    "backend/app/api/team.py",
+    "backend/app/config.py",
+    "backend/app/team/checks.py",
+    "backend/app/team/orchestrator.py",
+    "backend/app/team/prompts.py",
+    "backend/app/team/registry.py",
+    "backend/app/team/runner.py",
+    "backend/app/team/schemas.py",
+    "backend/tests/fixtures/live_architecture_shared_rails.json",
+    "backend/tests/fixtures/live_requirements_18.json",
+    "backend/tests/test_team_checks.py",
+    "backend/tests/test_team_orchestrator.py",
+    "backend/tests/test_team_schemas.py",
+    "frontend/src/components/team-flow.tsx",
+    "frontend/src/lib/team.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5",
+  "turn_id": "073fc6f419b0",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 362,
+    "cache_creation_tokens": 250380,
+    "cache_read_tokens": 29395957,
+    "output_tokens": 118792,
+    "api_call_count": 178
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01PN14y2LHnecd93Rqs6Wum8",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "run"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "073fc6f419b0",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 409,
+        "end": 410,
+        "entry_ids": [
+          "cad758e5-3d11-4b28-b1e5-ec6f8f4729af"
+        ],
+        "tool_use_id": "toolu_01PN14y2LHnecd93Rqs6Wum8"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01PN14y2LHnecd93Rqs6Wum8"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: run",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-24T10:05:44.584772Z",
+    "agent_lines": 1856,
+    "agent_removed": 0,
+    "human_added": 2039,
+    "human_modified": 271,
+    "human_removed": 0,
+    "total_committed": 4166,
+    "total_lines_changed": 4171,
+    "agent_percentage": 44.49772236873651,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 56,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".dockerignore": 5,
+        "fly.toml": 51
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 293,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 293,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 315,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 161,
+      "user_lines_removed": 81,
+      "agent_lines_added": 1017,
+      "agent_lines_removed": 9,
+      "user_added_per_file": {
+        "DEPLOY.md": 158,
+        "fly.toml": 3
+      },
+      "user_removed_per_file": {
+        "DEPLOY.md": 81
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 503,
+      "user_lines_removed": 81,
+      "agent_lines_added": 1410,
+      "agent_lines_removed": 32,
+      "user_added_per_file": {
+        "DEPLOY.md": 158,
+        "fly.toml": 3,
+        "pitch.md": 342
+      },
+      "user_removed_per_file": {
+        "DEPLOY.md": 81
+      }
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1843,
+      "agent_lines_removed": 32
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 983,
+      "user_lines_removed": 109,
+      "agent_lines_added": 1882,
+      "agent_lines_removed": 33,
+      "user_added_per_file": {
+        "DEMO.md": 284,
+        "backend/app/api/team.py": 7,
+        "backend/app/team/checks.py": 154,
+        "backend/app/team/orchestrator.py": 24,
+        "backend/app/team/prompts.py": 32,
+        "backend/app/team/registry.py": 7,
+        "backend/app/team/schemas.py": 8,
+        "backend/tests/fixtures/live_components_symbol_swap.json": 335,
+        "backend/tests/fixtures/live_layout_critical_nets.json": 39,
+        "backend/tests/fixtures/live_simulation_margins.json": 93
+      },
+      "user_removed_per_file": {
+        "DEMO.md": 70,
+        "backend/app/api/team.py": 1,
+        "backend/app/team/checks.py": 33,
+        "backend/app/team/orchestrator.py": 1,
+        "backend/app/team/prompts.py": 2,
+        "backend/app/team/registry.py": 2
+      }
+    }
+  ]
+}
