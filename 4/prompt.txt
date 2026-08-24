@@ -1,0 +1,21 @@
+i want to do demo explain exactly how i should demo with what project i should cchoose, what to enter, what to press, do not make mistakes
+
+---
+
+<task-notification>
+<task-id>bq49561ak</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-chiragnvijay-Desktop-Projects-kicad/f0d6a1cc-00a4-4d38-b614-c389f3120498/tasks/bq49561ak.output</output-file>
+<status>completed</status>
+<summary>Background command "Wait for architecture gate outcome on probe run" completed (exit code 0)</summary>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>bogz6eh5d</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-chiragnvijay-Desktop-Projects-kicad/f0d6a1cc-00a4-4d38-b614-c389f3120498/tasks/bogz6eh5d.output</output-file>
+<status>completed</status>
+<summary>Background command "Probe a live Devin team run against current backend" completed (exit code 0)</summary>
+</task-notification>

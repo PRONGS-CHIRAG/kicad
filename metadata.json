@@ -3,7 +3,7 @@
   "checkpoint_id": "01M0SKQB4ZW8CPC4CJFN2VMF0E",
   "strategy": "manual-commit",
   "branch": "feat/team-lane-ui",
-  "checkpoints_count": 38,
+  "checkpoints_count": 41,
   "files_touched": [
     ".dockerignore",
     ".github/workflows/deploy-backend.yml",
@@ -21,8 +21,11 @@
     "backend/app/team/schemas.py",
     "backend/tests/fixtures/live_architecture_boundary_blocks.json",
     "backend/tests/fixtures/live_architecture_shared_rails.json",
+    "backend/tests/fixtures/live_components_symbol_swap.json",
+    "backend/tests/fixtures/live_layout_critical_nets.json",
     "backend/tests/fixtures/live_requirements_18.json",
     "backend/tests/fixtures/live_requirements_boundary.json",
+    "backend/tests/fixtures/live_simulation_margins.json",
     "backend/tests/test_team_checks.py",
     "backend/tests/test_team_orchestrator.py",
     "backend/tests/test_team_schemas.py",
@@ -58,13 +61,20 @@
       "compact_transcript": "/3/transcript.jsonl",
       "content_hash": "/3/content_hash.txt",
       "prompt": "/3/prompt.txt"
+    },
+    {
+      "metadata": "/4/metadata.json",
+      "transcript": "/4/full.jsonl",
+      "compact_transcript": "/4/transcript.jsonl",
+      "content_hash": "/4/content_hash.txt",
+      "prompt": "/4/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 1022,
-    "cache_creation_tokens": 889278,
-    "cache_read_tokens": 88584004,
-    "output_tokens": 331271,
-    "api_call_count": 503
+    "input_tokens": 1200,
+    "cache_creation_tokens": 1042847,
+    "cache_read_tokens": 99075614,
+    "output_tokens": 389164,
+    "api_call_count": 590
   }
 }
