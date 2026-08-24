@@ -568,6 +568,11 @@ def test_manufacturing_gate_refuses_unknown_profile() -> None:
     assert check_manufacturing(known, "generic_two_layer", "rev-1").passed
 
 
+def _drc_clean() -> ErcReport:
+    """A fresh, passing DRC run, so a release test can be about hashes again."""
+    return ErcReport(ran=True, errors=0, warnings=0, violations=[])
+
+
 def test_qa_release_gate_checks_real_hashes(tmp_path: Path) -> None:
     file = tmp_path / "board.kicad_pcb"
     file.write_text("board", encoding="utf-8")
@@ -578,8 +583,11 @@ def test_qa_release_gate_checks_real_hashes(tmp_path: Path) -> None:
         {"project_files": [str(file)]},
     )
     release = release.model_copy(update={"checklist": {key: True for key in RELEASE_CHECKLIST_ITEMS}})
-    assert check_qa_release(release, [file], "rev-1").passed
-    assert not check_qa_release(release.model_copy(update={"release_hash": "bad"}), [file], "rev-1").passed
+    assert check_qa_release(release, [file], "rev-1", drc=_drc_clean(), drc_fresh=True).passed
+    assert not check_qa_release(
+        release.model_copy(update={"release_hash": "bad"}), [file], "rev-1",
+        drc=_drc_clean(), drc_fresh=True,
+    ).passed
 
 
 def test_fallbacks_do_not_invent_requirements_or_design_values() -> None:
@@ -656,21 +664,25 @@ def test_an_honest_checklist_failure_holds_the_release_instead_of_breaking_it(tm
         release_hash=release_hash([file]),
         checklist=complete,
     )
-    assert check_qa_release(approved, [file], "rev-1").passed
+    assert check_qa_release(approved, [file], "rev-1", drc=_drc_clean(), drc_fresh=True).passed
 
     failed_drc = {**complete, "drc_passes": False}
     held = approved.model_copy(
         update={"release_status": "needs_human_review", "checklist": failed_drc}
     )
-    assert check_qa_release(held, [file], "rev-1").passed
+    assert check_qa_release(held, [file], "rev-1", drc=_drc_clean(), drc_fresh=True).passed
 
     # The same checklist may not be called approved.
     assert not check_qa_release(
-        approved.model_copy(update={"checklist": failed_drc}), [file], "rev-1"
+        approved.model_copy(update={"checklist": failed_drc}), [file], "rev-1",
+        drc=_drc_clean(), drc_fresh=True,
     ).passed
     # And an item left out is still a malformed record.
     short = {key: value for key, value in failed_drc.items() if key != "bom_complete"}
-    assert not check_qa_release(held.model_copy(update={"checklist": short}), [file], "rev-1").passed
+    assert not check_qa_release(
+        held.model_copy(update={"checklist": short}), [file], "rev-1",
+        drc=_drc_clean(), drc_fresh=True,
+    ).passed
 
 
 def test_the_release_hash_is_handed_over_rather_than_guessed(tmp_path: Path) -> None:
@@ -698,10 +710,12 @@ def test_the_release_hash_is_handed_over_rather_than_guessed(tmp_path: Path) -> 
         {},
     ).model_copy(update={"checklist": {key: True for key in RELEASE_CHECKLIST_ITEMS}})
     assert release.release_hash == manifest["release_hash"]
-    assert check_qa_release(release, files, "rev-1").passed
+    assert check_qa_release(release, files, "rev-1", drc=_drc_clean(), drc_fresh=True).passed
 
     (tmp_path / "demo.kicad_pcb").write_text("edited", encoding="utf-8")
-    assert not check_qa_release(release, release_files(tmp_path), "rev-1").passed
+    assert not check_qa_release(
+        release, release_files(tmp_path), "rev-1", drc=_drc_clean(), drc_fresh=True
+    ).passed
 
 
 def test_the_offline_release_fallback_reports_a_complete_checklist_it_cannot_attest_to(
@@ -839,8 +853,13 @@ def test_a_verification_finding_is_told_which_field_is_empty() -> None:
         decision="reject",
     )
     result = check_verification(report, "rev-1")
-    assert [item.rule for item in result.findings] == ["verification finding has evidence"]
-    assert "evidence_source" not in result.findings[0].rule
+    rules = [item.rule for item in result.findings]
+    # The finding is severity "error", so the stage is blocked for that too; what
+    # this test is about is that the empty field is named as the field it is.
+    assert "verification finding has evidence" in rules
+    assert "evidence_source" not in "".join(
+        rule for rule in rules if rule == "verification finding has evidence"
+    )
 
     populated = report.model_copy(
         update={
@@ -851,7 +870,23 @@ def test_a_verification_finding_is_told_which_field_is_empty() -> None:
             ]
         }
     )
-    assert check_verification(populated, "rev-1").passed
+    # Filling `evidence` settles the completeness complaint - but the finding is
+    # still a critical one, and a stage that reports one no longer passes.
+    populated_rules = [item.rule for item in check_verification(populated, "rev-1").findings]
+    assert "verification finding has evidence" not in populated_rules
+    assert populated_rules == ["verification reports no unresolved critical finding"]
+
+    # The same finding at an advisory severity is a complete document and passes.
+    advisory = populated.model_copy(
+        update={
+            "critical_findings": [
+                populated.critical_findings[0].model_copy(update={"severity": "warning"})
+            ],
+            "requirements_failed": 0,
+            "requirements_passed": 1,
+        }
+    )
+    assert check_verification(advisory, "rev-1").passed
 
     # A field left blank is still named, and named as itself.
     blank = populated.model_copy(
@@ -863,7 +898,10 @@ def test_a_verification_finding_is_told_which_field_is_empty() -> None:
     )
     incomplete = check_verification(blank, "rev-1")
     assert not incomplete.passed
-    assert "kicad_object" in str(incomplete.findings[0].actual)
+    completeness = [
+        item for item in incomplete.findings if item.rule == "verification finding completeness"
+    ]
+    assert "kicad_object" in str(completeness[0].actual)
 
 
 def test_an_edge_clearance_finding_says_which_way_to_move_and_how_far() -> None:
@@ -890,3 +928,284 @@ def test_an_edge_clearance_finding_says_which_way_to_move_and_how_far() -> None:
     assert advise((30.0, 61.5, 150.0, 73.5)) == "the footprint is wider than the outline allows at any x"
     # And a placement with room to spare is not a finding at all.
     assert advise((43.0, 61.5, 57.0, 73.5)) is None
+
+
+def test_verification_does_not_pass_while_it_still_names_a_critical_finding() -> None:
+    """The stage's own verdict, enforced.
+
+    Verification exists to say whether the design meets its requirements. A
+    report that names an unresolved critical finding has said it does not, and
+    the gate used to wave it through as long as the finding was well formed.
+    """
+    finding = VerificationFinding(
+        requirement_id="PWR-001",
+        finding="+3V3 has no source",
+        evidence={"tool": "kicad-cli ERC", "net": "+3V3"},
+        rule="rail has a source",
+        actual="none",
+        expected="a regulator",
+        kicad_object="+3V3",
+        evidence_source="kicad-cli ERC",
+        severity="critical",
+    )
+    report = VerificationReport(
+        requirements_total=1,
+        requirements_passed=0,
+        requirements_failed=1,
+        requirements_unverified=0,
+        critical_findings=[finding],
+        decision="reject",
+    )
+    result = check_verification(report, "rev-1")
+    assert not result.passed
+    assert "verification reports no unresolved critical finding" in [
+        item.rule for item in result.findings
+    ]
+
+    # `high` is not a softer word for the same thing: the live stages used it for
+    # real blockers ("FAIL. The 500 mA continuous 3.3 V budget is unmet twice
+    # over"), so it blocks too.
+    assert not check_verification(
+        report.model_copy(update={"critical_findings": [finding.model_copy(update={"severity": "high"})]}),
+        "rev-1",
+    ).passed
+
+    # Advisory severities are what the stage reports when nothing is blocking.
+    for severity in ("info", "low", "medium", "warning"):
+        advisory = report.model_copy(
+            update={
+                "critical_findings": [finding.model_copy(update={"severity": severity})],
+                "requirements_failed": 0,
+                "requirements_passed": 1,
+            }
+        )
+        assert check_verification(advisory, "rev-1").passed, severity
+
+
+def test_an_unrecognised_severity_blocks_rather_than_being_assumed_harmless() -> None:
+    """`severity` is a free string, so the benign words are the allowlist.
+
+    Six different words have already appeared in this field across live runs. A
+    blocklist of the three that happened to mean "blocking" would let a seventh
+    nobody anticipated walk through the one gate meant to stop it.
+    """
+    report = VerificationReport(
+        requirements_total=1,
+        requirements_passed=1,
+        requirements_failed=0,
+        requirements_unverified=0,
+        critical_findings=[
+            VerificationFinding(
+                requirement_id="PWR-001",
+                finding="rail unsourced",
+                evidence={"tool": "kicad-cli ERC"},
+                rule="rail has a source",
+                actual="none",
+                expected="a regulator",
+                kicad_object="+3V3",
+                evidence_source="kicad-cli ERC",
+                severity="P0",
+            )
+        ],
+        decision="reject",
+    )
+    assert not check_verification(report, "rev-1").passed
+
+
+def test_deleting_the_findings_does_not_get_a_failed_requirement_past_the_gate() -> None:
+    """The exit a live repair actually took, closed.
+
+    Run 3db7318c5d59's repair turned nine critical findings into zero and left
+    `requirements_failed` at 1 and the decision at "reject" - a document that
+    contradicts itself, which the gate then certified. Making critical findings
+    fail the gate makes deleting them the cheapest way past it, so the two rules
+    only work as a pair.
+    """
+    emptied = VerificationReport(
+        requirements_total=1,
+        requirements_passed=0,
+        requirements_failed=1,
+        requirements_unverified=0,
+        critical_findings=[],
+        decision="reject",
+    )
+    result = check_verification(emptied, "rev-1")
+    assert not result.passed
+    assert "a failing verification is explained by a blocking finding" in [
+        item.rule for item in result.findings
+    ]
+
+    # The per-requirement outcomes say the same thing on their own.
+    by_outcome = VerificationReport(
+        requirements_total=1,
+        requirements_passed=0,
+        requirements_failed=0,
+        requirements_unverified=0,
+        critical_findings=[],
+        decision="reject",
+        requirement_outcomes=[{"requirement_id": "PWR-001", "status": "failed", "evidence": {"a": 1}}],
+    )
+    assert not check_verification(by_outcome, "rev-1").passed
+
+    # A report with nothing failing is a clean pass, not a document with a hole.
+    clean = emptied.model_copy(
+        update={"requirements_failed": 0, "requirements_passed": 1, "decision": "accept"}
+    )
+    assert check_verification(clean, "rev-1").passed
+
+
+def test_approval_is_caught_however_the_stage_spells_it(tmp_path: Path) -> None:
+    """`release_status` is a free string the stage writes, compared exactly before.
+
+    So `Approved` and `release_approved` were not approvals as far as the gate
+    was concerned, and walked past the checklist requirement they exist to meet.
+    """
+    file = tmp_path / "board.kicad_pcb"
+    file.write_text("board", encoding="utf-8")
+    checklist = {key: key != "drc_passes" for key in RELEASE_CHECKLIST_ITEMS}
+    record = ReleaseRecord(
+        release_status="needs_human_review",
+        project_version="demo",
+        included_files=[str(file)],
+        open_critical_findings=0,
+        release_hash=release_hash([file]),
+        checklist=checklist,
+    )
+    # Holding on an unmet item is legal, whatever else is true.
+    assert check_qa_release(record, [file], "rev-1").passed
+
+    for spelling in ("approved", "Approved", "APPROVED", "release_approved", " approved "):
+        claimed = record.model_copy(update={"release_status": spelling})
+        assert not check_qa_release(claimed, [file], "rev-1").passed, spelling
+
+
+def test_drc_passes_is_checked_against_the_drc_report_not_the_record(tmp_path: Path) -> None:
+    """The one checklist item with something outside the record to check it against.
+
+    Every other item is an attestation the stage writes about itself. `drc_passes`
+    has the layout stage's DRC report behind it, and a release that claims a
+    clean DRC over a board that failed one is exactly the case the gate exists
+    to refuse.
+    """
+    file = tmp_path / "board.kicad_pcb"
+    file.write_text("board", encoding="utf-8")
+    record = ReleaseRecord(
+        release_status="needs_human_review",
+        project_version="demo",
+        included_files=[str(file)],
+        open_critical_findings=0,
+        release_hash=release_hash([file]),
+        checklist={key: True for key in RELEASE_CHECKLIST_ITEMS},
+    )
+    failing = ErcReport(ran=True, errors=6, warnings=14, violations=[])
+    passing = ErcReport(ran=True, errors=0, warnings=0, violations=[])
+
+    assert check_qa_release(record, [file], "rev-1", drc=passing, drc_fresh=True).passed
+
+    rejected = check_qa_release(record, [file], "rev-1", drc=failing, drc_fresh=True)
+    assert not rejected.passed
+    assert "drc_passes agrees with the DRC report" in [item.rule for item in rejected.findings]
+
+    # A baseline from before the layout stage describes a different board.
+    assert not check_qa_release(record, [file], "rev-1", drc=passing, drc_fresh=False).passed
+    # And no DRC at all is not evidence of a passing one.
+    assert not check_qa_release(record, [file], "rev-1").passed
+
+    # Under-claiming is always fine: the item is false, so nothing is attested.
+    honest = record.model_copy(
+        update={"checklist": {key: key != "drc_passes" for key in RELEASE_CHECKLIST_ITEMS}}
+    )
+    assert check_qa_release(honest, [file], "rev-1", drc=failing, drc_fresh=True).passed
+
+
+def test_relabelling_a_finding_info_is_the_same_escape_as_deleting_it() -> None:
+    """Deleting a finding and calling it advisory are one move, made two ways.
+
+    Anchoring the rule on `critical_findings == []` closed only the first: a
+    report could keep a failed requirement, keep a fully populated finding, drop
+    its severity to "info", and pass a gate whose whole job is to stop exactly
+    that. The rule is anchored on what blocks instead.
+    """
+    finding = VerificationFinding(
+        requirement_id="PWR-001",
+        finding="+3V3 has no source",
+        evidence={"tool": "kicad-cli ERC", "net": "+3V3"},
+        rule="rail has a source",
+        actual="none",
+        expected="a regulator",
+        kicad_object="+3V3",
+        evidence_source="kicad-cli ERC",
+        severity="info",
+    )
+    downgraded = VerificationReport(
+        requirements_total=1,
+        requirements_passed=0,
+        requirements_failed=1,
+        requirements_unverified=0,
+        critical_findings=[finding],
+        decision="reject",
+    )
+    result = check_verification(downgraded, "rev-1")
+    assert not result.passed
+    assert "a failing verification is explained by a blocking finding" in [
+        item.rule for item in result.findings
+    ]
+
+    # The same through requirement_outcomes, with the counters left at zero.
+    # Built rather than copied: model_copy does not validate, so the outcomes
+    # would stay plain dicts and never reach the rule under test.
+    by_outcome = VerificationReport(
+        requirements_total=1,
+        requirements_passed=0,
+        requirements_failed=0,
+        requirements_unverified=0,
+        critical_findings=[finding],
+        decision="reject",
+        requirement_outcomes=[
+            {"requirement_id": "PWR-001", "status": "failed", "evidence": {"tool": "erc"}}
+        ],
+    )
+    assert not check_verification(by_outcome, "rev-1").passed
+
+    # Nothing failing and an advisory finding is a clean, complete document.
+    clean = downgraded.model_copy(update={"requirements_failed": 0, "requirements_passed": 1})
+    assert check_verification(clean, "rev-1").passed
+
+
+def test_a_record_saying_it_is_not_approved_is_not_read_as_an_approval(tmp_path: Path) -> None:
+    """The obvious fix for the exact-match bug is a substring test, and it is wrong.
+
+    `"approv" in status` calls `not_approved`, `unapproved`, `pending_approval`
+    and `approval_withheld` approvals too - so a record honestly holding gets
+    rejected for claiming something it explicitly denied, which then costs a
+    repair attempt and someone's attention on a non-problem.
+    """
+    file = tmp_path / "board.kicad_pcb"
+    file.write_text("board", encoding="utf-8")
+    record = ReleaseRecord(
+        release_status="needs_human_review",
+        project_version="demo",
+        included_files=[str(file)],
+        open_critical_findings=0,
+        release_hash=release_hash([file]),
+        # One item unmet, so anything read as an approval is rejected.
+        checklist={key: key != "drc_passes" for key in RELEASE_CHECKLIST_ITEMS},
+    )
+    for honest in (
+        "needs_human_review",
+        "not_approved",
+        "not approved",
+        "unapproved",
+        "pending_approval",
+        "approval_withheld",
+        "approval denied",
+        "rejected",
+    ):
+        assert check_qa_release(
+            record.model_copy(update={"release_status": honest}), [file], "rev-1"
+        ).passed, honest
+
+    for claimed in ("approved", "Approved", "release-approved", "approve"):
+        assert not check_qa_release(
+            record.model_copy(update={"release_status": claimed}), [file], "rev-1"
+        ).passed, claimed

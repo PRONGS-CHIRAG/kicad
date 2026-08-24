@@ -346,6 +346,33 @@ def build_repair_prompt(
     repair is a proposal like any other, not a bypass.
     """
     rejected = json.dumps(task.rejected_output or {}, default=str, indent=1, sort_keys=True)
+    guidance = (task.human_guidance or "").strip()
+    if guidance:
+        # The automatic repair has already been tried and the gate rejected it
+        # again, so a person was asked what to do. Their instruction is the
+        # authority here, and the "change only what the findings require" rule is
+        # lifted for it on purpose: a human fix is almost always a thing no
+        # finding names, and the standing rule would tell this stage to ignore
+        # exactly the answer it was just given.
+        scope = (
+            "A person was asked what to do and said:\n"
+            f"{guidance}\n"
+            "Follow that instruction. It outranks the findings where the two disagree, and it "
+            "may require changes no finding named - make those. Everything the instruction and "
+            "the findings both leave alone stays exactly as it is, identifiers and values "
+            "included, because later stages already reference them. Still do not delete content "
+            "to make a finding go away: a requirement, block or part that belongs in the design "
+            "belongs in it after the repair. If the instruction cannot be carried out in this "
+            "document, say so in the document rather than inventing a way around it.\n"
+        )
+    else:
+        scope = (
+            "Change only what the findings require. Keep every part of the document that was "
+            "not named by a finding exactly as it is - identifiers, values and wording alike, "
+            "because later stages already reference them. Do not add new scope, and do not "
+            "delete content to make a finding go away: a requirement, block or part that "
+            "belongs in the design still belongs in it after the repair.\n"
+        )
     return _prompt(
         "design repair engineer",
         project,
@@ -355,11 +382,7 @@ def build_repair_prompt(
         (
             f"A deterministic gate rejected the {task.assigned_agent} stage. Return the same "
             "document, corrected.\n"
-            "Change only what the findings require. Keep every part of the document that was "
-            "not named by a finding exactly as it is - identifiers, values and wording alike, "
-            "because later stages already reference them. Do not add new scope, and do not "
-            "delete content to make a finding go away: a requirement, block or part that "
-            "belongs in the design still belongs in it after the repair.\n"
+            f"{scope}"
             f"{_render_release_manifest(task)}"
             "The rejected document was:\n"
             f"{rejected}"

@@ -261,9 +261,19 @@ export type TeamEvent = {
   findings?: CheckFinding[];
 };
 
+/** The problem put to a person when a gate has beaten the repair stage. */
+export type TeamQuestion = {
+  run_id: string;
+  stage: string;
+  stage_name: string;
+  problem: string;
+  findings: string[];
+  repair_attempted: boolean;
+};
+
 export type TeamRunStatus = {
   run_id: string;
-  status: "running" | "completed" | "failed";
+  status: "running" | "completed" | "failed" | "awaiting_human";
   runner: string;
   project: string;
   request?: string;
@@ -273,6 +283,8 @@ export type TeamRunStatus = {
   error?: string;
   events: TeamEvent[];
   report: TeamRunReport | null;
+  /** Set only while the run is parked waiting for an answer. */
+  question: TeamQuestion | null;
 };
 
 export const teamApi = {
@@ -287,10 +299,13 @@ export const teamApi = {
       `/api/team/runs/${runId}/evidence`,
     ),
   answer: (runId: string, answer: string) =>
-    request<{ run_id: string; accepted: boolean; answers: string[] }>(`/api/team/runs/${runId}/answer`, {
-      method: "POST",
-      body: JSON.stringify({ answer }),
-    }),
+    request<{ run_id: string; accepted: boolean; answers: string[]; resumed?: "repair" | "run" }>(
+      `/api/team/runs/${runId}/answer`,
+      {
+        method: "POST",
+        body: JSON.stringify({ answer }),
+      },
+    ),
 };
 
 /* -------------------------------------------------------------------------- */

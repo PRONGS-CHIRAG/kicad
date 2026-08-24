@@ -78,8 +78,13 @@ def _outputs(project: ProjectSpec, directory: Path) -> dict[str, object]:
         ),
         {
             "project_files": files,
+            # The fixture board really does have DRC errors, so `drc_passes` is
+            # false here. The release gate now checks that item against the DRC
+            # report rather than taking the record's word for it: attesting it
+            # true over this board is the exact case the gate exists to refuse.
+            # An honest hold is a well-formed record and passes.
             "release_checklist": {
-                key: True
+                key: key != "drc_passes"
                 for key in (
                     "all_agents_completed",
                     "no_open_critical_findings",
@@ -556,3 +561,190 @@ def test_gate_feedback_groups_repeated_rules_so_a_retry_can_read_it() -> None:
     single = StageCheckResult(stage="simulation", passed=False, findings=findings[:1])
     (only,) = TeamOrchestrator._findings_text("simulation", single)
     assert "more like it" not in only
+
+
+class _RepairsOnlyWhenTold(StubAgentRunner):
+    """A repair stage that answers badly until a person tells it what to do.
+
+    Which is the situation the hook exists for: the automatic repair has already
+    had its turn and the gate rejected its work too, so the only thing that can
+    move the run on is information from outside it.
+    """
+
+    def __init__(self, outputs, good: RequirementsDoc) -> None:
+        super().__init__(outputs=outputs)
+        self.good = good
+        self.guidance_seen: list[str | None] = []
+
+    def run(self, spec, task, project, inputs, project_version):  # type: ignore[override]
+        # Scoped to the stage under test: `task.assigned_agent` is the stage being
+        # repaired, and handing a requirements document to any other stage's
+        # repair would just fail a different gate.
+        if spec.id == "repair" and task.assigned_agent == "requirements":
+            self.guidance_seen.append(task.human_guidance)
+            if task.human_guidance:
+                return super().run(
+                    spec, task, project, inputs, project_version
+                ).model_copy(update={"output": self.good})
+        return super().run(spec, task, project, inputs, project_version)
+
+
+def test_a_person_is_asked_when_the_gate_beats_the_repair_stage_and_their_fix_is_used(
+    tmp_path: Path,
+) -> None:
+    project, directory = _project(tmp_path)
+    outputs = _outputs(project, directory)
+    outputs["requirements"] = _disagreeing_requirements()
+    # The automatic repair answers with the same rejected document.
+    outputs["repair"] = _disagreeing_requirements()
+
+    asked: list[object] = []
+
+    def intervene(request):
+        asked.append(request)
+        return "The logic rail is 3.3 V; correct PWR-001 to match the summary."
+
+    state = read_project(directory)
+    erc_baseline, drc_baseline = _baselines(directory)
+    runner = _RepairsOnlyWhenTold(outputs, _good_requirements())
+    report = TeamOrchestrator(
+        runner,
+        run_id="asked",
+        workspace_dir=tmp_path / "workspace",
+        options=OrchestratorOptions(
+            project_dir=directory,
+            board_path=directory / "esp32_i2c_board.kicad_pcb",
+            project_state=state,
+            erc_baseline=erc_baseline,
+            drc_baseline=drc_baseline,
+            intervention=intervene,
+        ),
+    ).run(project)
+
+    # Asked once, about the stage that failed, with the gate's own words.
+    assert len(asked) == 1
+    assert asked[0].stage == "requirements"
+    assert asked[0].stage_name == "Requirements"
+    assert asked[0].findings and all(isinstance(item, str) for item in asked[0].findings)
+    assert "requirements gate" in asked[0].findings[0]
+
+    # The automatic repair ran first and unguided; the second carried the answer.
+    assert runner.guidance_seen == [
+        None,
+        "The logic rail is 3.3 V; correct PWR-001 to match the summary.",
+    ]
+
+    # And the guided repair is what let the run finish.
+    assert report.release_status == "ready for engineering review"
+    events = [
+        json.loads(line)
+        for line in (tmp_path / "workspace" / "team" / "asked" / "events.jsonl")
+        .read_text()
+        .splitlines()
+        if line
+    ]
+    names = [event["event"] for event in events]
+    assert "human_intervention_requested" in names
+    assert "human_intervention_answered" in names
+    assert "human_repair_passed" in names
+
+
+def test_a_guided_repair_is_not_charged_to_the_automatic_repair_budget(tmp_path: Path) -> None:
+    """team_max_repairs_per_stage stops the machine retrying itself forever.
+
+    A repair carrying a person's instruction is the one attempt in the loop with
+    new information in it, so it is not what that budget is counting - without
+    the exception the hook would be asked a question whose answer is refused.
+    """
+    project, directory = _project(tmp_path)
+    outputs = _outputs(project, directory)
+    outputs["requirements"] = _disagreeing_requirements()
+    outputs["repair"] = _disagreeing_requirements()
+    runner = _RepairsOnlyWhenTold(outputs, _good_requirements())
+    TeamOrchestrator(
+        runner,
+        run_id="budget",
+        workspace_dir=tmp_path / "workspace",
+        options=OrchestratorOptions(project_dir=directory, intervention=lambda _: "fix PWR-001"),
+    ).run(project)
+    # settings.team_max_repairs_per_stage is 1, and the stage still got two.
+    assert len(runner.guidance_seen) == 2
+
+
+def test_no_hook_and_a_declined_answer_leave_the_run_exactly_as_it_was(tmp_path: Path) -> None:
+    """Every offline path installs no hook, so nothing about them may change."""
+    project, directory = _project(tmp_path)
+
+    def run_with(intervention):
+        outputs = _outputs(project, directory)
+        outputs["requirements"] = _disagreeing_requirements()
+        outputs["repair"] = _disagreeing_requirements()
+        return TeamOrchestrator(
+            StubAgentRunner(outputs=outputs),
+            run_id="declined",
+            workspace_dir=tmp_path / "workspace",
+            options=OrchestratorOptions(project_dir=directory, intervention=intervention),
+        ).run(project)
+
+    # No hook, an empty answer, and a hook that raises all fall through to the
+    # return trip and end where the run ended before any of this existed.
+    assert run_with(None).release_status == "needs_human_review"
+    assert run_with(lambda _: "   ").release_status == "needs_human_review"
+
+    def explodes(_request):
+        raise RuntimeError("nobody is watching")
+
+    assert run_with(explodes).release_status == "needs_human_review"
+
+
+def test_a_person_is_asked_once_per_stage_not_once_per_return_trip(tmp_path: Path) -> None:
+    """The gate does not change its mind, so neither does the question.
+
+    A stage that fails, is answered, and fails again on its return trip asks the
+    identical question - and a person answering the same thing three times is
+    doing the loop's work for it. One answer per stage; after that the run ends
+    where it ended before and the finished-run path takes over.
+    """
+    project, directory = _project(tmp_path)
+    outputs = _outputs(project, directory)
+    outputs["requirements"] = _disagreeing_requirements()
+    outputs["repair"] = _disagreeing_requirements()
+
+    asked: list[str] = []
+    report = TeamOrchestrator(
+        StubAgentRunner(outputs=outputs),
+        run_id="asked-once",
+        workspace_dir=tmp_path / "workspace",
+        options=OrchestratorOptions(
+            project_dir=directory,
+            intervention=lambda question: asked.append(question.stage) or "try 3.3 V",
+        ),
+    ).run(project)
+
+    assert asked == ["requirements"]
+    assert report.release_status == "needs_human_review"
+
+
+def test_a_verification_failure_is_not_routed_back_to_the_requirements_stage() -> None:
+    """Verification's rules are *about* requirements, and routing reads rule names.
+
+    "a failing verification is explained by a blocking finding" contains the word
+    the keyword pass looks for, so a verification document that dropped its
+    findings would have re-run the requirements stage and replayed the whole
+    pipeline to fix a document verification wrote. Commit 1e22e39 closed this
+    trap once; a rule name must not be able to reopen it.
+    """
+    for rule in (
+        "a failing verification is explained by a blocking finding",
+        "verification reports no unresolved critical finding",
+        "verification finding completeness",
+        "verification finding has evidence",
+    ):
+        gate = StageCheckResult(
+            stage="verification",
+            passed=False,
+            findings=[
+                finding(rule, "actual", "expected", "verification report", "verification report", "error")
+            ],
+        )
+        assert TeamOrchestrator._route("verification", gate) == "verification", rule

@@ -42,6 +42,58 @@ export function TeamRelease({
     );
   }
 
+  // Before the report guard on purpose: a parked run has no report, and this is
+  // the one moment where an answer changes what the run does next rather than
+  // starting another one.
+  if (run.status === "awaiting_human" && run.question) {
+    const question = run.question;
+    return (
+      <Panel eyebrow="Step 03" title={`${question.stage_name} needs a decision`}>
+        <Notice tone="copper" title="The run is waiting on you">
+          {question.problem}
+        </Notice>
+        {question.findings.length > 0 && (
+          <ul className="mt-3 divide-y divide-rule/60 border-y border-rule/60">
+            {question.findings.map((item, index) => (
+              <li
+                key={index}
+                className="min-w-0 wrap-any py-2 font-mono text-[0.75rem] leading-snug text-muted"
+              >
+                {item}
+              </li>
+            ))}
+          </ul>
+        )}
+        <section className="mt-5 border-t border-rule pt-4">
+          <h3 className="eyebrow">Tell the repair engineer what to do</h3>
+          <p className="mt-1.5 min-w-0 wrap-any text-[0.8125rem] leading-snug text-muted">
+            The repair stage already tried and this gate rejected its work too. Your instruction
+            goes straight to it, on the document it already has — the run picks up where it paused
+            rather than starting again. Leave it and the run carries on without you.
+          </p>
+          <textarea
+            className="field mt-2 min-h-[4.5rem] resize-y font-sans leading-snug"
+            value={answer}
+            disabled={busy}
+            onChange={(event) => setAnswer(event.target.value)}
+            placeholder="e.g. Add an AMS1117-3.3 regulator on VBUS and re-check PWR-002."
+          />
+          <button
+            type="button"
+            className="btn mt-2"
+            disabled={busy || answer.trim().length === 0}
+            onClick={() => {
+              onAnswer(answer.trim());
+              setAnswer("");
+            }}
+          >
+            {busy ? "Sending…" : "Send to the repair engineer"}
+          </button>
+        </section>
+      </Panel>
+    );
+  }
+
   if (!report) return null;
 
   const tone = RELEASE_TONE[report.release_status] ?? "copper";
@@ -164,8 +216,9 @@ export function TeamRelease({
         <section className="mt-5 border-t border-rule pt-4">
           <h3 className="eyebrow">Answer it and hand it back</h3>
           <p className="mt-1.5 min-w-0 wrap-any text-[0.8125rem] leading-snug text-muted">
-            Your answer is appended to the request and the whole run starts again from the project manager, with
-            the answer on the record.
+            This run has finished, so your answer is appended to the request and the whole run starts
+            again from the project manager, with the answer on the record. (A run that stops mid-flight
+            asks you there instead, and picks up where it paused.)
           </p>
           <textarea
             className="field mt-2 min-h-[4.5rem] resize-y font-sans leading-snug"

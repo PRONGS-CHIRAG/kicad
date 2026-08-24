@@ -77,6 +77,15 @@ class Settings(BaseSettings):
         ),
     )
     team_max_repairs_per_stage: int = Field(default=1, ge=0)
+    team_human_timeout_seconds: int = Field(
+        default=900,
+        ge=0,
+        description=(
+            "How long a run waits for a person to answer when the gate has beaten the repair "
+            "stage. The wait holds a worker thread, so it is bounded: on expiry the run carries "
+            "on exactly as it would with nobody watching, and ends on needs_human_review."
+        ),
+    )
 
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
     log_level: str = "INFO"

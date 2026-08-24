@@ -201,6 +201,16 @@ class AgentTask(TeamModel):
     """Why this stage was handed back, in the gate's own words. Empty on a first pass."""
     rejected_output: dict[str, JsonValue] | None = None
     """The document the gate rejected, for the repair stage to correct in place."""
+    human_guidance: str | None = None
+    """What a person told the repair stage to do, when the gate beat it twice.
+
+    Distinct from `prior_gate_findings`: those are the machine's complaint about
+    the document, this is an instruction from someone who can see past it. It
+    reaches the repair prompt as its own section, and that prompt lifts its
+    "change only what the findings require" rule for it - a human fix is usually
+    a thing no finding names, so a repair told to ignore anything unnamed would
+    quietly discard the answer it just asked for.
+    """
     release_manifest: dict[str, JsonValue] | None = None
     """The release files as they are on disk, and their hash, for the QA stage.
 
@@ -563,6 +573,24 @@ class ReleaseRecord(BaseModel):
     open_critical_findings: int
     release_hash: str
     checklist: dict[str, bool] | None = None
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class InterventionRequest(BaseModel):
+    """The problem put to a person, when the gate and the repair stage disagree.
+
+    Deliberately short. It is read by someone deciding what to do in one sitting,
+    not by an agent, so it carries the stage, a sentence per broken rule, and
+    nothing else - the full findings are already on the gate record.
+    """
+
+    run_id: str
+    stage: str
+    stage_name: str
+    problem: str
+    findings: list[str] = Field(default_factory=list)
+    repair_attempted: bool = True
 
     model_config = ConfigDict(extra="forbid")
 

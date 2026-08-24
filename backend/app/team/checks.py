@@ -963,8 +963,69 @@ def check_simulation(
     return _check("simulation", findings, project_version, "simulation checker")
 
 
+BENIGN_SEVERITIES = frozenset({"info", "informational", "low", "medium", "minor", "note", "warning"})
+"""Severities a verification finding may carry and still let the stage pass.
+
+An allowlist, not a blocklist, because the field is a free string and the live
+stages have already used six different words in it - `critical`, `error`, `high`,
+`medium`, `info`, `warning`. A blocklist of the three blocking ones would let a
+seventh word nobody anticipated (`sev1`, `P0`, `blocking`) through a gate whose
+whole job is to stop exactly that. Vocabulary we do not recognise blocks.
+"""
+
+
+def _is_blocking(severity: str | None) -> bool:
+    return severity is not None and severity.strip().casefold() not in BENIGN_SEVERITIES
+
+
 def check_verification(report: VerificationReport, project_version: str) -> StageCheckResult:
     findings: list[CheckFinding] = []
+    blocking = [item for item in report.critical_findings if _is_blocking(item.severity)]
+    if blocking:
+        # The stage's own verdict, enforced. Verification exists to say whether the
+        # design meets its requirements; a report that names unresolved critical
+        # findings has said it does not, and the run may not walk past that.
+        findings.append(
+            _finding(
+                "verification reports no unresolved critical finding",
+                f"{len(blocking)} blocking: "
+                + ", ".join(
+                    dict.fromkeys(f"{item.requirement_id} ({item.severity})" for item in blocking)
+                ),
+                f"no finding whose severity is outside {sorted(BENIGN_SEVERITIES)}",
+                "verification report",
+                "verification report",
+                "error",
+            )
+        )
+    # ...and the same verdict read from the other side. Making critical findings
+    # fail the gate makes getting rid of them the cheapest way past it, which is
+    # the exit a live repair already took: nine findings became zero while
+    # `requirements_failed` stayed at 1 and the decision stayed "reject".
+    #
+    # The condition is `not blocking`, not `not report.critical_findings`,
+    # because deleting a finding and relabelling it "info" are the same move made
+    # two different ways - and the second one leaves a document that still looks
+    # fully populated. A failed requirement has to be explained by something that
+    # actually blocks.
+    failed_outcomes = [
+        outcome.requirement_id
+        for outcome in report.requirement_outcomes or []
+        if outcome.status == "failed"
+    ]
+    if (report.requirements_failed > 0 or failed_outcomes) and not blocking:
+        findings.append(
+            _finding(
+                "a failing verification is explained by a blocking finding",
+                f"requirements_failed={report.requirements_failed}, "
+                f"failed outcomes {failed_outcomes or 'none listed'}, "
+                f"{len(report.critical_findings)} finding(s), none of them blocking",
+                "one blocking finding per failed requirement, or nothing failing",
+                "verification report",
+                "verification report",
+                "error",
+            )
+        )
     for item in report.critical_findings:
         missing = [
             key
@@ -1109,10 +1170,61 @@ def release_hash(files: Sequence[Path | str]) -> str:
     return hashlib.sha256("".join(hashes).encode()).hexdigest() if hashes else ""
 
 
+APPROVAL_WORDS = frozenset({"approved", "approve", "approval", "released", "release_approved"})
+"""The spellings that mean this release is being approved."""
+
+NEGATION_WORDS = frozenset(
+    {
+        "not", "no", "non", "never", "un", "de", "dis",
+        "pending", "awaiting", "blocked", "held", "hold", "withheld",
+        "denied", "refused", "rejected", "revoked", "failed",
+    }
+)
+"""Words that turn an approval word into its opposite, as whole words.
+
+Matched on the underscore-separated parts rather than as substrings, because
+`_` is a word character - a `\b` regex does not see a boundary in
+`approval_withheld` and would call it an approval.
+"""
+
+
+def _claims_approval(status: str) -> bool:
+    """Whether a release record is claiming approval, however it spells it.
+
+    Compared exactly against "approved" before, so `Approved` and
+    `release_approved` were not approvals as far as the gate was concerned and
+    walked straight past the checklist requirement they exist to meet.
+
+    A plain substring test on "approv" is the obvious fix and the wrong one: it
+    calls `not_approved`, `unapproved` and `pending_approval` approvals too, so a
+    record honestly saying it is *not* approved gets rejected for claiming it is
+    - a non-problem that then costs a repair and someone's attention. The test is
+    on the words, with negations excluded.
+    """
+    text = status.strip().casefold().replace("-", "_").replace(" ", "_")
+    if not text:
+        return False
+    parts = [part for part in text.split("_") if part]
+    if any(part in NEGATION_WORDS for part in parts):
+        return False
+    # A one-word negation such as `unapproved` is not an approval word either: it
+    # is not in the vocabulary, so it falls through to False on its own.
+    return any(part in APPROVAL_WORDS for part in parts)
+
+
+def _drc_passes(drc: ErcReport | None, drc_fresh: bool) -> bool:
+    """Whether DRC actually passed, as opposed to being attested to have passed."""
+    if drc is None or not drc.ran or not drc_fresh:
+        return False
+    return drc.errors == 0 and not any(item.severity == "error" for item in drc.violations)
+
+
 def check_qa_release(
     release: ReleaseRecord,
     files: Sequence[Path | str],
     project_version: str,
+    drc: ErcReport | None = None,
+    drc_fresh: bool = False,
 ) -> StageCheckResult:
     findings: list[CheckFinding] = []
     expected_hash = release_hash(files)
@@ -1148,8 +1260,30 @@ def check_qa_release(
     # deciding the release, so that is what is checked: all true is the
     # condition for approving, and a false item is a reason to hold, not a
     # malformed document.
+    # `drc_passes` is the one checklist item the gate can check against something
+    # other than the record: the DRC report the layout stage left behind. Without
+    # this it is an attestation like any other, and the release hash was already
+    # the only line in the record tied to the files on disk. A stale baseline is
+    # not evidence either - it describes the board before this run touched it.
+    if checklist.get("drc_passes") and not _drc_passes(drc, drc_fresh):
+        if drc is None or not drc.ran:
+            observed = "no DRC report from this run"
+        elif not drc_fresh:
+            observed = "only a stale baseline; the layout stage did not re-run DRC"
+        else:
+            observed = f"DRC reports {drc.errors} error(s)"
+        findings.append(
+            _finding(
+                "drc_passes agrees with the DRC report",
+                f"checklist says drc_passes, but {observed}",
+                "a fresh DRC run of this board with no errors",
+                "release checklist",
+                "kicad-cli DRC",
+                "error",
+            )
+        )
     unmet = sorted(item for item, met in checklist.items() if not met)
-    if release.release_status == "approved" and (unmet or findings):
+    if _claims_approval(release.release_status) and (unmet or findings):
         findings.append(
             _finding(
                 "approval requires a clean checklist",

@@ -39,7 +39,8 @@ export function TeamFlowRail({
   onSelect,
 }: {
   flow: TeamFlow;
-  status: "running" | "completed" | "failed";
+  /** A run parked for an answer is still mid-flight, so it reads as running here. */
+  status: "running" | "completed" | "failed" | "awaiting_human";
   parallel: boolean;
   /** How many times a human answered and handed this run back. */
   resumed: number;
@@ -135,7 +136,9 @@ export function TeamFlowRail({
         </p>
       )}
 
-      {status === "running" && !flow.routing && flow.inFlight.length === 0 && (
+      {(status === "running" || status === "awaiting_human") &&
+        !flow.routing &&
+        flow.inFlight.length === 0 && (
         <p className="mt-3 min-w-0 wrap-any border-t border-rule pt-3 text-[0.75rem] leading-snug text-muted">
           Waiting on the first agent to report.
         </p>
