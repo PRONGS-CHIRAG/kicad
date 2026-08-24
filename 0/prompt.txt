@@ -1,0 +1,5 @@
+now verify agents 8,9 and 10 amd make sure they work properly and in short expplain what they do and if they validate something how do they validate it against
+
+---
+
+verification should paass only when there are no critical errors, release_status should be linked with approved and drc_passes = True and should noz allow case where drc fails. when there are critical errors still it should call repair agent once and if after that also there is still error then ask the user to intervene and give the user a short concise description of problem and ask for his fix and based on what he says run the repair agent with the thing the user tells.
