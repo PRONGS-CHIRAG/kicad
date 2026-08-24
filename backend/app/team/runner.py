@@ -14,7 +14,7 @@ from pydantic import BaseModel, ValidationError
 from ..planning.devin import DevinClient, DevinError, SessionHandle
 from .evidence import EvidenceStore
 from .fallbacks import fallback_for
-from .registry import AgentSpec
+from .registry import REPAIR_AGENT_ID, AgentSpec
 from .schemas import AgentResult, AgentTask, EvidenceRecord, ProjectSpec, json_schema
 
 
@@ -216,7 +216,21 @@ class StubAgentRunner:
         inputs: Mapping[str, object] | None,
         project_version: str,
     ) -> AgentResult:
-        output = self.outputs.get(spec.id) or fallback_for(spec.id, project, task, inputs or {})
+        output = self.outputs.get(spec.id)
+        if output is None and spec.id == REPAIR_AGENT_ID:
+            # There is no deterministic repair: correcting a rejected document
+            # is the judgement this runner does not have. Offline, the stage
+            # reports that and the run is handed back as it was before.
+            return AgentResult(
+                task_id=task.task_id,
+                agent=spec.id,
+                status="unavailable",
+                runner=self.runner_name,
+                unresolved_questions=["no offline repair for a rejected document"],
+                duration_seconds=0.0,
+            )
+        if output is None:
+            output = fallback_for(spec.id, project, task, inputs or {})
         result = AgentResult(
             task_id=task.task_id,
             agent=spec.id,

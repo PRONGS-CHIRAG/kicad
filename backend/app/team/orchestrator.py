@@ -20,11 +20,12 @@ from . import checks
 from .evidence import EvidenceStore
 from .layout import apply_layout
 from .profiles import get_profile
-from .registry import AgentSpec, get_agent
+from .registry import REPAIR_AGENT_ID, AgentSpec, get_agent, repair_spec
 from .runner import AgentRunner, DevinAgentRunner
 from .schemas import (
     AgentResult,
     AgentTask,
+    CheckFinding,
     Architecture,
     ComponentSelection,
     EvidenceRecord,
@@ -57,7 +58,7 @@ CANONICAL_ORDER = (
 _ALIASES = {"schematic": "schematic_design", "layout": "pcb_layout"}
 
 _MAX_FEEDBACK_FINDINGS = 12
-"""How many rejected findings a re-run is shown. Enough to fix, short enough to read."""
+"""How many broken rules a re-run is shown. Enough to fix, short enough to read."""
 
 
 def _clip(value: object, limit: int = 160) -> str:
@@ -107,6 +108,8 @@ class TeamOrchestrator:
         # Why each stage was handed back, so a re-run is asked a different question
         # than the one it already failed. Cleared the moment the stage passes.
         feedback: dict[str, list[str]] = {}
+        # How many times the repair stage has been spent on each stage.
+        repairs: dict[str, int] = {}
         events: list[dict[str, object]] = []
         queue = list(CANONICAL_ORDER)
         project_version = f"{self.run_id}:0"
@@ -159,7 +162,19 @@ class TeamOrchestrator:
                     gate = self._evaluate_stage(sibling, result, project, outputs, project_version)
                     gates[sibling] = gate
                     self._write_gate(sibling, gate)
-                    if gate.passed:
+                    repaired = (
+                        None
+                        if gate.passed
+                        else self._repair(
+                            sibling, result, gate, project, outputs, project_version, repairs
+                        )
+                    )
+                    if repaired is not None:
+                        results[sibling], gates[sibling] = repaired
+                        results[REPAIR_AGENT_ID], gates[REPAIR_AGENT_ID] = repaired
+                        feedback.pop(sibling, None)
+                        self._event(events, "stage_repaired", {"stage": sibling})
+                    elif gate.passed:
                         feedback.pop(sibling, None)
                     else:
                         target = self._route(sibling, gate)
@@ -196,6 +211,15 @@ class TeamOrchestrator:
             self._write_gate(stage, gate)
             if gate.passed:
                 feedback.pop(stage, None)
+                continue
+            repaired = self._repair(
+                stage, result, gate, project, outputs, project_version, repairs
+            )
+            if repaired is not None:
+                results[stage], gates[stage] = repaired
+                results[REPAIR_AGENT_ID], gates[REPAIR_AGENT_ID] = repaired
+                feedback.pop(stage, None)
+                self._event(events, "stage_repaired", {"stage": stage})
                 continue
             target = self._route(stage, gate)
             feedback[target] = self._findings_text(stage, gate)
@@ -297,7 +321,21 @@ class TeamOrchestrator:
             assigned_agent=spec.id,
             objective=f"Complete the {spec.name} stage",
             prior_gate_findings=list((feedback or {}).get(spec.id, [])),
+            release_manifest=self._release_manifest() if stage == "qa_release" else None,
         )
+
+    def _release_files(self) -> list[Path]:
+        """The project files a release is made of, as they are on disk right now."""
+        if self.options.project_dir is None:
+            return []
+        return checks.release_files(self.options.project_dir)
+
+    def _release_manifest(self) -> dict[str, object]:
+        files = self._release_files()
+        return {
+            "included_files": [str(path) for path in files],
+            "release_hash": checks.release_hash(files),
+        }
 
     @staticmethod
     def _findings_text(stage: str, gate: StageCheckResult) -> list[str]:
@@ -308,11 +346,25 @@ class TeamOrchestrator:
         prompt is what the next session spends its time reading.
         """
         errors = [finding for finding in gate.findings if finding.severity == "error"]
-        return [
-            f"{stage} gate: {finding.rule} - {finding.kicad_object} is "
-            f"{_clip(finding.actual)}, expected {_clip(finding.expected)}"
-            for finding in errors[:_MAX_FEEDBACK_FINDINGS]
-        ]
+        # One entry per broken rule, not one per object that broke it. A gate
+        # that rejects nine tests for the same reason filled the whole feedback
+        # budget with near-identical sentences, so the re-run read twelve
+        # restatements of two problems, changed nothing, and spent the stage's
+        # return trips converging on nothing. The objects still travel with the
+        # rule - they are what makes it fixable - just under one heading.
+        grouped: dict[str, list[CheckFinding]] = {}
+        for item in errors:
+            grouped.setdefault(item.rule, []).append(item)
+        lines = []
+        for rule, items in list(grouped.items())[:_MAX_FEEDBACK_FINDINGS]:
+            head = items[0]
+            objects = ", ".join(dict.fromkeys(item.kicad_object for item in items))
+            more = f" (and {len(items) - 1} more like it)" if len(items) > 1 else ""
+            lines.append(
+                f"{stage} gate: {rule} - {_clip(objects)} is "
+                f"{_clip(head.actual)}, expected {_clip(head.expected)}{more}"
+            )
+        return lines
 
     def _run_stage(
         self,
@@ -324,6 +376,66 @@ class TeamOrchestrator:
     ) -> AgentResult:
         return self.runner.run(
             spec, self._task(spec.id, feedback), project, spec.inputs_for(outputs), project_version
+        )
+
+    def _repair(
+        self,
+        stage: str,
+        rejected: AgentResult,
+        gate: StageCheckResult,
+        project: ProjectSpec,
+        outputs: dict[str, object],
+        project_version: str,
+        attempts: dict[str, int],
+    ) -> tuple[AgentResult, StageCheckResult] | None:
+        """Have the repair stage correct a rejected document, then re-gate it.
+
+        Returns the repaired result and its passing gate, or None when repair is
+        off, spent, or produced something the same gate still rejects. The
+        caller then falls back to handing the work to the agent that owns it.
+        """
+        if not settings.team_repair or rejected.output is None:
+            return None
+        if attempts.get(stage, 0) >= settings.team_max_repairs_per_stage:
+            return None
+        attempts[stage] = attempts.get(stage, 0) + 1
+        spec = repair_spec(stage)
+        task = AgentTask(
+            task_id=f"{self.run_id}-{REPAIR_AGENT_ID}-{stage}",
+            assigned_agent=stage,
+            objective=f"Correct the rejected {get_agent(stage).name} document",
+            prior_gate_findings=self._findings_text(stage, gate),
+            rejected_output=rejected.output.model_dump(mode="json")
+            if isinstance(rejected.output, BaseModel)
+            else None,
+            # A repair of the release needs the manifest for the same reason the
+            # first attempt did: it cannot compute a hash either. Reaching it
+            # through the rejected finding's `expected` field would work only
+            # while that field survives the feedback clip.
+            release_manifest=self._release_manifest() if stage == "qa_release" else None,
+        )
+        # Named for the stage it is correcting. The gate that runs afterwards is
+        # that stage's own gate, but its record has to say which pass it judged,
+        # or a repaired stage is indistinguishable from one that passed first try.
+        record_as = f"{REPAIR_AGENT_ID}-{stage}"
+        result = self.runner.run(spec, task, project, spec.inputs_for(outputs), project_version)
+        self._record_result(record_as, result, project_version)
+        if result.output is None or self._read_only_violation(spec, result):
+            return None
+        repaired_gate = self._evaluate_stage(stage, result, project, outputs, project_version)
+        self._write_gate(record_as, self._attribute_gate(repaired_gate, record_as))
+        return (result, repaired_gate) if repaired_gate.passed else None
+
+    @staticmethod
+    def _attribute_gate(gate: StageCheckResult, record_as: str) -> StageCheckResult:
+        """The same verdict, with its evidence naming the pass it judged."""
+        return gate.model_copy(
+            update={
+                "evidence": [
+                    record.model_copy(update={"check": f"team {record_as} gate"})
+                    for record in gate.evidence
+                ]
+            }
         )
 
     def _gate(
@@ -345,9 +457,11 @@ class TeamOrchestrator:
             return checks.check_components(output, context, project_version=project_version)
         if stage == "simulation" and isinstance(output, SimulationReport):
             requirements = outputs.get("requirements")
+            components = outputs.get("components")
             return checks.check_simulation(
                 output,
                 requirements if isinstance(requirements, RequirementsDoc) else None,
+                components if isinstance(components, ComponentSelection) else None,
                 project_version=project_version,
             )
         if stage == "verification" and isinstance(output, VerificationReport):
@@ -356,8 +470,11 @@ class TeamOrchestrator:
             profile_name = str(project.manufacturer_profile.get("name", ""))
             return checks.check_manufacturing(output, profile_name, project_version)
         if stage == "qa_release" and isinstance(output, ReleaseRecord):
-            files = [Path(item) for item in output.included_files]
-            return checks.check_qa_release(output, files, project_version)
+            # The files on disk, not the ones the record names: a release that
+            # lists a subset of the project would otherwise hash that subset and
+            # agree with itself. With no project directory there is nothing to
+            # hash, and the gate says so rather than deferring to the record.
+            return checks.check_qa_release(output, self._release_files(), project_version)
         if (
             stage == "pcb_layout"
             and isinstance(output, LayoutProposal)

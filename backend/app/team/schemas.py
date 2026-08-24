@@ -199,6 +199,16 @@ class AgentTask(TeamModel):
     protected_objects: list[str] = Field(default_factory=list)
     prior_gate_findings: list[str] = Field(default_factory=list)
     """Why this stage was handed back, in the gate's own words. Empty on a first pass."""
+    rejected_output: dict[str, JsonValue] | None = None
+    """The document the gate rejected, for the repair stage to correct in place."""
+    release_manifest: dict[str, JsonValue] | None = None
+    """The release files as they are on disk, and their hash, for the QA stage.
+
+    The release gate recomputes this hash from the files themselves, so an agent
+    that is not given it is being asked to produce a SHA-256 it has no way to
+    compute. Handing it over does not weaken the gate: a hash copied from here
+    still has to match the files the gate reads at the moment it runs.
+    """
 
 
 class ActionProposal(TeamModel):
@@ -615,10 +625,16 @@ def _inline_schema(value: object, definitions: dict[str, object]) -> object:
         for key, item in value.items()
         if key not in {"$defs", "discriminator"}
     }
-    if result.get("type") == "object" or "properties" in result:
-        properties = result.get("properties", {})
+    # Closed and fully required, but only for an object that declares what its
+    # properties are. A free-form mapping - `dict[str, JsonValue]` and friends -
+    # has no `properties`, so stamping `additionalProperties: false` on it left a
+    # schema whose one legal value is `{}`: the agent could not put anything in
+    # `evidence`, `profile_rules`, `checklist` or a rail test's `expected`, and
+    # the gates that require those to be filled could never pass. An open map
+    # stays open.
+    if "properties" in result:
         result["additionalProperties"] = False
-        result["required"] = list(properties)
+        result["required"] = list(result["properties"])
     return result
 
 

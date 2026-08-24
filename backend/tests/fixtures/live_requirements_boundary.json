@@ -1,0 +1,195 @@
+{
+  "acceptance_tests": [
+    "TEST-001: ERC clean - 0 errors, 0 unresolved warnings, all 10 baseline errors and 12 warnings dispositioned.",
+    "TEST-002: DRC clean against generic_two_layer - 0 errors, 0 unresolved warnings, all 7 baseline errors and 17 warnings dispositioned, 2 layers confirmed.",
+    "TEST-003: +3V3 measures 3.3 V +/-3% at 500 mA load from USB-C 5 V input.",
+    "TEST-004: I2C scan finds exactly one device at 0x48; TMP102 reads ambient within +/-2 degC over 15-35 degC."
+  ],
+  "constraints": [
+    "Exactly two copper layers; layer 2 is a continuous GND pour (MECH-002).",
+    "Board outline fixed at 110 x 65 mm, 35,35 to 145,100 (MECH-001).",
+    "generic_two_layer DFM limits: trace >=0.15 mm, spacing >=0.15 mm, drill >=0.2 mm, copper-to-edge >=0.3 mm (MECH-003).",
+    "manufacturer_profile provenance is repository-chosen and not vendor-confirmed; any tightening must be re-verified with the real fabricator before release.",
+    "All logic at 3.3 V; no second logic voltage domain (PWR-002).",
+    "Total draw from the USB host limited to 500 mA (PWR-003).",
+    "OPEN QUESTION / DISCREPANCY: request specifies USB-C but J1 is Connector:USB_B_Micro; IF-005 assumes replacement with a USB-C receptacle and needs project_manager confirmation.",
+    "OPEN QUESTION: TMP102 ADD0 strap assumed to GND for address 0x48 (IF-004); confirm no address conflict downstream.",
+    "Proposal only - no project files, repository, or PCB data were modified in this stage."
+  ],
+  "interfaces": [
+    {
+      "devices": 1,
+      "type": "I2C (U1 GPIO21/GPIO22 to U2 TMP102, 4.7 kOhm pull-ups to +3V3, up to 400 kHz, address 0x48)",
+      "voltage": "3.3 V"
+    },
+    {
+      "devices": 1,
+      "type": "USB 2.0 full-speed data over USB-C receptacle (D+/D- to U1.USB_D+/USB_D-)",
+      "voltage": "5 V"
+    }
+  ],
+  "mechanical": {
+    "layers": 2,
+    "maximum_height_mm": 65.0,
+    "maximum_width_mm": 110.0
+  },
+  "power": {
+    "input": "USB-C VBUS, 5 V nominal (4.75-5.25 V), single power source, 5.1 kOhm CC pulldowns for 5 V sink advertisement",
+    "logic_voltage": "3.3 V",
+    "maximum_current_ma": 500.0
+  },
+  "requirements": [
+    {
+      "category": "power",
+      "id": "PWR-001",
+      "source": "project request: USB-C powered",
+      "statement": "The board shall be powered solely from the USB-C receptacle VBUS input at nominal 5 V (4.75-5.25 V).",
+      "unit": "V",
+      "value": 5
+    },
+    {
+      "category": "power",
+      "id": "PWR-002",
+      "source": "project request: keep logic at 3.3 V; PM gap: VBUS has no regulator path",
+      "statement": "A linear regulator shall convert VBUS 5 V to the +3V3 rail; all logic on the board operates at 3.3 V nominal (+/-3%).",
+      "unit": "V",
+      "value": 3.3
+    },
+    {
+      "category": "power",
+      "id": "PWR-003",
+      "source": "USB default sink budget; ESP32 peak current",
+      "statement": "The +3V3 rail shall supply at least 500 mA continuous to cover ESP32-WROOM-32 RF peaks plus TMP102 and pull-ups; total board draw from VBUS shall not exceed 500 mA.",
+      "unit": "mA",
+      "value": 500
+    },
+    {
+      "category": "power",
+      "id": "PWR-004",
+      "source": "PM gap: no decoupling capacitors declared",
+      "statement": "Decoupling shall be provided: 100 nF per supply pin at U1.3V3 and U2.VCC, plus 22 uF bulk on +3V3 and 10 uF on VBUS at the regulator.",
+      "unit": "nF",
+      "value": 100
+    },
+    {
+      "category": "power",
+      "id": "PWR-005",
+      "source": "PM gap: no EN pull-up/reset network",
+      "statement": "U1.EN shall be pulled to +3V3 through a 10 kOhm resistor with a 100 nF capacitor to GND so the MCU releases reset after the rail is stable.",
+      "unit": "kOhm",
+      "value": 10
+    },
+    {
+      "category": "power",
+      "id": "PWR-006",
+      "source": "ERC baseline 10 errors; PM acceptance gate",
+      "statement": "PWR_FLAG symbols shall drive the +3V3 and GND nets and every power_in pin (U1.1, U1.2, U2.1, U2.2) shall be connected to a driven rail, giving zero undriven-power-pin ERC errors.",
+      "unit": "ERC errors",
+      "value": 0
+    },
+    {
+      "category": "interface",
+      "id": "IF-001",
+      "source": "request: monitor temperature over I2C; PM gap: I2C nets carry only pull-ups",
+      "statement": "A single I2C bus at 3.3 V logic levels shall connect U1.GPIO21 (SDA) and U1.GPIO22 (SCL) to U2.SDA and U2.SCL; net I2C_SDA and I2C_SCL shall each have >=3 connections.",
+      "unit": "V",
+      "value": 3.3
+    },
+    {
+      "category": "interface",
+      "id": "IF-002",
+      "source": "existing R1/R2 4.7k; PM workflow",
+      "statement": "I2C_SDA and I2C_SCL shall each be pulled up to +3V3 by one 4.7 kOhm resistor (R1, R2) at a single location on the bus.",
+      "unit": "kOhm",
+      "value": 4.7
+    },
+    {
+      "category": "interface",
+      "id": "IF-003",
+      "source": "TMP102 capability; I2C-bus specification",
+      "statement": "The I2C bus shall operate at standard/fast mode clock frequency up to 400 kHz with total bus capacitance under 400 pF.",
+      "unit": "kHz",
+      "value": 400
+    },
+    {
+      "category": "interface",
+      "id": "IF-004",
+      "source": "PM gap: U2.GND on GND via ADD0 pin 5",
+      "statement": "U2.ADD0 shall be strapped to GND to fix the TMP102 address at 0x48, and shall not be used as the device GND return; U2.GND (pin 2) shall carry the ground return.",
+      "unit": "I2C address (decimal, 0x48)",
+      "value": 72
+    },
+    {
+      "category": "interface",
+      "id": "IF-005",
+      "source": "request: USB-C; pin table shows Connector:USB_B_Micro (open question)",
+      "statement": "One USB-C receptacle shall replace the USB_B_Micro (J1) footprint, with USB 2.0 D+/D- routed to U1.USB_D+/USB_D- and 5.1 kOhm CC1/CC2 pulldowns to advertise a 5 V sink; the USB_C vs USB_B_Micro discrepancy is flagged for resolution before schematic freeze.",
+      "unit": "connector",
+      "value": 1
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-001",
+      "source": "board outline given",
+      "statement": "The board outline shall remain 110 mm wide x 65 mm high (outline 35,35 to 145,100) and shall not grow.",
+      "unit": "mm",
+      "value": 110
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-002",
+      "source": "request: stay within two-layer board; manufacturer_profile supported_layer_count 2",
+      "statement": "The stackup shall be exactly two copper layers, with a continuous GND pour on layer 2; no additional layers permitted.",
+      "unit": "layers",
+      "value": 2
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-003",
+      "source": "manufacturer_profile generic_two_layer",
+      "statement": "All copper shall respect the generic_two_layer profile: minimum trace width 0.15 mm, minimum spacing 0.15 mm, minimum drill 0.2 mm, and copper-to-edge clearance 0.3 mm.",
+      "unit": "mm",
+      "value": 0.15
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-004",
+      "source": "PM workflow: layout and thermal isolation",
+      "statement": "The USB-C receptacle shall be placed on a board edge with its mating face flush to the outline, and U2 (TMP102) shall be placed at least 15 mm from U1 and the regulator for thermal isolation; all packages hand-solderable.",
+      "unit": "mm",
+      "value": 15
+    },
+    {
+      "category": "test",
+      "id": "TEST-001",
+      "source": "ERC baseline 10 errors / 12 warnings; PM acceptance gate",
+      "statement": "KiCad ERC shall report 0 errors and 0 unresolved warnings; each of the 10 baseline errors and 12 baseline warnings is resolved or waived with a written reason.",
+      "unit": "ERC errors",
+      "value": 0
+    },
+    {
+      "category": "test",
+      "id": "TEST-002",
+      "source": "DRC baseline 7 errors / 17 warnings; PM acceptance gate",
+      "statement": "KiCad DRC against the generic_two_layer profile shall report 0 errors and 0 unresolved warnings; each of the 7 baseline errors and 17 baseline warnings is resolved or waived with a written reason.",
+      "unit": "DRC errors",
+      "value": 0
+    },
+    {
+      "category": "test",
+      "id": "TEST-003",
+      "source": "PWR-002, PWR-003",
+      "statement": "With USB-C 5 V applied, the +3V3 rail shall measure 3.3 V +/-3% under a 500 mA load and board inrush shall not trip the host port.",
+      "unit": "V",
+      "value": 3.3
+    },
+    {
+      "category": "test",
+      "id": "TEST-004",
+      "source": "IF-001, IF-004; request: monitor temperature",
+      "statement": "An I2C scan shall detect exactly one device at address 0x48 and TMP102 readings shall track ambient within +/-2 degC over 15 to 35 degC.",
+      "unit": "degC",
+      "value": 2
+    }
+  ]
+}

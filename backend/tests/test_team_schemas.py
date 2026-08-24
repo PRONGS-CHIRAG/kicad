@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
 from app.config import Settings, settings
 from app.kicad.reader import Component, Pin, ProjectState
 from app.models import ErcReport
-from app.team.prompts import build_project_manager_prompt, build_requirements_prompt
-from app.team.registry import AGENTS, get_agent
+from app.team.prompts import (
+    build_project_manager_prompt,
+    build_repair_prompt,
+    build_requirements_prompt,
+)
+from app.team.registry import AGENTS, get_agent, repair_spec
 from app.team.schemas import (
     AgentTask,
     Architecture,
@@ -196,14 +202,72 @@ def _objects(value: object) -> list[dict]:
 
 
 def test_all_agent_schemas_are_fully_inlined_and_closed() -> None:
+    """A record is closed; a free-form mapping is not, and that distinction matters.
+
+    Closing every object indiscriminately left the mappings - `evidence`,
+    `profile_rules`, `checklist`, a rail test's `expected` - as objects with no
+    declared properties and `additionalProperties: false`, whose one legal value
+    is `{}`. Three stages were being asked by their gates to fill fields their
+    own output schema forbade filling, and no amount of prompting could fix it.
+    """
     for agent in AGENTS:
         schema = json_schema(agent.output_model)
         serialized = str(schema)
         assert "$ref" not in serialized
         assert "$defs" not in serialized
         for node in _objects(schema):
-            assert node["additionalProperties"] is False
-            assert set(node["required"]) == set(node.get("properties", {}))
+            if "properties" in node:
+                assert node["additionalProperties"] is False
+                assert set(node["required"]) == set(node["properties"])
+            else:
+                # An open map: it says what its values look like, not which keys
+                # are allowed, and it carries no `required` list to satisfy.
+                assert node.get("additionalProperties") is not False
+                assert "required" not in node
+
+
+def test_a_free_form_mapping_can_actually_hold_something() -> None:
+    """The three fields whose gates require content, and one that showed it.
+
+    A live run returned `expected: {}` on every rail test and `evidence: {}` on
+    every verification finding. That looked like the agents being lazy; it was
+    the only value their schema permitted.
+    """
+    evidence = json_schema(VerificationReport)["properties"]["critical_findings"]["items"]
+    assert evidence["properties"]["evidence"]["additionalProperties"] is not False
+    # The finding around it is still a closed record with every field required.
+    assert evidence["additionalProperties"] is False
+    assert "evidence_source" in evidence["required"]
+
+    def open_map(field: dict) -> dict:
+        return next(item for item in field.get("anyOf", [field]) if item.get("type") == "object")
+
+    rules = open_map(json_schema(ManufacturingReport)["properties"]["profile_rules"])
+    assert rules["additionalProperties"] == {"type": "number"}
+    checklist = open_map(json_schema(ReleaseRecord)["properties"]["checklist"])
+    assert checklist["additionalProperties"] == {"type": "boolean"}
+
+    # And the documents the gates want still validate.
+    ManufacturingReport.model_validate(
+        {
+            "manufacturer_profile": "generic_two_layer",
+            "dfm_status": "passed",
+            "findings": [],
+            "fabrication_ready": True,
+            "profile_rules": {"minimum_trace_width_mm": 0.15},
+            "profile_provenance": "repository values",
+        }
+    )
+    ReleaseRecord.model_validate(
+        {
+            "release_status": "needs_human_review",
+            "project_version": "rev-1",
+            "included_files": ["a.kicad_pcb"],
+            "open_critical_findings": 0,
+            "release_hash": "abc",
+            "checklist": {"drc_passes": False},
+        }
+    )
 
 
 @pytest.mark.parametrize("model,payload", EXAMPLES.items())
@@ -229,8 +293,11 @@ def test_registry_filters_prior_outputs_to_declared_reads() -> None:
         "schematic_design": {"allowed": True},
         "pcb_layout": {"allowed": True},
         "simulation": {"allowed": True},
-        "components": {"secret": True},
-        "requirements": {"secret": True},
+        # Verification reads the requirements it counts, but never the plan or
+        # the block diagram behind them.
+        "requirements": {"allowed": True},
+        "project_manager": {"secret": True},
+        "architecture": {"secret": True},
     }
     prompt = get_agent("verification").build_prompt(project, task, prior)
     assert '"allowed": true' in prompt
@@ -294,6 +361,37 @@ def test_a_sent_back_stage_is_told_what_the_gate_rejected() -> None:
     assert "units normalized - PWR-001" in prompt
     # The contract the gate enforces is stated, not left to be guessed at.
     assert "PWR-NNN" in prompt and "TEST-NNN" in prompt
+
+
+def test_the_repair_stage_inherits_the_contract_of_the_stage_it_corrects() -> None:
+    """A repaired document has to satisfy the same schema and the same gate."""
+    for stage in ("requirements", "architecture", "schematic_design", "verification"):
+        target, repair = get_agent(stage), repair_spec(stage)
+        assert repair.id == "repair"
+        assert repair.output_model is target.output_model
+        assert repair.reads == target.reads
+        assert repair.read_only == target.read_only
+        assert repair.mutates_design == target.mutates_design
+        assert stage in repair.tags
+        # It is a stage of its own, not the same agent asked twice.
+        assert repair.prompt_builder is not target.prompt_builder
+
+
+def test_the_repair_prompt_carries_the_rejected_document_and_the_findings() -> None:
+    project = ProjectSpec(project_id="demo", current_stage="requirements", design_context=None)
+    context = DesignContext(erc_baseline={"errors": 0, "warnings": 0})
+    task = AgentTask(
+        task_id="T-3",
+        assigned_agent="requirements",
+        objective="Correct the rejected Requirements document",
+        prior_gate_findings=["requirements gate: units normalized - PWR-001 is None"],
+        rejected_output={"requirements": [{"id": "PWR-001", "unit": ""}]},
+    )
+    prompt = build_repair_prompt(project, context, task, {})
+    assert "rejected the requirements stage" in prompt
+    assert "units normalized - PWR-001" in prompt
+    assert '"PWR-001"' in prompt
+    assert "Change only what the findings require" in prompt
 
 
 def test_requirement_category_follows_its_identifier() -> None:
@@ -360,3 +458,79 @@ def test_team_runner_setting_resolves_without_mutating_optional_field(
     monkeypatch.setattr(settings, "team_runner", None)
     monkeypatch.setattr(settings, "devin_api_key", None)
     assert settings.resolved_team_runner == "stub"
+
+
+def test_the_component_engineer_is_told_it_cannot_change_a_symbol() -> None:
+    """The constraint the gate enforces has to be in the prompt that precedes it.
+
+    This pipeline wires pins that exist; it has no intent that adds or replaces
+    a schematic symbol. A run that needed a different connector was rejected for
+    changing one, then passed the gate by keeping the old symbol beside the new
+    part's footprint - a document describing a board nobody could build.
+    """
+    context = DesignContext(
+        components=[
+            {
+                "reference": "J1",
+                "value": "USB_B_Micro",
+                "lib_id": "Connector:USB_B_Micro",
+                "pins": [{"number": "1", "name": "VBUS", "electrical_type": "power_out"}],
+            },
+            {
+                "reference": "#PWR01",
+                "value": "GND",
+                "lib_id": "power:GND",
+                "pins": [{"number": "1", "name": "GND", "electrical_type": "power_in"}],
+            },
+        ],
+        erc_baseline={"errors": 0, "warnings": 0},
+    )
+    project = ProjectSpec(project_id="demo", request="use USB-C", current_stage="components")
+    task = AgentTask(task_id="c", assigned_agent="components", objective="pick parts")
+    prompt = get_agent("components").build_prompt(project, task, {}, context)
+
+    assert "cannot add a symbol" in prompt
+    assert "J1 is Connector:USB_B_Micro" in prompt
+    assert "do not pair" in prompt
+    # Power flags and other generated references are not parts to select.
+    assert "#PWR" not in prompt.split("The schematic already has:")[1].split("\n\n")[0]
+    # A part the schematic cannot hold may be listed, but only marked as such.
+    assert "proposed and not in the schematic" in prompt
+
+    # The stage that wires those pins is told the same limit in its own terms:
+    # a real run proposed connecting U3.3, and no U3 existed.
+    wiring = get_agent("schematic_design").build_prompt(
+        project,
+        AgentTask(task_id="s", assigned_agent="schematic_design", objective="wire"),
+        {},
+        context,
+    )
+    assert "must appear in the pin table above" in wiring
+
+
+def test_a_repair_of_the_release_is_given_the_manifest_too() -> None:
+    """A repair cannot compute a SHA-256 any more than the first attempt could.
+
+    Reaching the right hash through the rejected finding's `expected` field
+    would work only for as long as that field survives the feedback clip.
+    """
+    project = ProjectSpec(project_id="demo", current_stage="qa_release")
+    manifest = {"included_files": ["/tmp/demo.kicad_pcb"], "release_hash": "abc123"}
+    task = AgentTask(
+        task_id="r",
+        assigned_agent="qa_release",
+        objective="correct the release",
+        rejected_output={"release_hash": "guessed"},
+        release_manifest=manifest,
+    )
+    prompt = repair_spec("qa_release").build_prompt(project, task, {})
+    assert "/tmp/demo.kicad_pcb" in prompt
+    assert "abc123" in prompt
+
+    # Every other stage's repair is unchanged - there is no manifest to show.
+    plain = repair_spec("requirements").build_prompt(
+        project,
+        task.model_copy(update={"assigned_agent": "requirements", "release_manifest": None}),
+        {},
+    )
+    assert "The release package is exactly these files" not in plain

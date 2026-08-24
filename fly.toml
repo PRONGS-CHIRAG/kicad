@@ -1,0 +1,54 @@
+# Backend only. The frontend is a separate Vercel project rooted at frontend/.
+#
+# Three things in this file are load-bearing and are not style choices:
+#   1. `_runs` in app/api/team.py is a module-level dict fed by a module-level
+#      ThreadPoolExecutor, and SessionStore in app/workflow.py is in-memory.
+#      The client polls GET /api/team/runs/{id}. So the app is stateful and
+#      single-process: exactly one machine, one uvicorn worker, never stopped.
+#   2. Uploaded projects, checkpoints and team evidence all live under
+#      settings.workspace_dir, so /workspace has to be a real volume.
+#   3. The image ships kicad + symbols + footprints (~1.8GB) and shells out to
+#      kicad-cli for ERC/DRC, so it needs real RAM, not a 256MB machine.
+app = "kicad-mitos-api"
+primary_region = "iad"
+
+[build]
+  dockerfile = "backend/Dockerfile"
+
+[env]
+  KICAD_MITOS_WORKSPACE = "/workspace"
+  KICAD_MITOS_PROJECTS_DIR = "/app/fixtures/projects"
+  KICAD_MITOS_EXECUTOR = "local"
+
+[[mounts]]
+  source = "kicad_workspace"
+  destination = "/workspace"
+  # Lets the first `fly deploy` create the volume itself, so nobody has to run
+  # `fly volumes create` by hand. Ignored on every deploy after the first.
+  initial_size = "3gb"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  # "off" so Fly never stops the machine: a machine suspended mid-run leaves the
+  # UI polling status:"running" forever, because the run only exists in its RAM.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 200
+    hard_limit = 250
+
+  [[http_service.checks]]
+    method = "GET"
+    path = "/api/health"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "30s"
+
+[[vm]]
+  cpu_kind = "shared"
+  cpus = 2
+  memory = "4gb"

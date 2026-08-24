@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 from pathlib import Path
 
@@ -9,6 +10,8 @@ from app.config import settings
 from app.kicad.erc import KicadCli
 from app.kicad.reader import read_project
 from app.models import ErcReport
+from app.team.checks import finding, release_files
+from app.team.checks import release_hash as release_hash_of
 from app.team.fallbacks import qa_release_fallback
 from app.team.orchestrator import OrchestratorOptions, TeamOrchestrator
 from app.team.profiles import get_profile
@@ -64,10 +67,15 @@ def _outputs(project: ProjectSpec, directory: Path) -> dict[str, object]:
         acceptance_tests=[],
     )
     profile = get_profile("generic_two_layer")
-    files = [str(path) for path in directory.glob("*.kicad_*")]
+    files = [str(path) for path in release_files(directory)]
     release = qa_release_fallback(
         project,
-        AgentTask(task_id="qa", assigned_agent="qa_release", objective="release"),
+        AgentTask(
+            task_id="qa",
+            assigned_agent="qa_release",
+            objective="release",
+            release_manifest={"included_files": files, "release_hash": release_hash_of(files)},
+        ),
         {
             "project_files": files,
             "release_checklist": {
@@ -239,6 +247,126 @@ def test_a_stage_sent_back_is_told_why_it_failed(tmp_path: Path) -> None:
     assert any("grouped and identified requirements agree" in finding for finding in findings)
 
 
+def _good_requirements() -> RequirementsDoc:
+    return RequirementsDoc(
+        requirements=[
+            {
+                "id": "PWR-001",
+                "category": "power",
+                "statement": "logic voltage",
+                "value": 3.3,
+                "unit": "V",
+                "source": "request",
+            }
+        ],
+        power={"input": "", "logic_voltage": "3.3V", "maximum_current_ma": None},
+        interfaces=[],
+        mechanical={"maximum_width_mm": None, "maximum_height_mm": None, "layers": None},
+        constraints=[],
+        acceptance_tests=[],
+    )
+
+
+class CountingRunner(StubAgentRunner):
+    """A stub that remembers which agents were asked to work."""
+
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.calls: list[str] = []
+
+    def run(self, spec, task, project, inputs, project_version):  # type: ignore[override]
+        self.calls.append(spec.id)
+        return super().run(spec, task, project, inputs, project_version)
+
+
+def test_the_repair_stage_corrects_a_rejected_document_and_the_run_proceeds(tmp_path: Path) -> None:
+    project, directory = _project(tmp_path)
+    state = read_project(directory)
+    erc_baseline, drc_baseline = _baselines(directory)
+    outputs = _outputs(project, directory)
+    outputs["requirements"] = _disagreeing_requirements()
+    outputs["repair"] = _good_requirements()
+
+    report = TeamOrchestrator(
+        StubAgentRunner(outputs=outputs),
+        run_id="repaired",
+        workspace_dir=tmp_path / "workspace",
+        options=OrchestratorOptions(
+            project_dir=directory,
+            board_path=directory / "esp32_i2c_board.kicad_pcb",
+            project_state=state,
+            erc_baseline=erc_baseline,
+            drc_baseline=drc_baseline,
+        ),
+    ).run(project)
+
+    # Rejected, repaired, and carried on to the end rather than handed back to
+    # the agent that owns the stage.
+    assert report.release_status == "ready for engineering review"
+    assert "repair" in report.per_stage_results
+    assert report.per_stage_results["repair"].agent == "repair"
+    assert report.requirements_total == 1
+
+    # The evidence has to say which pass the gate judged, or a repaired stage
+    # cannot be told from one that passed first try.
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "workspace" / "team" / "repaired" / "evidence.jsonl")
+        .read_text()
+        .splitlines()
+        if line
+    ]
+    checks = [record["check"] for record in records]
+    assert "team agent repair-requirements" in checks
+    assert "team repair-requirements gate" in checks
+    assert [record["result"] for record in records if record["check"] == "team repair-requirements gate"] == [
+        "passed"
+    ]
+
+
+def test_a_repair_the_gate_still_rejects_falls_back_to_the_return_trip(tmp_path: Path) -> None:
+    project, _ = _project(tmp_path)
+    outputs = _outputs(project, tmp_path / "project")
+    outputs["requirements"] = _disagreeing_requirements()
+    # The repair stage answers, but with a document the same gate rejects again.
+    outputs["repair"] = _disagreeing_requirements()
+
+    report = TeamOrchestrator(
+        StubAgentRunner(outputs=outputs),
+        run_id="repair-rejected",
+        workspace_dir=tmp_path / "workspace",
+    ).run(project)
+    assert report.release_status == "needs_human_review"
+
+
+def test_repair_is_spent_at_most_once_per_stage(tmp_path: Path) -> None:
+    project, _ = _project(tmp_path)
+    outputs = _outputs(project, tmp_path / "project")
+    outputs["requirements"] = _disagreeing_requirements()
+    outputs["repair"] = _disagreeing_requirements()
+    runner = CountingRunner(outputs=outputs)
+    TeamOrchestrator(
+        runner,
+        run_id="repair-cap",
+        workspace_dir=tmp_path / "workspace",
+    ).run(project)
+    assert runner.calls.count("repair") == settings.team_max_repairs_per_stage
+
+
+def test_repair_can_be_turned_off(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(settings, "team_repair", False)
+    project, _ = _project(tmp_path)
+    outputs = _outputs(project, tmp_path / "project")
+    outputs["requirements"] = _disagreeing_requirements()
+    outputs["repair"] = _good_requirements()
+    runner = CountingRunner(outputs=outputs)
+    report = TeamOrchestrator(
+        runner, run_id="repair-off", workspace_dir=tmp_path / "workspace"
+    ).run(project)
+    assert "repair" not in runner.calls
+    assert report.release_status == "needs_human_review"
+
+
 def test_parallel_and_sequential_reports_match(tmp_path: Path, monkeypatch) -> None:
     reports = []
     for parallel in (True, False):
@@ -397,3 +525,34 @@ def test_schematic_gate_uses_fresh_erc_after_mutation(tmp_path: Path) -> None:
     assert calls == 3
     assert report.release_status == "needs_human_review"
     assert report.erc_status == "failed"
+
+
+def test_gate_feedback_groups_repeated_rules_so_a_retry_can_read_it() -> None:
+    """A gate that rejects nine tests for one reason is one problem, not nine.
+
+    The feedback budget is twelve entries. Fifteen findings over two rules used
+    to fill it with twelve restatements of those two, so the re-run read the
+    same complaint over and over, changed nothing, and spent the stage's return
+    trips on it. The objects still travel with the rule - they are what makes it
+    fixable - but under one heading each.
+    """
+    findings = [
+        finding(
+            "simulation range traceability", f"prose {index}", "a source", f"test {index}", "sim", "error"
+        )
+        for index in range(9)
+    ] + [
+        finding("simulation values carry units", [1.0], "unit-bearing", f"test {index}", "sim", "error")
+        for index in range(6)
+    ]
+    gate = StageCheckResult(stage="simulation", passed=False, findings=findings)
+    lines = TeamOrchestrator._findings_text("simulation", gate)
+
+    assert len(lines) == 2
+    assert lines[0].startswith("simulation gate: simulation range traceability")
+    assert "test 8" in lines[0] and "and 8 more like it" in lines[0]
+    assert "simulation values carry units" in lines[1]
+    # A single broken rule reads as one plain sentence, with no tally.
+    single = StageCheckResult(stage="simulation", passed=False, findings=findings[:1])
+    (only,) = TeamOrchestrator._findings_text("simulation", single)
+    assert "more like it" not in only

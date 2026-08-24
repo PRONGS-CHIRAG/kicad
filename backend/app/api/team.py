@@ -17,6 +17,7 @@ from ..kicad.erc import KicadCli
 from ..kicad.reader import read_project
 from ..team.evidence import EvidenceStore
 from ..team.orchestrator import OrchestratorOptions, TeamOrchestrator
+from ..team.profiles import get_profile
 from ..team.runner import DevinAgentRunner, StubAgentRunner
 from ..team.schemas import DesignContext, ProjectSpec, TeamRunReport
 from ..team.schematic import apply_schematic_intents
@@ -54,11 +55,16 @@ def _run_team(run_id: str, request: TeamRunRequest, project_dir: Path) -> None:
         erc = cli.run_erc(state.schematic_path)
         board = next(iter(project_dir.glob("*.kicad_pcb")), None)
         drc = cli.run_drc_baseline(board) if board else None
+        # The whole profile, not just its name: the DFM gate compares the report
+        # against these exact values and provenance, and the layout stage is held
+        # to this edge clearance. An agent that is only told the profile's name
+        # has to guess both, which is a gate it cannot pass by answering better.
+        profile = get_profile(request.manufacturer_profile or settings.team_manufacturer_profile)
         project = ProjectSpec(
             project_id=project_dir.name,
             request=request.request,
             current_stage="team",
-            manufacturer_profile={"name": request.manufacturer_profile or settings.team_manufacturer_profile},
+            manufacturer_profile=profile.model_dump(mode="json"),
             design_context=DesignContext.from_project(state, erc, drc, board),
         )
         runner_name = request.runner or settings.resolved_team_runner

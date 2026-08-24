@@ -1,0 +1,190 @@
+{
+  "acceptance_tests": [
+    "TEST-001: ERC clean - 0 errors, 0 warnings.",
+    "TEST-002: DRC clean against generic_two_layer - 0 errors, 0 warnings.",
+    "TEST-003: 3.3 V rail within +/-5 % at 500 mA load from 5 V VBUS.",
+    "TEST-004: TMP102 responds at I2C address 0x48 and reads within +/-2 degC of reference."
+  ],
+  "constraints": [
+    "Logic rail fixed at 3.3 V; no other logic voltage domains permitted (PWR-002).",
+    "Two copper layers maximum, generic_two_layer manufacturer profile (MECH-003).",
+    "Board outline fixed at 110 x 65 mm, area 35,35 to 145,100 (MECH-001, MECH-002).",
+    "Total VBUS current budget 500 mA (PWR-003).",
+    "OPEN CONFLICT: specification requests USB-C power but pin table provides Connector:USB_B_Micro (J1); requirement IF-004 assumes J1 is replaced with a USB-C receptacle. If J1 must stay USB Micro-B, PWR-001/IF-004 need sign-off before power and layout stages proceed.",
+    "+3V3 has no power source in the current design; a regulator with a power_out pin is mandatory (PWR-004).",
+    "U2.5 (ADD0) is wrongly on the GND net and must be re-assigned to an address-select net (IF-003, PWR-005)."
+  ],
+  "interfaces": [
+    {
+      "devices": 1,
+      "type": "I2C (TMP102 temperature sensor, 400 kHz fast mode)",
+      "voltage": "3.3 V"
+    },
+    {
+      "devices": 1,
+      "type": "USB 2.0 full-speed data pair (USB_D+/USB_D-)",
+      "voltage": "3.3 V"
+    },
+    {
+      "devices": 1,
+      "type": "USB-C power input receptacle (VBUS)",
+      "voltage": "5 V"
+    }
+  ],
+  "mechanical": {
+    "layers": 2,
+    "maximum_height_mm": 65.0,
+    "maximum_width_mm": 110.0
+  },
+  "power": {
+    "input": "USB-C VBUS, 5 V nominal (4.75-5.25 V), regulated on-board to 3.3 V",
+    "logic_voltage": "3.3 V",
+    "maximum_current_ma": 500.0
+  },
+  "requirements": [
+    {
+      "category": "power",
+      "id": "PWR-001",
+      "source": "request: USB-C powered",
+      "statement": "Board is powered from a USB-C receptacle supplying VBUS at nominal 5 V (4.75-5.25 V).",
+      "unit": "V",
+      "value": 5
+    },
+    {
+      "category": "power",
+      "id": "PWR-002",
+      "source": "request: keep logic at 3.3 V",
+      "statement": "All logic and sensor supply rails operate at 3.3 V, regulated down from VBUS.",
+      "unit": "V",
+      "value": 3.3
+    },
+    {
+      "category": "power",
+      "id": "PWR-003",
+      "source": "ESP32-WROOM-32 peak current + USB default sink budget",
+      "statement": "Total board current draw from VBUS shall not exceed 500 mA, sized for ESP32-WROOM-32 Wi-Fi TX peaks.",
+      "unit": "mA",
+      "value": 500
+    },
+    {
+      "category": "power",
+      "id": "PWR-004",
+      "source": "pin table: J1.1 VBUS unconnected, +3V3 net has no driver",
+      "statement": "The 3.3 V rail requires a real regulator with a power_out driver plus one bulk capacitor (>=10 uF) and one 100 nF decoupling capacitor per supply pin; +3V3 currently has no source and PWR_FLAG symbols must be attached to VBUS and +3V3.",
+      "unit": "uF",
+      "value": 10
+    },
+    {
+      "category": "power",
+      "id": "PWR-005",
+      "source": "nets: GND includes U2.5 ADD0 in error",
+      "statement": "GND is a single common return net tying J1.4, U1.2, U2.2 and the regulator ground; U2.5 (ADD0) shall not be used as a ground connection.",
+      "unit": "V",
+      "value": 0
+    },
+    {
+      "category": "interface",
+      "id": "IF-001",
+      "source": "request: monitor temperature over I2C",
+      "statement": "One I2C bus at 3.3 V logic connects U1.GPIO21 (SDA) and U1.GPIO22 (SCL) to U2.SDA/U2.SCL, carrying exactly one sensor device (TMP102).",
+      "unit": "device",
+      "value": 1
+    },
+    {
+      "category": "interface",
+      "id": "IF-002",
+      "source": "TMP102 fast-mode capability",
+      "statement": "I2C bus runs at 400 kHz maximum (fast mode) with 4.7 kOhm pull-up resistors on SDA and SCL to the 3.3 V rail.",
+      "unit": "kHz",
+      "value": 400
+    },
+    {
+      "category": "interface",
+      "id": "IF-003",
+      "source": "pin table: U2.5 ADD0 on GND net",
+      "statement": "TMP102 ADD0 is tied to a defined logic level via a dedicated net to select I2C address 0x48, not left on GND by accident.",
+      "unit": "address",
+      "value": "0x48"
+    },
+    {
+      "category": "interface",
+      "id": "IF-004",
+      "source": "conflict: request says USB-C, pin table shows USB_B_Micro",
+      "statement": "Connector J1 is currently Connector:USB_B_Micro, which conflicts with the USB-C requirement; J1 shall be replaced with a USB-C receptacle including 5.1 kOhm CC1/CC2 pull-down resistors at 5 V VBUS.",
+      "unit": "kOhm",
+      "value": 5.1
+    },
+    {
+      "category": "interface",
+      "id": "IF-005",
+      "source": "nets USB_D+, USB_D-",
+      "statement": "USB data pair (USB_D+/USB_D-) is routed as a 90 ohm differential pair at 3.3 V signalling between J1 and U1.",
+      "unit": "ohm",
+      "value": 90
+    },
+    {
+      "category": "interface",
+      "id": "IF-006",
+      "source": "nets: +3V3 includes U1.8 EN directly",
+      "statement": "U1.EN is driven through a reset RC network (10 kOhm pull-up to 3.3 V plus 100 nF to GND) instead of being tied directly to +3V3.",
+      "unit": "kOhm",
+      "value": 10
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-001",
+      "source": "board outline 35,35 to 145,100",
+      "statement": "Board outline is fixed at 110 mm wide (X from 35 to 145 mm).",
+      "unit": "mm",
+      "value": 110
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-002",
+      "source": "board outline 35,35 to 145,100",
+      "statement": "Board outline is fixed at 65 mm high (Y from 35 to 100 mm).",
+      "unit": "mm",
+      "value": 65
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-003",
+      "source": "request: stay within a two-layer board; manufacturer_profile generic_two_layer",
+      "statement": "Stackup is limited to 2 copper layers per the generic_two_layer manufacturer profile, with a layer-2 ground return under the I2C and USB nets, >=0.2 mm copper-to-edge clearance and no courtyard overlap.",
+      "unit": "layers",
+      "value": 2
+    },
+    {
+      "category": "test",
+      "id": "TEST-001",
+      "source": "ERC baseline",
+      "statement": "ERC reports zero errors and zero warnings (baseline 10 errors / 8 warnings).",
+      "unit": "violations",
+      "value": 0
+    },
+    {
+      "category": "test",
+      "id": "TEST-002",
+      "source": "DRC baseline",
+      "statement": "DRC reports zero errors and zero warnings against the generic_two_layer profile (baseline 6 errors / 14 warnings).",
+      "unit": "violations",
+      "value": 0
+    },
+    {
+      "category": "test",
+      "id": "TEST-003",
+      "source": "PWR-002, PWR-003",
+      "statement": "Measured 3.3 V rail is within +/-5 % of nominal with USB-C VBUS at 5 V under full 500 mA load.",
+      "unit": "%",
+      "value": 5
+    },
+    {
+      "category": "test",
+      "id": "TEST-004",
+      "source": "IF-001, IF-003",
+      "statement": "TMP102 is readable at I2C address 0x48 and returns temperature within +/-2 degC of a reference over the operating range.",
+      "unit": "degC",
+      "value": 2
+    }
+  ]
+}

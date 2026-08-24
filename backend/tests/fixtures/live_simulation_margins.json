@@ -1,0 +1,93 @@
+{
+  "assumptions": [
+    "USB VBUS spans 4.75-5.25 V as used by the provided component-selection rationale.",
+    "Both I2C lines may be low simultaneously for conservative rail-current and resistor checks.",
+    "The ESP32 500 mA RF-TX figure and TMP102 10 uA figure are used as supplied; other 3.3 V loads are absent.",
+    "The 600 mA continuous figure is treated as the rail-design requirement even though the closed-form listed load is about 501.45 mA.",
+    "No LED or divider network is present in the declared design, so no LED or divider tests are reported.",
+    "NCP1117 stability with the selected ceramic output capacitor cannot be verified from the supplied data because ESR/stability limits are not provided.",
+    "USB source-current entitlement and LDO thermal safety remain unverified and must not be inferred from connector or electrical current ratings alone.",
+    "This is closed-form steady-state analysis only; startup, transient, RF-burst droop, PCB copper temperature rise, and SPICE behavior are excluded."
+  ],
+  "models": [
+    "VOUT margin: compare NCP1117 limits 3.255-3.345 V with load supply ranges and the +/-5% rail window.",
+    "Dropout margin = VIN(min) - VOUT(max) - VDROP(max).",
+    "Pull-up current = VRAIL(max) / RPULLUP(min).",
+    "Rail load = IESP32(peak) + ITMP102(typ) + 2*IPULLUP(max).",
+    "Current margin percent = (Iavailable - Irequired) / Irequired * 100.",
+    "Resistor power-equivalent current = sqrt(Prated / Rmin).",
+    "LDO dissipation = (VIN(max) - VOUT) * ILOAD."
+  ],
+  "tests": [
+    {
+      "expected": {},
+      "measured_v": "3.255-3.345 V",
+      "name": "+3V3 regulator output range",
+      "source": "onsemi NCP1117 datasheet output-voltage limits; ESP32-WROOM-32E and TMP102 supply limits in provided component specifications",
+      "status": "PASS"
+    },
+    {
+      "expected": {},
+      "measured_v": "0.205 V margin (4.75-3.345-1.20)",
+      "name": "LDO worst-case dropout margin",
+      "source": "Provided 4.75 V minimum VBUS assumption, NCP1117 3.345 V maximum output and 1.2 V maximum dropout; stated requirement is >=0.250 V margin",
+      "status": "FAIL"
+    },
+    {
+      "available_ma": 600.0,
+      "margin_percent": 19.65,
+      "name": "+3V3 load estimate against 600 mA rail budget",
+      "required_ma": 501.45,
+      "source": "ESP32 500 mA peak, TMP102 0.010 mA typical, and two worst-case 4.653 kOhm pull-ups at 3.345 V from provided specifications",
+      "status": "PASS"
+    },
+    {
+      "available_ma": 1000.0,
+      "margin_percent": 66.67,
+      "name": "NCP1117 output-current rating",
+      "required_ma": 600.0,
+      "source": "Provided 600 mA continuous requirement and NCP1117 1 A output-current specification",
+      "status": "PASS"
+    },
+    {
+      "available_ma": 5000.0,
+      "margin_percent": 733.33,
+      "name": "USB-C connector VBUS current rating",
+      "required_ma": 600.0,
+      "source": "Provided GCT USB4105 5 A VBUS rating and 600 mA continuous requirement",
+      "status": "PASS"
+    },
+    {
+      "available_ma": 3.0,
+      "margin_percent": 317.25,
+      "name": "I2C pull-up low-state sink current per line",
+      "required_ma": 0.719,
+      "source": "Worst-case 3.345 V rail and 4.653 kOhm pull-up; provided I2C 3 mA sink criterion",
+      "status": "PASS"
+    },
+    {
+      "available_ma": 4.45,
+      "margin_percent": 327.88,
+      "name": "CC pull-down resistor power rating as equivalent current",
+      "required_ma": 1.04,
+      "source": "Worst-case 5.25 V across 5.049 kOhm and 0.1 W RC0603 rating from provided specifications",
+      "status": "PASS"
+    },
+    {
+      "available_ma": "unspecified",
+      "margin_percent": "not computable",
+      "name": "USB source-current availability",
+      "required_ma": 600.0,
+      "source": "Connector rating does not establish the attached USB source current advertisement or negotiated allowance",
+      "status": "NOT_VERIFIED"
+    },
+    {
+      "available_ma": "not established thermally",
+      "margin_percent": "not computable",
+      "name": "LDO thermal current capability on two-layer PCB",
+      "required_ma": 600.0,
+      "source": "Worst-case dissipation is 1.17 W at 5.25 V input, 3.3 V output, and 600 mA; copper area, thermal resistance, ambient, and junction limit were not supplied",
+      "status": "NOT_VERIFIED"
+    }
+  ]
+}
