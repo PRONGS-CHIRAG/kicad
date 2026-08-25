@@ -186,6 +186,30 @@ def footprint_extent(footprint: list) -> tuple[float, float, float, float] | Non
     return _footprint_extent(footprint)
 
 
+KICAD_DEFAULT_EDGE_CLEARANCE_MM = 0.5
+"""What KiCAD's DRC enforces when a board sets no copper-to-edge rule of its own."""
+
+
+def copper_edge_clearance(doc: list) -> float:
+    """The copper-to-edge clearance this board's own DRC will hold it to.
+
+    A manufacturer profile says what the fab can make; the board says what
+    kicad-cli will actually reject. They are not the same number, and a stage
+    told only the profile's 0.3 mm places copper at 0.3 mm and fails DRC at 0.5
+    forever - the placement satisfies the figure it was given and the run never
+    converges.
+    """
+    setup = sexpr.find(doc, "setup")
+    rules = sexpr.find(setup, "rules") if setup is not None else None
+    declared = sexpr.find(rules, "min_copper_edge_clearance") if rules is not None else None
+    if declared is None:
+        return KICAD_DEFAULT_EDGE_CLEARANCE_MM
+    try:
+        return sexpr.number(declared)
+    except (IndexError, TypeError, ValueError):
+        return KICAD_DEFAULT_EDGE_CLEARANCE_MM
+
+
 def board_outline(doc: list) -> tuple[float, float, float, float]:
     xs: list[float] = []
     ys: list[float] = []

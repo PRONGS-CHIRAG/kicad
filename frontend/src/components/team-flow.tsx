@@ -4,7 +4,8 @@ import {
   AGENT_BY_ID,
   PARALLEL_PAIR,
   StagePhase,
-  TEAM_STAGE_IDS,
+  CANONICAL_STAGE_IDS,
+  REPAIR_STAGE_ID,
   TeamFlow,
   TeamStageId,
 } from "@/lib/team";
@@ -38,15 +39,17 @@ export function TeamFlowRail({
   onSelect,
 }: {
   flow: TeamFlow;
-  status: "running" | "completed" | "failed";
+  /** A run parked for an answer is still mid-flight, so it reads as running here. */
+  status: "running" | "completed" | "failed" | "awaiting_human";
   parallel: boolean;
   /** How many times a human answered and handed this run back. */
   resumed: number;
   selected: TeamStageId | null;
   onSelect: (stage: TeamStageId) => void;
 }) {
-  const sequence = TEAM_STAGE_IDS.filter((id) => !PARALLEL_PAIR.includes(id));
-  const done = TEAM_STAGE_IDS.filter((id) => flow.stages[id].phase === "passed").length;
+  const sequence = CANONICAL_STAGE_IDS.filter((id) => !PARALLEL_PAIR.includes(id));
+  const done = CANONICAL_STAGE_IDS.filter((id) => flow.stages[id].phase === "passed").length;
+  const repair = flow.stages[REPAIR_STAGE_ID];
   const trips = Object.values(flow.returnTrips).reduce((total, count) => total + (count ?? 0), 0);
 
   return (
@@ -55,9 +58,14 @@ export function TeamFlowRail({
       title="The run, stage by stage"
       aside={
         <div className="flex flex-wrap items-center justify-end gap-1.5">
-          <Chip tone={done === TEAM_STAGE_IDS.length ? "wire" : "neutral"}>
-            {done}/{TEAM_STAGE_IDS.length} gates passed
+          <Chip tone={done === CANONICAL_STAGE_IDS.length ? "wire" : "neutral"}>
+            {done}/{CANONICAL_STAGE_IDS.length} gates passed
           </Chip>
+          {flow.repaired.length > 0 && (
+            <Chip tone="copper">
+              {flow.repaired.length} {flow.repaired.length === 1 ? "repair" : "repairs"}
+            </Chip>
+          )}
           {trips > 0 && (
             <Chip tone="brick">
               {trips} return {trips === 1 ? "trip" : "trips"}
@@ -68,12 +76,12 @@ export function TeamFlowRail({
     >
       <ol className="min-w-0">
         {sequence.map((id) => {
-          const forkHere = parallel && TEAM_STAGE_IDS[TEAM_STAGE_IDS.indexOf(id) + 1] === "pcb_layout";
+          const forkHere = parallel && CANONICAL_STAGE_IDS[CANONICAL_STAGE_IDS.indexOf(id) + 1] === "pcb_layout";
           return (
             <li key={id} className="min-w-0">
               <StageRow
                 stage={id}
-                number={TEAM_STAGE_IDS.indexOf(id) + 1}
+                number={CANONICAL_STAGE_IDS.indexOf(id) + 1}
                 flow={flow}
                 selected={selected === id}
                 onSelect={onSelect}
@@ -90,7 +98,7 @@ export function TeamFlowRail({
             <li key={id} className="min-w-0">
               <StageRow
                 stage={id}
-                number={TEAM_STAGE_IDS.indexOf(id) + 1}
+                number={CANONICAL_STAGE_IDS.indexOf(id) + 1}
                 flow={flow}
                 selected={selected === id}
                 onSelect={onSelect}
@@ -100,6 +108,27 @@ export function TeamFlowRail({
           ))}
       </ol>
 
+      {repair.attempts.length > 0 && (
+        <div className="mt-3 min-w-0 border-t border-rule pt-3">
+          <StageRow
+            stage={REPAIR_STAGE_ID}
+            number={CANONICAL_STAGE_IDS.length + 1}
+            flow={flow}
+            selected={selected === REPAIR_STAGE_ID}
+            onSelect={onSelect}
+            lastOfBranch
+          />
+          <p className="mt-1 min-w-0 wrap-any text-[0.75rem] leading-snug text-muted">
+            {flow.repaired.length > 0
+              ? `Called in when a gate rejected ${humanList(flow.repaired)}. It was handed that
+                 stage's own document and the findings against it, and the correction went through
+                 the same gate before the run continued.`
+              : `Called in when a gate rejected a stage. Its correction did not clear the same gate,
+                 so the work went back to the agent that owns the stage.`}
+          </p>
+        </div>
+      )}
+
       {flow.routing && (
         <p className="mt-3 min-w-0 wrap-any border-t border-rule pt-3 text-[0.75rem] leading-snug text-copper">
           A gate rejected its stage. The orchestrator is picking which agent owns the fix from the finding
@@ -107,7 +136,9 @@ export function TeamFlowRail({
         </p>
       )}
 
-      {status === "running" && !flow.routing && flow.inFlight.length === 0 && (
+      {(status === "running" || status === "awaiting_human") &&
+        !flow.routing &&
+        flow.inFlight.length === 0 && (
         <p className="mt-3 min-w-0 wrap-any border-t border-rule pt-3 text-[0.75rem] leading-snug text-muted">
           Waiting on the first agent to report.
         </p>
@@ -153,7 +184,7 @@ function ParallelGroup({
             <StageRow
               key={id}
               stage={id}
-              number={TEAM_STAGE_IDS.indexOf(id) + 1}
+              number={CANONICAL_STAGE_IDS.indexOf(id) + 1}
               flow={flow}
               selected={selected === id}
               onSelect={onSelect}
@@ -190,7 +221,7 @@ function StageRow({
   const errors = attempt?.gateFindings.filter((finding) => finding.severity === "error").length ?? 0;
   const gateResult = attempt?.gate?.result ?? null;
   const live = flow.inFlight.includes(stage);
-  const last = number === TEAM_STAGE_IDS.length;
+  const last = number === CANONICAL_STAGE_IDS.length;
 
   return (
     <button
@@ -258,6 +289,13 @@ function StageRow({
       </span>
     </button>
   );
+}
+
+/** "architecture", "architecture and components", "a, b and c". */
+function humanList(ids: readonly string[]): string {
+  const names = ids.map((id) => AGENT_BY_ID[id as TeamStageId].name);
+  if (names.length <= 1) return names[0] ?? "";
+  return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
 
 /** A solder junction on the wire: hollow until the stage has cleared its gate. */

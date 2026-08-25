@@ -156,9 +156,47 @@ def build_architecture_prompt(
             "individual wires.\n"
             "Assign every requirement to a block: each requirement ID in the requirements "
             "document must appear in at least one block's requirement_ids, and every ID you "
-            "write must exist in that document. Connections may only name blocks you declared."
+            "write must exist in that document. Connections may only name blocks you "
+            "declared, and a block that declares required_inputs or required_outputs must "
+            "appear in at least one connection.\n"
+            "Give input_voltage and output_voltage as a number with a unit (\"3.3 V\", not "
+            "\"regulated logic rail\"), so they can be compared. Never drive a higher "
+            "voltage into a lower-voltage input."
         ),
         self_contained=True,
+    )
+
+
+def _render_symbol_constraint(context: DesignContext) -> str:
+    """Say out loud that this pipeline cannot change a schematic symbol.
+
+    It cannot: the schematic stage has three intents and all three wire pins
+    that already exist. The gate has always enforced that, but nothing told the
+    component engineer, so a run that needed a different connector was rejected
+    once and then "fixed" by keeping the old symbol next to the new part's
+    footprint - a document that passes the gate and describes a board nobody
+    could build. Saying the constraint up front is what makes the gate
+    answerable on the first attempt.
+    """
+    if not context.components:
+        return ""
+    listed = "\n".join(
+        f"  - {component.reference} is {component.lib_id} with {len(component.pins)} pins"
+        for component in context.components
+        if not component.reference.startswith("#")
+    )
+    return (
+        "This pipeline can wire pins that already exist; it cannot add a symbol to the "
+        "schematic or change one. The schematic already has:\n"
+        f"{listed}\n"
+        "Select a part for each of those reference designators. Symbol must stay exactly "
+        "the lib_id shown, and the footprint you name must belong to that same symbol - do "
+        "not pair a retained symbol with a different part's footprint in order to fit a "
+        "part the schematic cannot hold. A part the design needs but the schematic has no "
+        "symbol for may still be listed, as long as its reference_group says plainly that "
+        "it is proposed and not in the schematic, so the stages after you do not try to "
+        "wire a pin that does not exist. Reporting that limit is this stage doing its job; "
+        "papering over it is not.\n"
     )
 
 
@@ -173,7 +211,11 @@ def build_components_prompt(
         inputs,
         (
             "Select concrete parts for the declared blocks. Do not invent numeric "
-            "specifications; identify sources."
+            "specifications; identify sources.\n"
+            f"{_render_symbol_constraint(context)}"
+            "Give symbol and footprint as Library:Name. Every numeric specification you "
+            "list needs a source and a page or section; leave the list out rather than "
+            "filling those in from memory."
         ),
     )
 
@@ -187,7 +229,14 @@ def build_schematic_design_prompt(
         context,
         task,
         inputs,
-        "Propose only supported schematic connection intents and report assumptions.",
+        (
+            "Propose only supported schematic connection intents and report assumptions.\n"
+            "Every pin you name must appear in the pin table above, written exactly as "
+            "reference.number - there is no intent that adds a symbol, so a pin that is not "
+            "in that table cannot be created and the intent naming it will be rejected. If "
+            "the design needs a part that is not in the table, leave it out of the intents "
+            "and record it in assumptions."
+        ),
     )
 
 
@@ -228,8 +277,15 @@ def build_verification_prompt(
         task,
         inputs,
         (
-            "Independently report requirement and ERC/DRC findings. Every finding needs "
-            "rule, actual, expected, object, evidence, and severity."
+            "Independently report requirement and ERC/DRC findings.\n"
+            "A finding carries two separate things and both are required. `evidence_source` "
+            "names the tool or document it came from, as a string. `evidence` is an object "
+            "recording what that source actually showed - for instance "
+            '{"tool": "kicad-cli ERC", "net": "VBUS", "observed": "two power outputs"} - and '
+            "it may not be left empty; an empty object is a finding with nothing behind it. "
+            "Fill `rule`, `actual`, `expected`, `kicad_object` and `severity` for every "
+            "finding too, and give requirement_outcomes one entry per requirement ID in the "
+            "requirements document so the totals can be traced."
         ),
         read_only=True,
         self_contained=True,
@@ -247,9 +303,90 @@ def build_manufacturing_prompt(
         inputs,
         (
             "Check the named manufacturer profile and report manufacturability findings "
-            "without claiming unsupported readiness."
+            "without claiming unsupported readiness.\n"
+            "The project specification above carries the whole profile. Copy its "
+            "provenance verbatim into profile_provenance, and report profile_rules as "
+            "exactly these five keys taken from it: minimum_trace_width_mm, "
+            "minimum_spacing_mm, minimum_drill_mm, copper_to_edge_clearance_mm, "
+            "supported_layer_count."
         ),
         read_only=True,
+        self_contained=True,
+    )
+
+
+def _render_release_manifest(task: AgentTask) -> str:
+    """The release files and their hash, because a hash is not something to guess.
+
+    The gate recomputes this from the files themselves; quoting it here is what
+    makes the check answerable rather than a lottery.
+    """
+    manifest = task.release_manifest
+    if not manifest:
+        return ""
+    files = manifest.get("included_files") or []
+    listed = "\n".join(f"  - {path}" for path in files) if isinstance(files, list) else ""
+    return (
+        "The release package is exactly these files, as they are on disk:\n"
+        f"{listed}\n"
+        f"Report included_files as that list and release_hash as {manifest.get('release_hash')!r}.\n"
+    )
+
+
+def build_repair_prompt(
+    project: ProjectSpec, context: DesignContext, task: AgentTask, inputs: Mapping[str, object]
+) -> str:
+    """Correct one rejected document rather than write it again from nothing.
+
+    The stage that owns the work has already answered, and a deterministic gate
+    has already said what is wrong with the answer. Re-running the stage throws
+    that answer away and pays for the whole judgement again; this prompt hands
+    the document back with the findings attached and asks for the same document,
+    corrected. The repaired document is then put through the very same gate - a
+    repair is a proposal like any other, not a bypass.
+    """
+    rejected = json.dumps(task.rejected_output or {}, default=str, indent=1, sort_keys=True)
+    guidance = (task.human_guidance or "").strip()
+    if guidance:
+        # The automatic repair has already been tried and the gate rejected it
+        # again, so a person was asked what to do. Their instruction is the
+        # authority here, and the "change only what the findings require" rule is
+        # lifted for it on purpose: a human fix is almost always a thing no
+        # finding names, and the standing rule would tell this stage to ignore
+        # exactly the answer it was just given.
+        scope = (
+            "A person was asked what to do and said:\n"
+            f"{guidance}\n"
+            "Follow that instruction. It outranks the findings where the two disagree, and it "
+            "may require changes no finding named - make those. Everything the instruction and "
+            "the findings both leave alone stays exactly as it is, identifiers and values "
+            "included, because later stages already reference them. Still do not delete content "
+            "to make a finding go away: a requirement, block or part that belongs in the design "
+            "belongs in it after the repair. If the instruction cannot be carried out in this "
+            "document, say so in the document rather than inventing a way around it.\n"
+        )
+    else:
+        scope = (
+            "Change only what the findings require. Keep every part of the document that was "
+            "not named by a finding exactly as it is - identifiers, values and wording alike, "
+            "because later stages already reference them. Do not add new scope, and do not "
+            "delete content to make a finding go away: a requirement, block or part that "
+            "belongs in the design still belongs in it after the repair.\n"
+        )
+    return _prompt(
+        "design repair engineer",
+        project,
+        context,
+        task,
+        inputs,
+        (
+            f"A deterministic gate rejected the {task.assigned_agent} stage. Return the same "
+            "document, corrected.\n"
+            f"{scope}"
+            f"{_render_release_manifest(task)}"
+            "The rejected document was:\n"
+            f"{rejected}"
+        ),
         self_contained=True,
     )
 
@@ -263,6 +400,13 @@ def build_qa_release_prompt(
         context,
         task,
         inputs,
-        "Apply the final release gate and report the package manifest. Never silently fix design errors.",
+        (
+            "Apply the final release gate and report the package manifest. Never silently "
+            "fix design errors.\n"
+            f"{_render_release_manifest(task)}"
+            "Report every checklist item honestly. An item that is not met is reported as "
+            "false and the release_status is needs_human_review; only a release whose every "
+            "item is true may be approved. Do not mark an item true to pass the gate."
+        ),
         read_only=True,
     )

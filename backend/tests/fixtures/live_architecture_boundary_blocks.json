@@ -1,0 +1,289 @@
+{
+  "blocks": [
+    {
+      "id": "usb_c_power_input",
+      "input_voltage": "5 V",
+      "output_voltage": "5 V",
+      "power_available_ma": 500.0,
+      "power_required_ma": 500.0,
+      "required_inputs": [
+        "USB-C VBUS 5 V from host"
+      ],
+      "required_outputs": [
+        "VBUS 5 V",
+        "GND"
+      ],
+      "requirement_ids": [
+        "PWR-001",
+        "IF-005",
+        "MECH-004"
+      ],
+      "type": "USB-C receptacle 5 V power input with 5.1 kOhm CC1/CC2 sink pulldowns"
+    },
+    {
+      "id": "usb_c_data_interface",
+      "input_voltage": "3.3 V",
+      "output_voltage": "3.3 V",
+      "power_available_ma": 0.0,
+      "power_required_ma": 0.0,
+      "required_inputs": [
+        "USB D+/D- differential pair"
+      ],
+      "required_outputs": [
+        "USB_D+ / USB_D- to MCU"
+      ],
+      "requirement_ids": [
+        "IF-005"
+      ],
+      "type": "USB 2.0 full-speed D+/D- data interface from USB-C receptacle to MCU"
+    },
+    {
+      "id": "vbus_bulk_decoupling",
+      "input_voltage": "5 V",
+      "output_voltage": "5 V",
+      "power_available_ma": 500.0,
+      "power_required_ma": 500.0,
+      "required_inputs": [
+        "VBUS 5 V"
+      ],
+      "required_outputs": [
+        "VBUS 5 V, low-impedance"
+      ],
+      "requirement_ids": [
+        "PWR-004"
+      ],
+      "type": "10 uF VBUS bulk decoupling on the 5 V input at the regulator"
+    },
+    {
+      "id": "ldo_regulator_3v3",
+      "input_voltage": "5 V",
+      "output_voltage": "3.3 V",
+      "power_available_ma": 500.0,
+      "power_required_ma": 500.0,
+      "required_inputs": [
+        "VBUS 5 V",
+        "GND"
+      ],
+      "required_outputs": [
+        "+3V3 rail, >=500 mA"
+      ],
+      "requirement_ids": [
+        "PWR-002",
+        "PWR-003",
+        "TEST-003"
+      ],
+      "type": "Linear regulator converting VBUS 5 V to +3V3 rail"
+    },
+    {
+      "id": "rail_3v3_decoupling",
+      "input_voltage": "3.3 V",
+      "output_voltage": "3.3 V",
+      "power_available_ma": 500.0,
+      "power_required_ma": 500.0,
+      "required_inputs": [
+        "+3V3 from regulator"
+      ],
+      "required_outputs": [
+        "+3V3 to MCU, sensor, pull-ups, EN network"
+      ],
+      "requirement_ids": [
+        "PWR-004"
+      ],
+      "type": "+3V3 rail distribution with 22 uF bulk and 100 nF per-supply-pin decoupling"
+    },
+    {
+      "id": "power_flag_domain",
+      "input_voltage": "3.3 V",
+      "output_voltage": "3.3 V",
+      "power_available_ma": 500.0,
+      "power_required_ma": 0.0,
+      "required_inputs": [
+        "+3V3 rail",
+        "GND"
+      ],
+      "required_outputs": [
+        "Driven +3V3 and GND nets"
+      ],
+      "requirement_ids": [
+        "PWR-006"
+      ],
+      "type": "PWR_FLAG drivers on +3V3 and GND nets for ERC power-pin driving"
+    },
+    {
+      "id": "mcu_esp32",
+      "input_voltage": "3.3 V",
+      "output_voltage": "3.3 V",
+      "power_available_ma": 0.0,
+      "power_required_ma": 450.0,
+      "required_inputs": [
+        "+3V3",
+        "GND",
+        "EN release",
+        "USB D+/D-"
+      ],
+      "required_outputs": [
+        "I2C_SDA",
+        "I2C_SCL"
+      ],
+      "requirement_ids": [
+        "IF-001",
+        "PWR-003"
+      ],
+      "type": "ESP32-WROOM-32 controller (I2C master, USB data endpoint)"
+    },
+    {
+      "id": "en_reset_network",
+      "input_voltage": "3.3 V",
+      "output_voltage": "3.3 V",
+      "power_available_ma": 0.0,
+      "power_required_ma": 1.0,
+      "required_inputs": [
+        "+3V3"
+      ],
+      "required_outputs": [
+        "EN release signal, 3.3 V"
+      ],
+      "requirement_ids": [
+        "PWR-005"
+      ],
+      "type": "10 kOhm pull-up to +3V3 with 100 nF to GND for MCU EN reset delay"
+    },
+    {
+      "id": "i2c_pullup_network",
+      "input_voltage": "3.3 V",
+      "output_voltage": "3.3 V",
+      "power_available_ma": 0.0,
+      "power_required_ma": 2.0,
+      "required_inputs": [
+        "+3V3"
+      ],
+      "required_outputs": [
+        "Biased I2C_SDA / I2C_SCL, up to 400 kHz, <400 pF"
+      ],
+      "requirement_ids": [
+        "IF-002",
+        "IF-003"
+      ],
+      "type": "4.7 kOhm pull-ups (R1, R2) to +3V3 on I2C_SDA and I2C_SCL, single bus location"
+    },
+    {
+      "id": "temperature_sensor",
+      "input_voltage": "3.3 V",
+      "output_voltage": "3.3 V",
+      "power_available_ma": 0.0,
+      "power_required_ma": 10.0,
+      "required_inputs": [
+        "+3V3",
+        "GND",
+        "I2C_SDA",
+        "I2C_SCL"
+      ],
+      "required_outputs": [
+        "Temperature data over I2C"
+      ],
+      "requirement_ids": [
+        "IF-001",
+        "IF-004"
+      ],
+      "type": "TMP102 I2C temperature sensor, ADD0 strapped to GND for address 0x48"
+    },
+    {
+      "id": "board_stackup_outline",
+      "input_voltage": null,
+      "output_voltage": null,
+      "power_available_ma": null,
+      "power_required_ma": null,
+      "required_inputs": null,
+      "required_outputs": null,
+      "requirement_ids": [
+        "MECH-001",
+        "MECH-002",
+        "MECH-003"
+      ],
+      "type": "Two-layer stackup and fixed outline: 110 x 65 mm, continuous GND pour on layer 2, generic_two_layer DFM limits"
+    },
+    {
+      "id": "verification_plan",
+      "input_voltage": null,
+      "output_voltage": null,
+      "power_available_ma": null,
+      "power_required_ma": null,
+      "required_inputs": null,
+      "required_outputs": null,
+      "requirement_ids": [
+        "TEST-001",
+        "TEST-002",
+        "TEST-004"
+      ],
+      "type": "ERC/DRC and bring-up verification plan with baseline disposition"
+    }
+  ],
+  "connections": [
+    {
+      "from_block": "usb_c_power_input",
+      "signal": "VBUS 5 V power",
+      "to_block": "vbus_bulk_decoupling"
+    },
+    {
+      "from_block": "vbus_bulk_decoupling",
+      "signal": "VBUS 5 V power, decoupled",
+      "to_block": "ldo_regulator_3v3"
+    },
+    {
+      "from_block": "ldo_regulator_3v3",
+      "signal": "+3V3 rail power",
+      "to_block": "rail_3v3_decoupling"
+    },
+    {
+      "from_block": "rail_3v3_decoupling",
+      "signal": "+3V3 rail power",
+      "to_block": "mcu_esp32"
+    },
+    {
+      "from_block": "rail_3v3_decoupling",
+      "signal": "+3V3 rail power",
+      "to_block": "temperature_sensor"
+    },
+    {
+      "from_block": "rail_3v3_decoupling",
+      "signal": "+3V3 rail power",
+      "to_block": "i2c_pullup_network"
+    },
+    {
+      "from_block": "rail_3v3_decoupling",
+      "signal": "+3V3 rail power",
+      "to_block": "en_reset_network"
+    },
+    {
+      "from_block": "power_flag_domain",
+      "signal": "PWR_FLAG driven +3V3 / GND nets",
+      "to_block": "rail_3v3_decoupling"
+    },
+    {
+      "from_block": "en_reset_network",
+      "signal": "EN reset-release, 3.3 V logic",
+      "to_block": "mcu_esp32"
+    },
+    {
+      "from_block": "usb_c_data_interface",
+      "signal": "USB 2.0 full-speed D+/D-, 3.3 V logic",
+      "to_block": "mcu_esp32"
+    },
+    {
+      "from_block": "i2c_pullup_network",
+      "signal": "I2C_SDA / I2C_SCL bias, 3.3 V logic",
+      "to_block": "mcu_esp32"
+    },
+    {
+      "from_block": "mcu_esp32",
+      "signal": "I2C bus (SDA/SCL), 3.3 V logic, <=400 kHz",
+      "to_block": "temperature_sensor"
+    }
+  ],
+  "unresolved_questions": [
+    "Request specifies USB-C but the pin table shows Connector:USB_B_Micro (J1); IF-005 assumes replacement with a USB-C receptacle and needs project_manager confirmation before schematic freeze.",
+    "TMP102 ADD0 strap assumed to GND for address 0x48 (IF-004); confirm no downstream address conflict.",
+    "Regulator part not yet selected: needs >=500 mA at 3.3 V from 5 V input with acceptable thermal dissipation (~0.85 W) inside the fixed 110 x 65 mm two-layer outline.",
+    "manufacturer_profile values are repository-chosen, not vendor-confirmed; re-verify DFM limits with the real fabricator before release."
+  ]
+}

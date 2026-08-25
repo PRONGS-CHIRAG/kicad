@@ -69,6 +69,23 @@ class Settings(BaseSettings):
     team_stage_acu: int = Field(default=3, ge=1)
     team_manufacturer_profile: str = "generic_two_layer"
     team_parallel: bool = True
+    team_repair: bool = Field(
+        default=True,
+        description=(
+            "Let the repair stage correct a rejected document before the run is handed back to "
+            "the agent that owns it. The repaired document goes through the same gate."
+        ),
+    )
+    team_max_repairs_per_stage: int = Field(default=1, ge=0)
+    team_human_timeout_seconds: int = Field(
+        default=900,
+        ge=0,
+        description=(
+            "How long a run waits for a person to answer when the gate has beaten the repair "
+            "stage. The wait holds a worker thread, so it is bounded: on expiry the run carries "
+            "on exactly as it would with nobody watching, and ends on needs_human_review."
+        ),
+    )
 
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
     log_level: str = "INFO"

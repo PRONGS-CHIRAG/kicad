@@ -13,7 +13,7 @@ from ..kicad.reader import read_project
 from .evidence import EvidenceStore
 from .orchestrator import OrchestratorOptions, TeamOrchestrator
 from .runner import DevinAgentRunner, StubAgentRunner
-from .schemas import DesignContext, ProjectSpec, TeamRunReport
+from .schemas import DesignContext, InterventionRequest, ProjectSpec, TeamRunReport
 from .schematic import apply_schematic_intents
 
 
@@ -61,6 +61,25 @@ def run_cli(project_value: str, request: str, runner_name: str | None = None) ->
         "stub": "offline deterministic; no Devin sessions",
     }[runner_name]
     print(f"RUNNER: {runner_name.upper()} ({runner_detail})")
+
+    def ask_human(question: InterventionRequest) -> str | None:
+        """Put the problem to whoever is at the terminal, in a few lines.
+
+        Short on purpose: this is read by someone deciding what to do in one
+        sitting. The full findings are already on the gate record. An empty
+        answer, or no terminal to ask on, leaves the run exactly as it was.
+        """
+        print(f"\n--- {question.stage_name} needs a decision ---")
+        print(question.problem)
+        for item in question.findings:
+            print(f"  - {item}")
+        print("Tell the repair engineer what to do, or press Enter to let the run carry on.")
+        try:
+            return input("> ").strip() or None
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return None
+
     report = TeamOrchestrator(
         runner,
         run_id=run_id,
@@ -73,6 +92,7 @@ def run_cli(project_value: str, request: str, runner_name: str | None = None) ->
             drc_baseline=drc,
             kicad_cli=cli,
             schematic_applier=apply_schematic_intents,
+            intervention=ask_human,
         ),
     ).run(project)
     _print_report(report)

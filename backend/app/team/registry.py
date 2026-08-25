@@ -156,7 +156,10 @@ AGENTS: tuple[AgentSpec, ...] = (
         real_world_role="Circuit simulation engineer",
         output_model=SimulationReport,
         prompt_builder=prompts.build_simulation_prompt,
-        reads=("schematic_design", "components"),
+        # Requirements too: the gate asks every test to say where its numbers
+        # came from and accepts a requirement ID, which a stage that never sees
+        # the requirements cannot quote.
+        reads=("requirements", "schematic_design", "components"),
         mutates_design=False,
         read_only=True,
         fallback=fallbacks.simulation_fallback,
@@ -168,7 +171,9 @@ AGENTS: tuple[AgentSpec, ...] = (
         real_world_role="Hardware verification engineer",
         output_model=VerificationReport,
         prompt_builder=prompts.build_verification_prompt,
-        reads=("schematic_design", "pcb_layout", "simulation"),
+        # Every finding is keyed by `requirement_id` and the totals are counts of
+        # requirements, so this stage has to be given the requirements it counts.
+        reads=("requirements", "schematic_design", "pcb_layout", "simulation"),
         mutates_design=False,
         read_only=True,
         fallback=None,
@@ -211,9 +216,36 @@ AGENTS: tuple[AgentSpec, ...] = (
 
 AGENT_REGISTRY: dict[str, AgentSpec] = {agent.id: agent for agent in AGENTS}
 
+REPAIR_AGENT_ID = "repair"
+"""The eleventh seat: it owns no stage of its own, it corrects another one's."""
+
 
 def get_agent(agent_id: str) -> AgentSpec:
     return AGENT_REGISTRY[agent_id]
+
+
+def repair_spec(stage: str) -> AgentSpec:
+    """The repair engineer, typed to the stage it is correcting.
+
+    Its output model, its read-only status and the prior outputs it may see are
+    the ones belonging to that stage - a repaired document has to satisfy the
+    same contract and the same gate as the original, or it would be a way around
+    them rather than a fix. Only the role, the prompt and the evidence name are
+    its own, which is what makes it a stage you can see rather than a retry.
+    """
+    target = get_agent(stage)
+    return AgentSpec(
+        id=REPAIR_AGENT_ID,
+        name="Design Repair",
+        real_world_role="Design repair engineer",
+        output_model=target.output_model,
+        prompt_builder=prompts.build_repair_prompt,
+        reads=target.reads,
+        mutates_design=target.mutates_design,
+        read_only=target.read_only,
+        fallback=None,
+        tags=("kicad-mitos", "team", REPAIR_AGENT_ID, stage),
+    )
 
 
 def output_models() -> dict[str, type[BaseModel]]:

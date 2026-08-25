@@ -1,0 +1,335 @@
+{
+  "components": [
+    {
+      "footprint": "Connector_USB:USB_C_Receptacle_GCT_USB4105-GF-A_16P_TopMnt_Horizontal",
+      "manufacturer_part": "GCT USB4105-GF-A",
+      "quantity": 1,
+      "reason": "16-pin USB 2.0-only USB-C receptacle replacing baseline USB_B_Micro J1 (PWR-001). Exposes VBUS, D+/D- (full-speed path to U1.6/U1.7, IF-004) and CC1/CC2 for the 5.1 kOhm sink pull-downs (IF-006). Top-mount horizontal part sits on the board edge (MECH-001) and has a stock KiCad footprint. Resolves the architecture's open question toward the 16-pin USB 2.0 variant since only power and FS data are needed.",
+      "reference_group": "J1",
+      "specifications": [
+        {
+          "maximum": 20.0,
+          "minimum": "-",
+          "page_or_section": "Electrical ratings table",
+          "parameter": "Voltage rating",
+          "source": "GCT USB4105 product drawing/datasheet",
+          "typical": "-",
+          "unit": "V"
+        },
+        {
+          "maximum": 5.0,
+          "minimum": "-",
+          "page_or_section": "Electrical ratings table",
+          "parameter": "VBUS current rating",
+          "source": "GCT USB4105 product drawing/datasheet",
+          "typical": "-",
+          "unit": "A"
+        }
+      ],
+      "symbol": "Connector:USB_B_Micro",
+      "verified_constraints": [
+        "PWR-001: USB-C receptacle providing 5 V VBUS sink input",
+        "IF-004: D+/D- pins available for USB 2.0 full-speed pair",
+        "IF-006: CC1/CC2 pins exposed for 5.1 kOhm pull-downs",
+        "MECH-001: edge-mount receptacle compatible with fixed outline",
+        "MECH-002: through-hole shield tabs + SMT pads routable on 2 layers"
+      ]
+    },
+    {
+      "footprint": "RF_Module:ESP32-WROOM-32E",
+      "manufacturer_part": "Espressif ESP32-WROOM-32E-N4",
+      "quantity": 1,
+      "reason": "Concrete orderable module for the baseline ESP32-WROOM-32 symbol (esp32_mcu block); -32E is the current non-obsolete revision, pin-compatible with the -32. Provides 3.3 V single-rail operation (PWR-002), I2C master on GPIO21/GPIO22 (IF-001), EN pin for the RC power-on reset (IF-005) and PCB antenna requiring the >=10 mm edge keepout (MECH-001). Note: the module has no native USB peripheral; GPIO-based D+/D- connection per IF-004 is carried over as specified, but the architecture's unresolved question about a USB-UART bridge stands.",
+      "reference_group": "U1",
+      "specifications": [
+        {
+          "maximum": 3.6,
+          "minimum": 3.0,
+          "page_or_section": "Electrical characteristics, recommended operating conditions",
+          "parameter": "Supply voltage VDD",
+          "source": "Espressif ESP32-WROOM-32E datasheet",
+          "typical": 3.3,
+          "unit": "V"
+        },
+        {
+          "maximum": "-",
+          "minimum": "-",
+          "page_or_section": "Current consumption characteristics",
+          "parameter": "Peak supply current (RF TX)",
+          "source": "Espressif ESP32-WROOM-32E datasheet",
+          "typical": 500.0,
+          "unit": "mA"
+        },
+        {
+          "maximum": 85.0,
+          "minimum": -40.0,
+          "page_or_section": "Specifications table",
+          "parameter": "Operating temperature",
+          "source": "Espressif ESP32-WROOM-32E datasheet",
+          "typical": 25.0,
+          "unit": "degC"
+        }
+      ],
+      "symbol": "MCU:ESP32-WROOM-32",
+      "verified_constraints": [
+        "PWR-002: 3.0-3.6 V single 3.3 V supply rail",
+        "PWR-003: Wi-Fi TX peak current bounded ~500 mA, within 600 mA budget",
+        "IF-001: I2C master available on GPIO21 (SDA) / GPIO22 (SCL)",
+        "IF-005: EN input suitable for 10 kOhm / 100 nF power-on RC",
+        "MECH-001: PCB antenna region requires copper keepout at board edge"
+      ]
+    },
+    {
+      "footprint": "Package_TO_SOT_SMD:SOT-563",
+      "manufacturer_part": "Texas Instruments TMP102AIDRLR",
+      "quantity": 1,
+      "reason": "Concrete orderable part for the baseline TMP102 symbol (temperature_sensor_tmp102 block). I2C digital temperature sensor operating at 3.3 V (PWR-002), address 0x48 with ADD0 strapped to GND (IF-003), and datasheet accuracy meeting the +/-2 degC acceptance window of TEST-004 over 0-70 degC. SOT-563 package; low self-heating (<0.1 mA) supports the >=15 mm separation constraint.",
+      "reference_group": "U2",
+      "specifications": [
+        {
+          "maximum": 3.6,
+          "minimum": 1.4,
+          "page_or_section": "Recommended operating conditions",
+          "parameter": "Supply voltage",
+          "source": "TI TMP102 datasheet (SBOS397)",
+          "typical": 3.3,
+          "unit": "V"
+        },
+        {
+          "maximum": 2.0,
+          "minimum": "-",
+          "page_or_section": "Electrical characteristics",
+          "parameter": "Temperature accuracy (0 to 65 degC)",
+          "source": "TI TMP102 datasheet (SBOS397)",
+          "typical": 0.5,
+          "unit": "degC"
+        },
+        {
+          "maximum": "-",
+          "minimum": "-",
+          "page_or_section": "Electrical characteristics",
+          "parameter": "Quiescent current (serial bus inactive)",
+          "source": "TI TMP102 datasheet (SBOS397)",
+          "typical": 10.0,
+          "unit": "uA"
+        }
+      ],
+      "symbol": "Sensor:TMP102",
+      "verified_constraints": [
+        "IF-001: I2C slave, supports 100 kHz standard mode at 3.3 V",
+        "IF-003: ADD0 = GND selects slave address 0x48",
+        "TEST-004: rated accuracy within +/-2 degC over 0-70 degC",
+        "PWR-003: supply current ~10 uA, negligible vs 600 mA budget",
+        "Constraint: low dissipation compatible with 15 mm self-heating spacing"
+      ]
+    },
+    {
+      "footprint": "Package_TO_SOT_SMD:SOT-223-3_TabPin2",
+      "manufacturer_part": "onsemi NCP1117ST33T3G",
+      "quantity": 1,
+      "reason": "1 A fixed 3.3 V LDO for the ldo_3v3_regulator block (PWR-002/PWR-003). At worst-case 4.75 V input the 1.45 V headroom exceeds the 1.2 V max dropout at full load, meeting the >=250 mV dropout-margin requirement. SOT-223 chosen over a DFN to resolve the architecture's thermal question: the tab-pin-2 output plus surrounding copper on the top layer over the bottom GND pour dissipates the ~0.85 W worst case (5.25 V - 3.3 V at 500 mA average during Wi-Fi TX) on a 2-layer board without a thermal-via-in-pad DFN. Stable with the specified 10 uF ceramic input/output capacitors per PWR-004.",
+      "reference_group": "U3",
+      "specifications": [
+        {
+          "maximum": 3.345,
+          "minimum": 3.255,
+          "page_or_section": "Electrical characteristics (NCP1117-3.3)",
+          "parameter": "Output voltage",
+          "source": "onsemi NCP1117 datasheet",
+          "typical": 3.3,
+          "unit": "V"
+        },
+        {
+          "maximum": "-",
+          "minimum": 1.0,
+          "page_or_section": "Maximum ratings / electrical characteristics",
+          "parameter": "Output current",
+          "source": "onsemi NCP1117 datasheet",
+          "typical": "-",
+          "unit": "A"
+        },
+        {
+          "maximum": 1.2,
+          "minimum": "-",
+          "page_or_section": "Electrical characteristics",
+          "parameter": "Dropout voltage at 800 mA",
+          "source": "onsemi NCP1117 datasheet",
+          "typical": 1.1,
+          "unit": "V"
+        },
+        {
+          "maximum": 20.0,
+          "minimum": "-",
+          "page_or_section": "Maximum ratings",
+          "parameter": "Input voltage (operating)",
+          "source": "onsemi NCP1117 datasheet",
+          "typical": 5.0,
+          "unit": "V"
+        }
+      ],
+      "symbol": "Regulator_Linear:NCP1117-3.3_SOT223",
+      "verified_constraints": [
+        "PWR-002: fixed 3.3 V output regulating VBUS to the +3V3 rail",
+        "PWR-003: 1 A output capability >= 600 mA continuous requirement",
+        "PWR-003: dropout <= 1.2 V at load < 1.45 V available headroom at 4.75 V in",
+        "TEST-003: +/-1.35% output tolerance inside the +/-5% rail window",
+        "Unresolved question resolved: SOT-223 with copper pour chosen over DFN"
+      ]
+    },
+    {
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "manufacturer_part": "Yageo RC0603FR-075K1L",
+      "quantity": 2,
+      "reason": "5.1 kOhm 1% pull-downs from CC1 and CC2 to GND so the board advertises itself as a USB-C 5 V sink (IF-006, usb_c_cc_sink_termination block). 1% tolerance keeps Rd within the USB Type-C spec window (5.1 kOhm +/-10%). 0603 size is hand-solderable and well above the 0.2 mm design rules.",
+      "reference_group": "R1-R2 (CC1/CC2 pull-downs)",
+      "specifications": [
+        {
+          "maximum": 5.151,
+          "minimum": 5.049,
+          "page_or_section": "Part number / tolerance table",
+          "parameter": "Resistance",
+          "source": "Yageo RC series datasheet",
+          "typical": 5.1,
+          "unit": "kOhm"
+        },
+        {
+          "maximum": 0.1,
+          "minimum": "-",
+          "page_or_section": "Power rating table (0603)",
+          "parameter": "Rated power",
+          "source": "Yageo RC series datasheet",
+          "typical": "-",
+          "unit": "W"
+        }
+      ],
+      "symbol": "Device:R",
+      "verified_constraints": [
+        "IF-006: 5.1 kOhm value, one per CC line",
+        "USB Type-C Rd tolerance: 1% part within +/-10% spec window",
+        "MECH-002: 0603 footprint routable at 0.2 mm min trace/clearance"
+      ]
+    },
+    {
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "manufacturer_part": "Yageo RC0603FR-074K7L",
+      "quantity": 2,
+      "reason": "4.7 kOhm pull-ups from SDA and SCL to the +3V3 rail (IF-002, i2c_bus_pullups block). 4.7 kOhm at 3.3 V sinks ~0.7 mA per line when driven low, well within I2C standard-mode 3 mA sink and adequate rise time for 100 kHz with two devices on a short bus (IF-001).",
+      "reference_group": "R3-R4 (I2C SDA/SCL pull-ups)",
+      "specifications": [
+        {
+          "maximum": 4.747,
+          "minimum": 4.653,
+          "page_or_section": "Part number / tolerance table",
+          "parameter": "Resistance",
+          "source": "Yageo RC series datasheet",
+          "typical": 4.7,
+          "unit": "kOhm"
+        },
+        {
+          "maximum": 0.1,
+          "minimum": "-",
+          "page_or_section": "Power rating table (0603)",
+          "parameter": "Rated power",
+          "source": "Yageo RC series datasheet",
+          "typical": "-",
+          "unit": "W"
+        }
+      ],
+      "symbol": "Device:R",
+      "verified_constraints": [
+        "IF-002: 4.7 kOhm value on both SDA and SCL to 3.3 V",
+        "IF-001: suitable for 100 kHz standard mode, 2-device bus",
+        "Bus low current ~0.7 mA/line within I2C 3 mA sink capability"
+      ]
+    },
+    {
+      "footprint": "Resistor_SMD:R_0603_1608Metric",
+      "manufacturer_part": "Yageo RC0603FR-0710KL",
+      "quantity": 1,
+      "reason": "10 kOhm pull-up from U1.8 EN to +3V3, forming the power-on reset RC with the 100 nF capacitor C5 (IF-005, esp32_reset_rc block); releases EN from its baseline direct tie to the +3V3 net and gives ~1 ms rise delay per Espressif hardware design guidelines.",
+      "reference_group": "R5 (EN pull-up)",
+      "specifications": [
+        {
+          "maximum": 10.1,
+          "minimum": 9.9,
+          "page_or_section": "Part number / tolerance table",
+          "parameter": "Resistance",
+          "source": "Yageo RC series datasheet",
+          "typical": 10.0,
+          "unit": "kOhm"
+        }
+      ],
+      "symbol": "Device:R",
+      "verified_constraints": [
+        "IF-005: 10 kOhm pull-up to 3.3 V on EN",
+        "RC time constant with 100 nF ~1 ms for supply-stable release"
+      ]
+    },
+    {
+      "footprint": "Capacitor_SMD:C_0805_2012Metric",
+      "manufacturer_part": "Murata GRM21BR61E106KA73L",
+      "quantity": 2,
+      "reason": "10 uF X5R 25 V ceramic bulk capacitors at the NCP1117 input (VBUS) and output (+3V3) per PWR-004 and the ldo_3v3_regulator block. 25 V rating gives generous derating margin on the 5 V VBUS node so effective capacitance under DC bias stays well above the LDO's minimum stability requirement; 0805 body keeps enough capacitance at 5 V and 3.3 V bias.",
+      "reference_group": "C1-C2 (LDO input/output bulk)",
+      "specifications": [
+        {
+          "maximum": 11.0,
+          "minimum": 9.0,
+          "page_or_section": "Specifications table",
+          "parameter": "Capacitance",
+          "source": "Murata GRM21BR61E106KA73L datasheet",
+          "typical": 10.0,
+          "unit": "uF"
+        },
+        {
+          "maximum": 25.0,
+          "minimum": "-",
+          "page_or_section": "Specifications table",
+          "parameter": "Rated voltage",
+          "source": "Murata GRM21BR61E106KA73L datasheet",
+          "typical": "-",
+          "unit": "V"
+        }
+      ],
+      "symbol": "Device:C",
+      "verified_constraints": [
+        "PWR-004: 10 uF bulk at LDO input and output",
+        "Voltage derating: 25 V rating on 5 V max working node",
+        "LDO stability: ceramic output capacitance meets NCP1117 tantalum-equivalent ESR/capacitance recommendation (verify against datasheet stability section)"
+      ]
+    },
+    {
+      "footprint": "Capacitor_SMD:C_0603_1608Metric",
+      "manufacturer_part": "Murata GRM188R71H104KA93D",
+      "quantity": 3,
+      "reason": "100 nF X7R 50 V ceramics: C3 at U1.1 and C4 at U2.1 within 5 mm of each power_in pin (PWR-004, rail_decoupling_network block), C5 from EN to GND forming the power-on reset RC with R5 (IF-005). X7R dielectric holds capacitance over temperature and bias; 0603 fits the 5 mm placement constraint.",
+      "reference_group": "C3-C5 (100 nF decoupling and EN RC)",
+      "specifications": [
+        {
+          "maximum": 110.0,
+          "minimum": 90.0,
+          "page_or_section": "Specifications table",
+          "parameter": "Capacitance",
+          "source": "Murata GRM188R71H104KA93D datasheet",
+          "typical": 100.0,
+          "unit": "nF"
+        },
+        {
+          "maximum": 50.0,
+          "minimum": "-",
+          "page_or_section": "Specifications table",
+          "parameter": "Rated voltage",
+          "source": "Murata GRM188R71H104KA93D datasheet",
+          "typical": "-",
+          "unit": "V"
+        }
+      ],
+      "symbol": "Device:C",
+      "verified_constraints": [
+        "PWR-004: 100 nF decoupling on every power_in pin (U1.1, U2.1)",
+        "IF-005: 100 nF EN-to-GND capacitor for the reset RC",
+        "0603 size allows placement within 5 mm of each pin"
+      ]
+    }
+  ]
+}

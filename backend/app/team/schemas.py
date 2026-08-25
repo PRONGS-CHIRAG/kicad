@@ -199,6 +199,26 @@ class AgentTask(TeamModel):
     protected_objects: list[str] = Field(default_factory=list)
     prior_gate_findings: list[str] = Field(default_factory=list)
     """Why this stage was handed back, in the gate's own words. Empty on a first pass."""
+    rejected_output: dict[str, JsonValue] | None = None
+    """The document the gate rejected, for the repair stage to correct in place."""
+    human_guidance: str | None = None
+    """What a person told the repair stage to do, when the gate beat it twice.
+
+    Distinct from `prior_gate_findings`: those are the machine's complaint about
+    the document, this is an instruction from someone who can see past it. It
+    reaches the repair prompt as its own section, and that prompt lifts its
+    "change only what the findings require" rule for it - a human fix is usually
+    a thing no finding names, so a repair told to ignore anything unnamed would
+    quietly discard the answer it just asked for.
+    """
+    release_manifest: dict[str, JsonValue] | None = None
+    """The release files as they are on disk, and their hash, for the QA stage.
+
+    The release gate recomputes this hash from the files themselves, so an agent
+    that is not given it is being asked to produce a SHA-256 it has no way to
+    compute. Handing it over does not weaken the gate: a hash copied from here
+    still has to match the files the gate reads at the moment it runs.
+    """
 
 
 class ActionProposal(TeamModel):
@@ -557,6 +577,24 @@ class ReleaseRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class InterventionRequest(BaseModel):
+    """The problem put to a person, when the gate and the repair stage disagree.
+
+    Deliberately short. It is read by someone deciding what to do in one sitting,
+    not by an agent, so it carries the stage, a sentence per broken rule, and
+    nothing else - the full findings are already on the gate record.
+    """
+
+    run_id: str
+    stage: str
+    stage_name: str
+    problem: str
+    findings: list[str] = Field(default_factory=list)
+    repair_attempted: bool = True
+
+    model_config = ConfigDict(extra="forbid")
+
+
 class CheckFinding(BaseModel):
     rule: str
     actual: JsonValue
@@ -615,10 +653,16 @@ def _inline_schema(value: object, definitions: dict[str, object]) -> object:
         for key, item in value.items()
         if key not in {"$defs", "discriminator"}
     }
-    if result.get("type") == "object" or "properties" in result:
-        properties = result.get("properties", {})
+    # Closed and fully required, but only for an object that declares what its
+    # properties are. A free-form mapping - `dict[str, JsonValue]` and friends -
+    # has no `properties`, so stamping `additionalProperties: false` on it left a
+    # schema whose one legal value is `{}`: the agent could not put anything in
+    # `evidence`, `profile_rules`, `checklist` or a rail test's `expected`, and
+    # the gates that require those to be filled could never pass. An open map
+    # stays open.
+    if "properties" in result:
         result["additionalProperties"] = False
-        result["required"] = list(properties)
+        result["required"] = list(result["properties"])
     return result
 
 

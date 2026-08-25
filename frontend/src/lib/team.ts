@@ -9,7 +9,7 @@ import { request } from "./api";
  * not guessed at.
  */
 
-export const TEAM_STAGE_IDS = [
+export const CANONICAL_STAGE_IDS = [
   "project_manager",
   "requirements",
   "architecture",
@@ -22,7 +22,19 @@ export const TEAM_STAGE_IDS = [
   "qa_release",
 ] as const;
 
+/**
+ * The repair stage owns no place in the canonical order — it runs when another
+ * stage's gate rejects it, corrects that stage's own document, and is gated by
+ * the very same check. So it is a stage the run can show, but never one of the
+ * ten the run walks through: every count and every "what comes next" below is
+ * over `CANONICAL_STAGE_IDS`, and only the lane and the trace know about this.
+ */
+export const REPAIR_STAGE_ID = "repair";
+
+export const TEAM_STAGE_IDS = [...CANONICAL_STAGE_IDS, REPAIR_STAGE_ID] as const;
+
 export type TeamStageId = (typeof TEAM_STAGE_IDS)[number];
+export type CanonicalStageId = (typeof CANONICAL_STAGE_IDS)[number];
 
 export type TeamAgent = {
   id: TeamStageId;
@@ -153,12 +165,23 @@ export const TEAM_AGENTS: TeamAgent[] = [
   },
 ];
 
+export const REPAIR_AGENT: TeamAgent = {
+  id: REPAIR_STAGE_ID,
+  name: "Design Repair",
+  role: "Design repair engineer",
+  produces: "The rejected document, corrected — nothing else changed",
+  outputModel: "the rejected stage's own model",
+  reads: [],
+  gate: "the rejected stage's own gate",
+  mutates: false,
+};
+
 export const AGENT_BY_ID: Record<TeamStageId, TeamAgent> = Object.fromEntries(
-  TEAM_AGENTS.map((agent) => [agent.id, agent]),
+  [...TEAM_AGENTS, REPAIR_AGENT].map((agent) => [agent.id, agent]),
 ) as Record<TeamStageId, TeamAgent>;
 
 /** These two overlap when the backend runs with `team_parallel` on. */
-export const PARALLEL_PAIR: TeamStageId[] = ["pcb_layout", "simulation"];
+export const PARALLEL_PAIR: CanonicalStageId[] = ["pcb_layout", "simulation"];
 
 export type CheckFinding = {
   rule: string;
@@ -238,9 +261,19 @@ export type TeamEvent = {
   findings?: CheckFinding[];
 };
 
+/** The problem put to a person when a gate has beaten the repair stage. */
+export type TeamQuestion = {
+  run_id: string;
+  stage: string;
+  stage_name: string;
+  problem: string;
+  findings: string[];
+  repair_attempted: boolean;
+};
+
 export type TeamRunStatus = {
   run_id: string;
-  status: "running" | "completed" | "failed";
+  status: "running" | "completed" | "failed" | "awaiting_human";
   runner: string;
   project: string;
   request?: string;
@@ -250,6 +283,8 @@ export type TeamRunStatus = {
   error?: string;
   events: TeamEvent[];
   report: TeamRunReport | null;
+  /** Set only while the run is parked waiting for an answer. */
+  question: TeamQuestion | null;
 };
 
 export const teamApi = {
@@ -264,10 +299,13 @@ export const teamApi = {
       `/api/team/runs/${runId}/evidence`,
     ),
   answer: (runId: string, answer: string) =>
-    request<{ run_id: string; accepted: boolean; answers: string[] }>(`/api/team/runs/${runId}/answer`, {
-      method: "POST",
-      body: JSON.stringify({ answer }),
-    }),
+    request<{ run_id: string; accepted: boolean; answers: string[]; resumed?: "repair" | "run" }>(
+      `/api/team/runs/${runId}/answer`,
+      {
+        method: "POST",
+        body: JSON.stringify({ answer }),
+      },
+    ),
 };
 
 /* -------------------------------------------------------------------------- */
@@ -301,6 +339,8 @@ export type TraceEntry = {
 
 export type TeamFlow = {
   stages: Record<TeamStageId, StageState>;
+  /** Stages the repair agent corrected, in the order it corrected them. */
+  repaired: CanonicalStageId[];
   trace: TraceEntry[];
   /** Stages an agent or gate is working on right now. Empty once the run ends. */
   inFlight: TeamStageId[];
@@ -326,8 +366,8 @@ function asFindings(values: unknown[]): CheckFinding[] {
 
 /** The stage(s) the orchestrator dequeues after `stage` clears its gate. */
 function successors(stage: TeamStageId, parallel: boolean): TeamStageId[] {
-  const index = TEAM_STAGE_IDS.indexOf(stage);
-  const next = TEAM_STAGE_IDS[index + 1];
+  const index = (CANONICAL_STAGE_IDS as readonly string[]).indexOf(stage);
+  const next = CANONICAL_STAGE_IDS[index + 1];
   if (next === undefined) return [];
   if (next === "pcb_layout" && parallel) return [...PARALLEL_PAIR];
   return [next];
@@ -344,15 +384,36 @@ export function deriveFlow(
     stages[id] = { id, phase: "waiting", attempts: [], unresolvedDetail: null };
   }
   const trace: TraceEntry[] = [];
+  const repaired: CanonicalStageId[] = [];
 
   /** The trace entry for each stage's currently open pass, so a merge updates it. */
   const openEntry = new Map<TeamStageId, TraceEntry>();
 
+  /**
+   * The repair stage's records name itself, not the stage it was called in for.
+   * The orchestrator only ever calls it straight after a gate rejects a stage,
+   * so the stage it is correcting is the one that gate belonged to.
+   */
+
   for (const record of records) {
     const agentMatch = AGENT_CHECK.exec(record.check);
     const gateMatch = GATE_CHECK.exec(record.check);
-    const name = agentMatch?.[1] ?? gateMatch?.[1] ?? "";
+    const written = agentMatch?.[1] ?? gateMatch?.[1] ?? "";
+    /**
+     * The repair stage writes its records as `repair-<stage>`: the gate that
+     * judges a correction is the corrected stage's own gate, so without the
+     * name in the record a repaired pass would be indistinguishable from one
+     * that passed first try.
+     */
+    const corrected = written.startsWith(`${REPAIR_STAGE_ID}-`)
+      ? written.slice(REPAIR_STAGE_ID.length + 1)
+      : null;
+    const name = corrected === null ? written : REPAIR_STAGE_ID;
     if (!isStage(name)) continue;
+    if (corrected !== null && !isStage(corrected)) continue;
+    if (gateMatch && corrected !== null && record.result === "passed") {
+      repaired.push(corrected as CanonicalStageId);
+    }
     const stage = stages[name];
     const findings = asFindings(record.findings);
 
@@ -407,6 +468,14 @@ export function deriveFlow(
     }
     stage.phase = last.gate.result === "passed" ? "passed" : "failed";
   }
+
+  /**
+   * A repaired stage did clear its own gate - the orchestrator runs that same
+   * check over the corrected document before letting the run continue - so the
+   * lane shows it as passed. Its rejected pass stays in the attempts and in the
+   * trace, which is where "it took a repair" is legible.
+   */
+  for (const id of repaired) stages[id].phase = "passed";
 
   /**
    * The project manager's gate is the one gate that carries no evidence record
@@ -474,12 +543,12 @@ export function deriveFlow(
   }
 
   const returnTrips: Partial<Record<TeamStageId, number>> = {};
-  for (const id of TEAM_STAGE_IDS) {
+  for (const id of CANONICAL_STAGE_IDS) {
     const extra = stages[id].attempts.length - 1;
     if (extra > 0) returnTrips[id] = extra;
   }
 
-  return { stages, trace, inFlight, routing, returnTrips };
+  return { stages, trace, inFlight, routing, returnTrips, repaired };
 }
 
 export const RELEASE_TONE: Record<string, "wire" | "brick" | "copper"> = {

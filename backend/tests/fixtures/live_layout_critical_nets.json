@@ -1,0 +1,39 @@
+{
+  "critical_nets": [
+    "USB_D+",
+    "USB_D-",
+    "+3V3",
+    "GND",
+    "VBUS"
+  ],
+  "placements": [
+    {
+      "rationale": "USB_B_Micro receptacle placed on the left board edge (x=40 mm, vertically centered) so the connector body overhangs the outline edge at x=35 mm and is mechanically accessible; edge placement keeps VBUS and the USB_D+/USB_D- pair short before they reach U1.",
+      "reference": "J1",
+      "rotation": 0.0,
+      "x": 40.0,
+      "y": 67.5
+    },
+    {
+      "rationale": "ESP32-WROOM-32 module centered horizontally in the board interior and vertically centered, ~40 mm from J1, giving a short, length-matched run for the USB_D+/USB_D- differential pair and leaving the module's RF/antenna end facing the free right-hand region. Keeps clearance to the 35/145 mm and 35/100 mm outline edges.",
+      "reference": "U1",
+      "rotation": 0.0,
+      "x": 80.0,
+      "y": 67.5
+    },
+    {
+      "rationale": "TMP102 placed at the right side of the board, ~40 mm from U1 and away from J1/VBUS and the ESP32 module body, so the sensor sees less self-heating while keeping the (not-yet-created) I2C SDA/SCL connection to U1 GPIO21/GPIO22 short; 25 mm clear of the right outline edge at x=145 mm.",
+      "reference": "U2",
+      "rotation": 0.0,
+      "x": 120.0,
+      "y": 55.0
+    }
+  ],
+  "unrouted_nets": [
+    "+3V3",
+    "GND",
+    "USB_D+",
+    "USB_D-",
+    "VBUS"
+  ]
+}

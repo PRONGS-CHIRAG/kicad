@@ -17,13 +17,18 @@ from ..kicad.erc import KicadCli
 from ..kicad.reader import read_project
 from ..team.evidence import EvidenceStore
 from ..team.orchestrator import OrchestratorOptions, TeamOrchestrator
+from ..team.profiles import get_profile
 from ..team.runner import DevinAgentRunner, StubAgentRunner
-from ..team.schemas import DesignContext, ProjectSpec, TeamRunReport
+from ..team.schemas import DesignContext, InterventionRequest, ProjectSpec, TeamRunReport
 from ..team.schematic import apply_schematic_intents
 from ..workflow import store
 
 router = APIRouter(prefix="/api/team")
-_executor = ThreadPoolExecutor(max_workers=4)
+# A run that is waiting on a person holds its worker for as long as the wait
+# lasts, so the pool is sized above the number of runs anyone watches at once.
+# The wait itself is bounded by settings.team_human_timeout_seconds, which is
+# what stops a forgotten tab from taking a slot forever.
+_executor = ThreadPoolExecutor(max_workers=8)
 _runs: dict[str, dict[str, Any]] = {}
 _lock = threading.Lock()
 
@@ -47,6 +52,37 @@ def _get_run(run_id: str) -> dict[str, Any]:
     return run
 
 
+def _ask_human(run_id: str, request: InterventionRequest) -> str | None:
+    """Park the run until someone answers, or until the wait runs out.
+
+    The orchestrator calls this on the thread the run is on, so the whole run
+    stops here - which is the point: the outputs, gates and queue it has built up
+    stay in memory, and the answer feeds the repair stage directly instead of
+    restarting the pipeline from the project manager.
+    """
+    event = threading.Event()
+    with _lock:
+        run = _runs.get(run_id)
+        if run is None:
+            return None
+        run["status"] = "awaiting_human"
+        run["question"] = request.model_dump(mode="json")
+        run["_answer_event"] = event
+        run["_answer"] = None
+    event.wait(timeout=settings.team_human_timeout_seconds)
+    with _lock:
+        # Read the answer rather than the wait's return value. An answer posted
+        # in the instant the timeout expires is already stored under the lock the
+        # endpoint took, so trusting `event.wait()` here would drop it while the
+        # endpoint's reply still said the run had resumed.
+        answer = run.get("_answer")
+        run["status"] = "running"
+        run["question"] = None
+        run.pop("_answer_event", None)
+        run.pop("_answer", None)
+    return answer
+
+
 def _run_team(run_id: str, request: TeamRunRequest, project_dir: Path) -> None:
     try:
         cli = KicadCli(settings.kicad_cli)
@@ -54,11 +90,16 @@ def _run_team(run_id: str, request: TeamRunRequest, project_dir: Path) -> None:
         erc = cli.run_erc(state.schematic_path)
         board = next(iter(project_dir.glob("*.kicad_pcb")), None)
         drc = cli.run_drc_baseline(board) if board else None
+        # The whole profile, not just its name: the DFM gate compares the report
+        # against these exact values and provenance, and the layout stage is held
+        # to this edge clearance. An agent that is only told the profile's name
+        # has to guess both, which is a gate it cannot pass by answering better.
+        profile = get_profile(request.manufacturer_profile or settings.team_manufacturer_profile)
         project = ProjectSpec(
             project_id=project_dir.name,
             request=request.request,
             current_stage="team",
-            manufacturer_profile={"name": request.manufacturer_profile or settings.team_manufacturer_profile},
+            manufacturer_profile=profile.model_dump(mode="json"),
             design_context=DesignContext.from_project(state, erc, drc, board),
         )
         runner_name = request.runner or settings.resolved_team_runner
@@ -79,11 +120,14 @@ def _run_team(run_id: str, request: TeamRunRequest, project_dir: Path) -> None:
                 drc_baseline=drc,
                 kicad_cli=cli,
                 schematic_applier=apply_schematic_intents,
+                intervention=lambda question: _ask_human(run_id, question),
             ),
         )
         report = orchestrator.run(project)
         with _lock:
-            _runs[run_id].update(status="completed", report=report, runner=runner_name)
+            _runs[run_id].update(
+                status="completed", report=report, runner=runner_name, question=None
+            )
     except Exception as exc:
         with _lock:
             _runs[run_id].update(status="failed", error=str(exc))
@@ -105,6 +149,7 @@ def create_team_run(request: TeamRunRequest) -> dict[str, str]:
             "request": request.request,
             "manufacturer_profile": request.manufacturer_profile or settings.team_manufacturer_profile,
             "answers": [],
+            "question": None,
             # The team edits this session's working copy, so the render endpoint
             # can show the very files the schematic and layout stages write.
             "session_id": session.id,
@@ -120,6 +165,10 @@ def get_team_run(run_id: str) -> dict[str, Any]:
     run = dict(_get_run(run_id))
     run.pop("project_dir", None)
     run.pop("request_model", None)
+    # Private plumbing for the paused-run handshake: an Event does not serialise,
+    # and the pending answer is echoed back under "answers" once it is accepted.
+    run.pop("_answer_event", None)
+    run.pop("_answer", None)
     events_path = EvidenceStore(run_id).root / "events.jsonl"
     run["events"] = (
         [json.loads(line) for line in events_path.read_text().splitlines() if line]
@@ -161,6 +210,25 @@ def answer_team_run(run_id: str, request: TeamAnswerRequest) -> dict[str, Any]:
     evidence.write_artifact("human-answers.json", json.dumps(run["answers"], indent=2) + "\n")
     with (evidence.root / "events.jsonl").open("a", encoding="utf-8") as stream:
         stream.write(json.dumps({"event": "human_review_answer", "answer": request.answer}) + "\n")
+    # A run parked mid-flight takes the answer straight to its repair stage. This
+    # has to be tried before the restart path below, which keys off a finished
+    # report - a paused run has none, so without this branch the answer would be
+    # filed and nothing would ever read it.
+    with _lock:
+        event = run.get("_answer_event")
+        if event is not None:
+            run["_answer"] = request.answer
+    if event is not None:
+        # Set outside the lock so the parked thread is not woken into a wait for
+        # a lock this one still holds.
+        event.set()
+        return {
+            "run_id": run_id,
+            "accepted": True,
+            "answers": run["answers"],
+            "resumed": "repair",
+        }
+
     report = run.get("report")
     if isinstance(report, TeamRunReport) and report.release_status == "needs_human_review":
         original = run.get("request_model")
@@ -172,4 +240,4 @@ def answer_team_run(run_id: str, request: TeamAnswerRequest) -> dict[str, Any]:
             with _lock:
                 run["status"] = "running"
             _executor.submit(_run_team, run_id, resumed, Path(project_dir))
-    return {"run_id": run_id, "accepted": True, "answers": run["answers"]}
+    return {"run_id": run_id, "accepted": True, "answers": run["answers"], "resumed": "run"}

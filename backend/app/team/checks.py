@@ -10,11 +10,17 @@ from pathlib import Path
 
 from ..decision import unexpected_file_changes
 from ..kicad import sexpr
-from ..kicad.board import board_outline, footprint_extent, footprint_reference, load
+from ..kicad.board import (
+    board_outline,
+    copper_edge_clearance,
+    footprint_extent,
+    footprint_reference,
+    load,
+)
 from ..kicad.erc import diff_violations
 from ..kicad.reader import ProjectState
 from ..kicad.state import diff_states
-from ..models import ErcReport
+from ..models import ErcReport, Violation
 from .profiles import ManufacturerProfile, get_profile
 from .schemas import (
     Architecture,
@@ -125,6 +131,54 @@ def _quantities(value: object, unit_hint: str | None = None) -> list[tuple[float
         (float(match.group(1)), _normalise_unit(match.group(2)) or _normalise_unit(unit_hint))
         for match in _QUANTITY_RE.finditer(text)
     ]
+
+
+_GROUND_RE = re.compile(r"\b(gnd|ground|vss|return)\b", re.IGNORECASE)
+_RAIL_RE = re.compile(r"(vbus|vcc|vdd|vin|rail|supply|power|\+?\d+v\d?\b)", re.IGNORECASE)
+
+
+def _volts(value: str | None) -> float | None:
+    """The volts a declared block voltage names, or None if it is only prose."""
+    for amount, unit in _quantities(value, "V") if value else []:
+        if unit == "v":
+            return amount
+    return None
+
+
+def _voltage_severity(signal: str, source: float, target: float) -> str | None:
+    """How hard to complain that a connection joins two different voltages.
+
+    `ArchitectureConnection` is `{from, to, signal}` - it carries no direction
+    semantics, so this check cannot tell "5 V feeding a 3.3 V input" (a part
+    destroyed) from "the +3V3 net also touches the regulator" (fine). Two
+    restrictions keep it honest rather than noisy:
+
+      - A signal that is not a power rail does not carry a block's supply
+        voltage at all. A USB data pair between a VBUS-fed connector and a 3.3 V
+        MCU is not a voltage conflict, and a ground return is not one either.
+      - Feeding a higher voltage into a lower-voltage input is the case that
+        breaks hardware, so that stays an error. The other direction is usually
+        a shared rail modelled as a connection, so it is a warning a human can
+        read rather than a gate that blocks the run.
+    """
+    if _GROUND_RE.search(signal) or source == 0 or target == 0:
+        return None
+    if not _RAIL_RE.search(signal):
+        return None
+    if abs(source - target) <= max(1e-9, 1e-3 * max(abs(source), abs(target), 1.0)):
+        return None
+    return "error" if source > target else "warning"
+
+
+def _violation_text(violation: Violation) -> str:
+    """A violation with the nets and items it names, not just its wording.
+
+    KiCAD's own description says what rule broke - "Pins of type Power output
+    and Power output are connected" - but not where, and a stage handed only
+    that has to guess which of its intents caused it.
+    """
+    located = violation.nets or violation.items
+    return f"{violation.description} ({', '.join(located)})" if located else violation.description
 
 
 def _quantity_matches(summary: tuple[float, str | None], requirement: Requirement) -> bool:
@@ -335,7 +389,27 @@ def check_architecture(
             continue
         source = next(block for block in architecture.blocks if block.id == connection.from_block)
         target = next(block for block in architecture.blocks if block.id == connection.to_block)
-        if source.output_voltage and target.input_voltage and source.output_voltage != target.input_voltage:
+        if not source.output_voltage or not target.input_voltage:
+            continue
+        if source.output_voltage == target.input_voltage:
+            continue
+        source_volts, target_volts = _volts(source.output_voltage), _volts(target.input_voltage)
+        if source_volts is None or target_volts is None:
+            # Prose on either side: the same rail written two ways cannot be
+            # told from a real mismatch, so it is reported, not gated on.
+            findings.append(
+                _finding(
+                    "block voltages are machine-checkable",
+                    f"{source.output_voltage}->{target.input_voltage}",
+                    "a voltage with a unit on both sides",
+                    connection.signal,
+                    "architecture",
+                    "warning",
+                )
+            )
+            continue
+        severity = _voltage_severity(connection.signal, source_volts, target_volts)
+        if severity is not None:
             findings.append(
                 _finding(
                     "connected block voltage compatibility",
@@ -343,33 +417,83 @@ def check_architecture(
                     "matching voltages",
                     connection.signal,
                     "architecture",
-                    "error",
+                    severity,
                 )
             )
+    # A block's required_inputs/required_outputs name signals; requirement_ids
+    # name requirements. Subtracting one from the other flagged every port of
+    # every block on every possible output - it was unsatisfiable rather than
+    # strict. What is real, and in the right namespace, is that a block which
+    # declares ports is wired to something: requirement coverage is already
+    # checked by "requirements map to blocks" above.
+    driven = {connection.to_block for connection in architecture.connections}
+    driving = {connection.from_block for connection in architecture.connections}
+    available_from_suppliers: dict[str, float] = {}
+    by_id = {block.id: block for block in architecture.blocks}
+    for connection in architecture.connections:
+        supplier = by_id.get(connection.from_block)
+        if supplier is not None and supplier.power_available_ma is not None:
+            available_from_suppliers[connection.to_block] = max(
+                available_from_suppliers.get(connection.to_block, 0.0),
+                supplier.power_available_ma,
+            )
     for block in architecture.blocks:
-        required = set(block.required_inputs or []) | set(block.required_outputs or [])
-        assigned = set(block.requirement_ids or [])
-        for item in required - assigned:
+        # A block wired in neither direction is floating, and that is what this
+        # rule is for. Requiring both directions made a boundary block fail on
+        # principle: the input of a USB connector comes from the host, and there
+        # is no on-board block to name as its source. A block wired one way is
+        # part of the graph, so the missing side is reported and not gated on.
+        declares_ports = bool(block.required_inputs or block.required_outputs)
+        if declares_ports and block.id not in driven and block.id not in driving:
             findings.append(
                 _finding(
-                    "required inputs and outputs assigned",
-                    item,
-                    "assigned",
+                    "declared ports are connected",
+                    [*(block.required_inputs or []), *(block.required_outputs or [])],
+                    "at least one connection",
                     block.id,
                     "architecture",
                     "error",
                 )
             )
+        elif declares_ports:
+            if block.required_inputs and block.id not in driven:
+                findings.append(
+                    _finding(
+                        "declared inputs are connected",
+                        block.required_inputs,
+                        "an incoming connection, unless the source is off-board",
+                        block.id,
+                        "architecture",
+                        "warning",
+                    )
+                )
+            if block.required_outputs and block.id not in driving:
+                findings.append(
+                    _finding(
+                        "declared outputs are connected",
+                        block.required_outputs,
+                        "an outgoing connection, unless the destination is off-board",
+                        block.id,
+                        "architecture",
+                        "warning",
+                    )
+                )
+        # `power_available_ma` is what a block passes on, not what reaches it. A
+        # leaf consumer honestly reports 0 - it supplies nothing downstream - and
+        # comparing its own draw against that made every consumer in the design
+        # over budget. What the budget is actually about is whether the blocks
+        # feeding this one can supply what it draws.
+        supplied = available_from_suppliers.get(block.id)
         if (
             block.power_required_ma is not None
-            and block.power_available_ma is not None
-            and block.power_required_ma > block.power_available_ma
+            and supplied is not None
+            and block.power_required_ma > supplied
         ):
             findings.append(
                 _finding(
                     "power budget",
-                    block.power_required_ma,
-                    block.power_available_ma,
+                    f"{block.power_required_ma:g} mA drawn",
+                    f"{supplied:g} mA offered by the blocks feeding it",
                     block.id,
                     "architecture",
                     "error",
@@ -413,7 +537,11 @@ def check_components(
         for specification in component.specifications or []:
             values = specification.model_dump(mode="json")
             required = {"source", "page_or_section", "minimum", "typical", "maximum"}
-            missing = sorted(key for key in required if not values.get(key))
+            # `not values.get(key)` counted a real 0 as a missing field, and a
+            # datasheet minimum of zero is ordinary. Only absence is absence.
+            # (`reference_group` may also name a group like "R1-R4", in which
+            # case the existing-symbol lookup below simply finds nothing.)
+            missing = sorted(key for key in required if values.get(key) in (None, ""))
             if missing:
                 findings.append(
                     _finding(
@@ -487,7 +615,12 @@ def check_schematic(
         for violation in new_errors:
             findings.append(
                 _finding(
-                    "no new ERC violations", violation.description, "none", "ERC", "kicad-cli ERC", "error"
+                    "no new ERC violations",
+                    _violation_text(violation),
+                    "none",
+                    "ERC",
+                    "kicad-cli ERC",
+                    "error",
                 )
             )
     if state_diff.removed_components:
@@ -502,6 +635,44 @@ def check_schematic(
             )
         )
     return _check("schematic_design", findings, project_version, "decision/state diff")
+
+
+def _clearance_advice(
+    extent: tuple[float, float, float, float],
+    outline: tuple[float, float, float, float],
+    required: float,
+) -> tuple[float, str] | None:
+    """The smallest clearance to the outline, and the move that would fix it.
+
+    Reporting a negative clearance was not enough to act on: a real run was told
+    "J1 clears the outline by -2 mm", moved J1 the wrong way, was told -5 mm, and
+    moved it further still until the return trips ran out. Which edge is crossed
+    and which way the centre has to go are the parts a placement can use.
+    """
+    min_x, min_y, max_x, max_y = outline
+    # Each side: how far the footprint is from the required clearance, and the
+    # change in the placement's own coordinate that would close the gap.
+    sides = (
+        ("left", required - (extent[0] - min_x), "increase x"),
+        ("right", required - (max_x - extent[2]), "decrease x"),
+        ("top", required - (extent[1] - min_y), "increase y"),
+        ("bottom", required - (max_y - extent[3]), "decrease y"),
+    )
+    short = [item for item in sides if item[1] > 0]
+    if not short:
+        return None
+    clearance = min(
+        extent[0] - min_x, extent[1] - min_y, max_x - extent[2], max_y - extent[3]
+    )
+    if len({side for side, _, _ in short} & {"left", "right"}) == 2:
+        return clearance, "the footprint is wider than the outline allows at any x"
+    if len({side for side, _, _ in short} & {"top", "bottom"}) == 2:
+        return clearance, "the footprint is taller than the outline allows at any y"
+    moves = "; ".join(
+        f"{move} by at least {shortfall:.3g} mm to clear the {side} edge"
+        for side, shortfall, move in short
+    )
+    return clearance, moves
 
 
 def _boxes_overlap(
@@ -522,6 +693,12 @@ def check_layout(
     manufacturer = get_profile(profile) if isinstance(profile, str) else profile
     document = load(Path(board_path))
     min_x, min_y, max_x, max_y = board_outline(document)
+    # The stricter of what the fab can make and what this board's DRC enforces.
+    # Naming only the profile's figure told the stage to aim at 0.3 mm on a board
+    # whose own rules reject anything under 0.5, so a placement could satisfy the
+    # number it was given and still fail the DRC that runs immediately after.
+    board_clearance = copper_edge_clearance(document)
+    required_clearance = max(manufacturer.copper_to_edge_clearance_mm, board_clearance)
     findings: list[CheckFinding] = []
     boxes: list[tuple[str, tuple[float, float, float, float]]] = []
     skipped_count = 0
@@ -556,17 +733,22 @@ def check_layout(
             )
             continue
         boxes.append((reference, extent))
-        if (
-            extent[0] < min_x + manufacturer.copper_to_edge_clearance_mm
-            or extent[1] < min_y + manufacturer.copper_to_edge_clearance_mm
-            or extent[2] > max_x - manufacturer.copper_to_edge_clearance_mm
-            or extent[3] > max_y - manufacturer.copper_to_edge_clearance_mm
-        ):
+        # The measured gap, not just the name of the footprint that has one too
+        # small. "J1 is J1, expected 0.3" tells a layout stage nothing about
+        # which way to move or how far, so a re-run guesses; the number and the
+        # outline it is measured against are what make the finding fixable.
+        advice = _clearance_advice(extent, (min_x, min_y, max_x, max_y), required_clearance)
+        if advice is not None:
+            clearance, remedy = advice
             findings.append(
                 _finding(
                     "edge clearance",
-                    reference,
-                    manufacturer.copper_to_edge_clearance_mm,
+                    f"{reference} clears the outline by {clearance:.3g} mm "
+                    f"(extent {extent[0]:.3g},{extent[1]:.3g} to {extent[2]:.3g},{extent[3]:.3g}; "
+                    f"outline {min_x:.3g},{min_y:.3g} to {max_x:.3g},{max_y:.3g})",
+                    f"at least {required_clearance:g} mm - the greater of the "
+                    f"{manufacturer.name} profile's {manufacturer.copper_to_edge_clearance_mm:g} mm "
+                    f"and this board's own DRC rule of {board_clearance:g} mm. {remedy}",
                     reference,
                     str(board_path),
                     "error",
@@ -586,16 +768,32 @@ def check_layout(
                     )
                 )
     names = {str(net[2]) for net in sexpr.find_all(document, "net") if len(net) >= 3}
+    # A pad is a child of a footprint, not of the board, and `find_all` only
+    # looks at direct children. Asking the document for its pads therefore found
+    # none of them, so every net the layout stage called critical was reported
+    # as absent - on boards whose pads carry that very net.
     connected_names = {
         str(net[2])
-        for pad in sexpr.find_all(document, "pad")
+        for footprint in sexpr.find_all(document, "footprint")
+        for pad in sexpr.find_all(footprint, "pad")
         for net in sexpr.find_all(pad, "net")
         if len(net) >= 3
     }
     for net in required_nets:
-        if net not in names or net not in connected_names:
+        if net not in names:
             findings.append(
-                _finding("required net connected", net, "present on board", net, str(board_path), "error")
+                _finding("required net connected", net, "declared on board", net, str(board_path), "error")
+            )
+        elif net not in connected_names:
+            findings.append(
+                _finding(
+                    "required net connected",
+                    f"{net} is declared but reaches no pad",
+                    "at least one pad on the net",
+                    net,
+                    str(board_path),
+                    "error",
+                )
             )
     if drc_after is not None and not drc_after.ran:
         findings.append(_finding("DRC has run", False, True, str(board_path), "kicad-cli DRC", "error"))
@@ -603,15 +801,91 @@ def check_layout(
         for violation in diff_violations(drc_before, drc_after).new_critical:
             findings.append(
                 _finding(
-                    "no new DRC violations", violation.description, "none", "DRC", "kicad-cli DRC", "error"
+                    "no new DRC violations",
+                    _violation_text(violation),
+                    "none",
+                    "DRC",
+                    "kicad-cli DRC",
+                    "error",
                 )
             )
     return _check("pcb_layout", findings, project_version, "board/DRC checker", skipped_count)
 
 
+def _is_bare_number(value: object) -> bool:
+    return isinstance(value, (int, float)) or (
+        isinstance(value, str) and bool(re.fullmatch(r"\s*[-+]?(?:\d+(?:\.\d*)?|\.\d+)\s*", value))
+    )
+
+
+_PART_TOKEN_RE = re.compile(r"[A-Za-z0-9]{4,}")
+
+
+def _part_tokens(text: str) -> set[str]:
+    """Tokens distinctive enough to identify a part: letters and digits together.
+
+    "NCP1117", "USB4105", "ESP32", "RC0603FR" identify something. "Yageo",
+    "series" and "datasheet" identify a vendor or a document class and would
+    match almost any prose, so a token has to mix letters and digits to count.
+    """
+    return {
+        token.casefold()
+        for token in _PART_TOKEN_RE.findall(text)
+        if any(character.isalpha() for character in token) and any(character.isdigit() for character in token)
+    }
+
+
+def _cites_part(source: str, part_tokens: set[str]) -> bool:
+    """Whether the source names one of the selected parts.
+
+    An engineer writes "RC0603" for a part ordered as "RC0603FR-075K1L" and
+    "NCP1117" for "NCP1117ST33T3G", so a cited token counts when it is a prefix
+    of the ordering code. Five characters is the shortest prefix that still
+    picks out one part rather than a package family.
+    """
+    for cited in _part_tokens(source):
+        for known in part_tokens:
+            if cited == known or (len(cited) >= 5 and known.startswith(cited)):
+                return True
+    return False
+
+
+def _unverified(status: str) -> bool:
+    """Whether a test reports that it could not be verified.
+
+    Real runs write this as "NOT_VERIFIED" as often as "unverified", and only
+    the second spelling used to be recognised.
+    """
+    folded = re.sub(r"[^a-z]", "", status.casefold())
+    return "unverified" in folded or "notverified" in folded
+
+
+def _traceable(source: str, requirement_ids: set[str], part_tokens: set[str]) -> bool:
+    """Whether a simulation test says where its numbers came from.
+
+    Three provenances are legitimate in this pipeline, and the gate used to
+    accept only the first two:
+
+      - the word "datasheet";
+      - a requirement this run actually produced, matched by its own ID rather
+        than by a hard-coded prefix list - requirement IDs are the requirements
+        stage's to name, and a run that used a prefix outside `PWR|IF|MECH|TEST`
+        had every one of its tests rejected;
+      - a part the component stage selected. That is where a simulation
+        engineer's numbers come from here, and naming one was being treated as
+        naming nothing.
+    """
+    if "datasheet" in source.casefold():
+        return True
+    if any(identifier and identifier in source for identifier in requirement_ids):
+        return True
+    return _cites_part(source, part_tokens)
+
+
 def check_simulation(
     report: SimulationReport,
     requirements: RequirementsDoc | None = None,
+    components: ComponentSelection | None = None,
     *,
     project_version: str,
 ) -> StageCheckResult:
@@ -619,18 +893,28 @@ def check_simulation(
     requirement_ids = (
         {requirement.id for requirement in requirements.requirements} if requirements is not None else set()
     )
+    part_tokens: set[str] = set()
+    for component in components.components if components is not None else []:
+        part_tokens |= _part_tokens(component.manufacturer_part)
+        for specification in component.specifications or []:
+            part_tokens |= _part_tokens(specification.source)
     for test in report.tests:
-        numeric_values: list[object]
-        if isinstance(test, SimulationRailTest):
-            numeric_values = [*test.expected.values(), test.measured_v]
-        else:
-            numeric_values = [test.required_ma, test.available_ma, test.margin_percent]
-        unitless = [
-            value
-            for value in numeric_values
-            if isinstance(value, (int, float))
-            or (isinstance(value, str) and bool(re.fullmatch(r"\s*[-+]?(?:\d+(?:\.\d*)?|\.\d+)\s*", value)))
-        ]
+        # Only `expected` is free-form. Every other numeric field on a simulation
+        # test names its unit in the field name - `required_ma`, `available_ma`,
+        # `margin_percent`, `measured_v` - so a bare number there is already
+        # unambiguous, and demanding "600 mA" in a field called `required_ma`
+        # rejected every margin test a real run produced. What is left of the
+        # rule is the case it was written for: a key in `expected` that names no
+        # unit paired with a bare number, where nothing says what 50 means.
+        unitless = (
+            [
+                f"{key}={value!r}"
+                for key, value in test.expected.items()
+                if _is_bare_number(value) and _normalise_unit(key.rsplit("_", 1)[-1]) is None
+            ]
+            if isinstance(test, SimulationRailTest)
+            else []
+        )
         if unitless:
             findings.append(
                 _finding(
@@ -642,7 +926,7 @@ def check_simulation(
                     "error",
                 )
             )
-        if "unverified" in test.status.lower():
+        if _unverified(test.status):
             findings.append(
                 _finding(
                     "simulation model available",
@@ -654,17 +938,12 @@ def check_simulation(
                 )
             )
         source = test.source or ""
-        requirement_match = re.search(r"\b((?:PWR|IF|MECH|TEST)-\d{3})\b", source)
-        traceable = (
-            bool(requirement_match and requirement_match.group(1) in requirement_ids)
-            or "datasheet" in source.lower()
-        )
-        if not traceable:
+        if not _traceable(source, requirement_ids, part_tokens):
             findings.append(
                 _finding(
                     "simulation range traceability",
                     source,
-                    "datasheet or requirement source",
+                    "a datasheet, a requirement ID, or a selected part",
                     test.name,
                     "simulation report",
                     "error",
@@ -684,8 +963,69 @@ def check_simulation(
     return _check("simulation", findings, project_version, "simulation checker")
 
 
+BENIGN_SEVERITIES = frozenset({"info", "informational", "low", "medium", "minor", "note", "warning"})
+"""Severities a verification finding may carry and still let the stage pass.
+
+An allowlist, not a blocklist, because the field is a free string and the live
+stages have already used six different words in it - `critical`, `error`, `high`,
+`medium`, `info`, `warning`. A blocklist of the three blocking ones would let a
+seventh word nobody anticipated (`sev1`, `P0`, `blocking`) through a gate whose
+whole job is to stop exactly that. Vocabulary we do not recognise blocks.
+"""
+
+
+def _is_blocking(severity: str | None) -> bool:
+    return severity is not None and severity.strip().casefold() not in BENIGN_SEVERITIES
+
+
 def check_verification(report: VerificationReport, project_version: str) -> StageCheckResult:
     findings: list[CheckFinding] = []
+    blocking = [item for item in report.critical_findings if _is_blocking(item.severity)]
+    if blocking:
+        # The stage's own verdict, enforced. Verification exists to say whether the
+        # design meets its requirements; a report that names unresolved critical
+        # findings has said it does not, and the run may not walk past that.
+        findings.append(
+            _finding(
+                "verification reports no unresolved critical finding",
+                f"{len(blocking)} blocking: "
+                + ", ".join(
+                    dict.fromkeys(f"{item.requirement_id} ({item.severity})" for item in blocking)
+                ),
+                f"no finding whose severity is outside {sorted(BENIGN_SEVERITIES)}",
+                "verification report",
+                "verification report",
+                "error",
+            )
+        )
+    # ...and the same verdict read from the other side. Making critical findings
+    # fail the gate makes getting rid of them the cheapest way past it, which is
+    # the exit a live repair already took: nine findings became zero while
+    # `requirements_failed` stayed at 1 and the decision stayed "reject".
+    #
+    # The condition is `not blocking`, not `not report.critical_findings`,
+    # because deleting a finding and relabelling it "info" are the same move made
+    # two different ways - and the second one leaves a document that still looks
+    # fully populated. A failed requirement has to be explained by something that
+    # actually blocks.
+    failed_outcomes = [
+        outcome.requirement_id
+        for outcome in report.requirement_outcomes or []
+        if outcome.status == "failed"
+    ]
+    if (report.requirements_failed > 0 or failed_outcomes) and not blocking:
+        findings.append(
+            _finding(
+                "a failing verification is explained by a blocking finding",
+                f"requirements_failed={report.requirements_failed}, "
+                f"failed outcomes {failed_outcomes or 'none listed'}, "
+                f"{len(report.critical_findings)} finding(s), none of them blocking",
+                "one blocking finding per failed requirement, or nothing failing",
+                "verification report",
+                "verification report",
+                "error",
+            )
+        )
     for item in report.critical_findings:
         missing = [
             key
@@ -703,8 +1043,8 @@ def check_verification(report: VerificationReport, project_version: str) -> Stag
             findings.append(
                 _finding(
                     "verification finding completeness",
-                    missing,
-                    [],
+                    f"empty or absent: {', '.join(missing)}",
+                    "every field filled",
                     item.requirement_id,
                     "verification report",
                     "error",
@@ -712,10 +1052,15 @@ def check_verification(report: VerificationReport, project_version: str) -> Stag
             )
         if not item.evidence:
             findings.append(
+                # Named "verification evidence source" before, while the field at
+                # fault is `evidence` and a separate `evidence_source` sits right
+                # beside it - which the stage had filled in correctly. It was
+                # being told the wrong field was wrong, so its repair returned
+                # the same document and failed the same way.
                 _finding(
-                    "verification evidence source",
-                    {},
-                    "non-empty evidence",
+                    "verification finding has evidence",
+                    "evidence is {}",
+                    "an object recording what the source showed, not an empty one",
                     item.requirement_id,
                     "verification report",
                     "error",
@@ -784,10 +1129,13 @@ def check_manufacturing(
         )
     if report.fabrication_ready and report.dfm_status != "passed":
         findings.append(
+            # Was labelled "profile values used" too, so a report that had the
+            # profile right and its readiness wrong was told the profile was
+            # wrong. The rule a finding names is how a stage knows what to fix.
             _finding(
-                "profile values used",
-                report.dfm_status,
-                "passed",
+                "fabrication readiness agrees with DFM status",
+                f"fabrication_ready with dfm_status {report.dfm_status!r}",
+                "dfm_status 'passed', or fabrication_ready false",
                 "manufacturing",
                 "manufacturing report",
                 "error",
@@ -796,15 +1144,90 @@ def check_manufacturing(
     return _check("manufacturing", findings, project_version, "manufacturer checker")
 
 
+RELEASE_FILE_PATTERNS = ("*.kicad_sch", "*.kicad_pcb", "*.kicad_pro")
+
+
+def release_files(project_dir: Path | str) -> list[Path]:
+    """The project files a release is made of, in a fixed order.
+
+    The order is part of the definition: the release hash is taken over these
+    files in sequence, so a directory listing that came back in a different
+    order would produce a different hash for an unchanged project.
+    """
+    directory = Path(project_dir)
+    return sorted(path for pattern in RELEASE_FILE_PATTERNS for path in directory.glob(pattern))
+
+
+def release_hash(files: Sequence[Path | str]) -> str:
+    """The hash of a release: one digest over the digests of its files.
+
+    The QA stage is asked to report this and the gate recomputes it, so both
+    sides have to derive it the same way from the same definition.
+    """
+    hashes = [
+        hashlib.sha256(path.read_bytes()).hexdigest() for item in files if (path := Path(item)).is_file()
+    ]
+    return hashlib.sha256("".join(hashes).encode()).hexdigest() if hashes else ""
+
+
+APPROVAL_WORDS = frozenset({"approved", "approve", "approval", "released", "release_approved"})
+"""The spellings that mean this release is being approved."""
+
+NEGATION_WORDS = frozenset(
+    {
+        "not", "no", "non", "never", "un", "de", "dis",
+        "pending", "awaiting", "blocked", "held", "hold", "withheld",
+        "denied", "refused", "rejected", "revoked", "failed",
+    }
+)
+"""Words that turn an approval word into its opposite, as whole words.
+
+Matched on the underscore-separated parts rather than as substrings, because
+`_` is a word character - a `\b` regex does not see a boundary in
+`approval_withheld` and would call it an approval.
+"""
+
+
+def _claims_approval(status: str) -> bool:
+    """Whether a release record is claiming approval, however it spells it.
+
+    Compared exactly against "approved" before, so `Approved` and
+    `release_approved` were not approvals as far as the gate was concerned and
+    walked straight past the checklist requirement they exist to meet.
+
+    A plain substring test on "approv" is the obvious fix and the wrong one: it
+    calls `not_approved`, `unapproved` and `pending_approval` approvals too, so a
+    record honestly saying it is *not* approved gets rejected for claiming it is
+    - a non-problem that then costs a repair and someone's attention. The test is
+    on the words, with negations excluded.
+    """
+    text = status.strip().casefold().replace("-", "_").replace(" ", "_")
+    if not text:
+        return False
+    parts = [part for part in text.split("_") if part]
+    if any(part in NEGATION_WORDS for part in parts):
+        return False
+    # A one-word negation such as `unapproved` is not an approval word either: it
+    # is not in the vocabulary, so it falls through to False on its own.
+    return any(part in APPROVAL_WORDS for part in parts)
+
+
+def _drc_passes(drc: ErcReport | None, drc_fresh: bool) -> bool:
+    """Whether DRC actually passed, as opposed to being attested to have passed."""
+    if drc is None or not drc.ran or not drc_fresh:
+        return False
+    return drc.errors == 0 and not any(item.severity == "error" for item in drc.violations)
+
+
 def check_qa_release(
     release: ReleaseRecord,
     files: Sequence[Path | str],
     project_version: str,
+    drc: ErcReport | None = None,
+    drc_fresh: bool = False,
 ) -> StageCheckResult:
     findings: list[CheckFinding] = []
-    paths = [Path(path) for path in files]
-    hashes = [hashlib.sha256(path.read_bytes()).hexdigest() for path in paths if path.is_file()]
-    expected_hash = hashlib.sha256("".join(hashes).encode()).hexdigest() if hashes else ""
+    expected_hash = release_hash(files)
     actual_hash = release.release_hash
     if not actual_hash or actual_hash != expected_hash:
         findings.append(
@@ -817,22 +1240,58 @@ def check_qa_release(
                 "error",
             )
         )
-    checklist = release.checklist
-    if not checklist or set(checklist) != set(RELEASE_CHECKLIST_ITEMS) or not all(checklist.values()):
+    checklist = release.checklist or {}
+    missing = sorted(set(RELEASE_CHECKLIST_ITEMS) - set(checklist))
+    unknown = sorted(set(checklist) - set(RELEASE_CHECKLIST_ITEMS))
+    if missing or unknown:
         findings.append(
             _finding(
-                "release checklist",
-                checklist or {},
-                "all checklist items true",
+                "release checklist is complete",
+                {"missing": missing, "unexpected": unknown},
+                sorted(RELEASE_CHECKLIST_ITEMS),
                 "release",
                 "release checklist",
                 "error",
             )
         )
-    if release.release_status == "approved" and findings:
+    # Every item true used to be required outright, which made "drc_passes:
+    # false" an error on a run whose DRC really had failed - the only way past
+    # the gate was to attest to something untrue. What the checklist is for is
+    # deciding the release, so that is what is checked: all true is the
+    # condition for approving, and a false item is a reason to hold, not a
+    # malformed document.
+    # `drc_passes` is the one checklist item the gate can check against something
+    # other than the record: the DRC report the layout stage left behind. Without
+    # this it is an attestation like any other, and the release hash was already
+    # the only line in the record tied to the files on disk. A stale baseline is
+    # not evidence either - it describes the board before this run touched it.
+    if checklist.get("drc_passes") and not _drc_passes(drc, drc_fresh):
+        if drc is None or not drc.ran:
+            observed = "no DRC report from this run"
+        elif not drc_fresh:
+            observed = "only a stale baseline; the layout stage did not re-run DRC"
+        else:
+            observed = f"DRC reports {drc.errors} error(s)"
         findings.append(
             _finding(
-                "release checklist", "approved", "needs human review", "release", "release checklist", "error"
+                "drc_passes agrees with the DRC report",
+                f"checklist says drc_passes, but {observed}",
+                "a fresh DRC run of this board with no errors",
+                "release checklist",
+                "kicad-cli DRC",
+                "error",
+            )
+        )
+    unmet = sorted(item for item, met in checklist.items() if not met)
+    if _claims_approval(release.release_status) and (unmet or findings):
+        findings.append(
+            _finding(
+                "approval requires a clean checklist",
+                unmet or "a failing release gate",
+                "needs_human_review",
+                "release",
+                "release checklist",
+                "error",
             )
         )
     return _check("qa_release", findings, project_version, "release checker")

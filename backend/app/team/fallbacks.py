@@ -6,7 +6,6 @@ declared tool inputs. Missing facts remain unresolved.
 
 from __future__ import annotations
 
-import hashlib
 import re
 from collections.abc import Mapping
 from pathlib import Path
@@ -14,6 +13,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from ..planning.instruction import parse_instruction
+from . import checks
 from .profiles import get_profile
 from .schemas import (
     AgentTask,
@@ -248,16 +248,23 @@ def manufacturing_fallback(
 
 
 def qa_release_fallback(project: ProjectSpec, task: AgentTask, inputs: Mapping[str, object]) -> ReleaseRecord:
-    candidates = inputs.get("project_files", [])
+    # The task carries the release manifest the gate will check against, so the
+    # fallback hashes the same files in the same order rather than re-deriving
+    # the set from whatever a caller happened to pass in.
+    manifest = task.release_manifest or {}
+    candidates = manifest.get("included_files") or inputs.get("project_files", [])
     paths = [Path(item) for item in candidates if isinstance(item, str)]
     files = [path for path in paths if path.is_file()]
-    hashes = [hashlib.sha256(path.read_bytes()).hexdigest() for path in files]
-    release_hash = hashlib.sha256("".join(hashes).encode()).hexdigest() if hashes else ""
+    release_hash = checks.release_hash(files)
     checklist_input = inputs.get("release_checklist")
     checklist = (
         {key: value for key, value in checklist_input.items() if isinstance(value, bool)}
         if isinstance(checklist_input, Mapping)
-        else None
+        # Offline there is no judgement to attest with, so every item is false
+        # and the release is held. Reporting no checklist at all instead used to
+        # fail the gate's completeness rule, which left every offline run ending
+        # on a finding about the shape of the record rather than about the board.
+        else {key: False for key in checks.RELEASE_CHECKLIST_ITEMS}
     )
     return ReleaseRecord(
         release_status="unverified" if not files else "needs_human_review",
