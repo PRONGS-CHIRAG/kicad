@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+node_modules/
+.next/
+out/
+.env
+.env.local
+
+reports/
+*.kicad_prl
+fp-info-cache
+
+# Local agent tooling. Not committed on purpose: .entire/ is session
+# transcripts, and .claude/.codex are hook configs that would auto-run a
+# third-party CLI on anyone who cloned this.
+.entire/
+.claude/
+.codex/

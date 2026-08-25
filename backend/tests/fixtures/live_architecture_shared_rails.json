@@ -1,0 +1,285 @@
+{
+  "blocks": [
+    {
+      "id": "usb_c_power_input",
+      "input_voltage": "5 V from host (VBUS, 4.75-5.25 V)",
+      "output_voltage": "5 V",
+      "power_available_ma": 500.0,
+      "power_required_ma": 0.0,
+      "required_inputs": [
+        "VBUS 5 V"
+      ],
+      "required_outputs": [
+        "VBUS 5 V",
+        "USB_D+ / USB_D- differential pair",
+        "GND return"
+      ],
+      "requirement_ids": [
+        "PWR-001",
+        "IF-004"
+      ],
+      "type": "connector"
+    },
+    {
+      "id": "power_regulation_3v3",
+      "input_voltage": "5 V",
+      "output_voltage": "3.3 V",
+      "power_available_ma": 500.0,
+      "power_required_ma": 500.0,
+      "required_inputs": [
+        "VBUS 5 V",
+        "GND return"
+      ],
+      "required_outputs": [
+        "+3V3 rail",
+        "GND return"
+      ],
+      "requirement_ids": [
+        "PWR-002",
+        "PWR-003",
+        "PWR-004",
+        "TEST-003"
+      ],
+      "type": "power"
+    },
+    {
+      "id": "usb_data_pair_interface",
+      "input_voltage": "3.3 V",
+      "output_voltage": "3.3 V",
+      "power_available_ma": null,
+      "power_required_ma": 0.0,
+      "required_inputs": [
+        "USB_D+ / USB_D- differential pair"
+      ],
+      "required_outputs": [
+        "USB_D+ / USB_D- differential pair"
+      ],
+      "requirement_ids": [
+        "IF-005"
+      ],
+      "type": "interface"
+    },
+    {
+      "id": "mcu_core",
+      "input_voltage": "3.3 V",
+      "output_voltage": "3.3 V",
+      "power_available_ma": 500.0,
+      "power_required_ma": 480.0,
+      "required_inputs": [
+        "+3V3 rail",
+        "GND return",
+        "EN reset signal",
+        "USB_D+ / USB_D- differential pair",
+        "I2C SDA/SCL 3.3 V 400 kHz"
+      ],
+      "required_outputs": [
+        "I2C SDA/SCL 3.3 V 400 kHz",
+        "USB_D+ / USB_D- differential pair",
+        "EN reset signal",
+        "+3V3 rail"
+      ],
+      "requirement_ids": [
+        "PWR-002",
+        "IF-001",
+        "IF-005",
+        "TEST-001"
+      ],
+      "type": "mcu"
+    },
+    {
+      "id": "reset_supervisor",
+      "input_voltage": "3.3 V",
+      "output_voltage": "3.3 V",
+      "power_available_ma": null,
+      "power_required_ma": 0.5,
+      "required_inputs": [
+        "+3V3 rail",
+        "GND return",
+        "EN reset signal"
+      ],
+      "required_outputs": [
+        "EN reset signal",
+        "+3V3 rail"
+      ],
+      "requirement_ids": [
+        "IF-006"
+      ],
+      "type": "reset"
+    },
+    {
+      "id": "temperature_sensor_i2c",
+      "input_voltage": "3.3 V",
+      "output_voltage": "3.3 V",
+      "power_available_ma": null,
+      "power_required_ma": 0.1,
+      "required_inputs": [
+        "+3V3 rail",
+        "GND return",
+        "I2C SDA/SCL 3.3 V 400 kHz"
+      ],
+      "required_outputs": [
+        "I2C SDA/SCL 3.3 V 400 kHz",
+        "+3V3 rail"
+      ],
+      "requirement_ids": [
+        "IF-001",
+        "IF-002",
+        "IF-003",
+        "TEST-004"
+      ],
+      "type": "sensor"
+    },
+    {
+      "id": "ground_return_plane",
+      "input_voltage": "0 V",
+      "output_voltage": "0 V",
+      "power_available_ma": null,
+      "power_required_ma": 0.0,
+      "required_inputs": [
+        "GND return"
+      ],
+      "required_outputs": [
+        "GND return"
+      ],
+      "requirement_ids": [
+        "PWR-005",
+        "MECH-001",
+        "MECH-002",
+        "MECH-003",
+        "TEST-002"
+      ],
+      "type": "ground"
+    }
+  ],
+  "connections": [
+    {
+      "from_block": "usb_c_power_input",
+      "signal": "VBUS 5 V",
+      "to_block": "power_regulation_3v3"
+    },
+    {
+      "from_block": "power_regulation_3v3",
+      "signal": "VBUS 5 V",
+      "to_block": "usb_c_power_input"
+    },
+    {
+      "from_block": "usb_c_power_input",
+      "signal": "USB_D+ / USB_D- differential pair",
+      "to_block": "usb_data_pair_interface"
+    },
+    {
+      "from_block": "usb_data_pair_interface",
+      "signal": "USB_D+ / USB_D- differential pair",
+      "to_block": "mcu_core"
+    },
+    {
+      "from_block": "mcu_core",
+      "signal": "USB_D+ / USB_D- differential pair",
+      "to_block": "usb_data_pair_interface"
+    },
+    {
+      "from_block": "power_regulation_3v3",
+      "signal": "+3V3 rail",
+      "to_block": "mcu_core"
+    },
+    {
+      "from_block": "power_regulation_3v3",
+      "signal": "+3V3 rail",
+      "to_block": "temperature_sensor_i2c"
+    },
+    {
+      "from_block": "power_regulation_3v3",
+      "signal": "+3V3 rail",
+      "to_block": "reset_supervisor"
+    },
+    {
+      "from_block": "mcu_core",
+      "signal": "+3V3 rail",
+      "to_block": "power_regulation_3v3"
+    },
+    {
+      "from_block": "reset_supervisor",
+      "signal": "+3V3 rail",
+      "to_block": "power_regulation_3v3"
+    },
+    {
+      "from_block": "temperature_sensor_i2c",
+      "signal": "+3V3 rail",
+      "to_block": "power_regulation_3v3"
+    },
+    {
+      "from_block": "reset_supervisor",
+      "signal": "EN reset signal",
+      "to_block": "mcu_core"
+    },
+    {
+      "from_block": "mcu_core",
+      "signal": "EN reset signal",
+      "to_block": "reset_supervisor"
+    },
+    {
+      "from_block": "mcu_core",
+      "signal": "I2C SDA/SCL 3.3 V 400 kHz",
+      "to_block": "temperature_sensor_i2c"
+    },
+    {
+      "from_block": "temperature_sensor_i2c",
+      "signal": "I2C SDA/SCL 3.3 V 400 kHz",
+      "to_block": "mcu_core"
+    },
+    {
+      "from_block": "usb_c_power_input",
+      "signal": "GND return",
+      "to_block": "ground_return_plane"
+    },
+    {
+      "from_block": "power_regulation_3v3",
+      "signal": "GND return",
+      "to_block": "ground_return_plane"
+    },
+    {
+      "from_block": "mcu_core",
+      "signal": "GND return",
+      "to_block": "ground_return_plane"
+    },
+    {
+      "from_block": "reset_supervisor",
+      "signal": "GND return",
+      "to_block": "ground_return_plane"
+    },
+    {
+      "from_block": "temperature_sensor_i2c",
+      "signal": "GND return",
+      "to_block": "ground_return_plane"
+    },
+    {
+      "from_block": "ground_return_plane",
+      "signal": "GND return",
+      "to_block": "usb_c_power_input"
+    },
+    {
+      "from_block": "ground_return_plane",
+      "signal": "GND return",
+      "to_block": "power_regulation_3v3"
+    },
+    {
+      "from_block": "ground_return_plane",
+      "signal": "GND return",
+      "to_block": "mcu_core"
+    },
+    {
+      "from_block": "ground_return_plane",
+      "signal": "GND return",
+      "to_block": "reset_supervisor"
+    },
+    {
+      "from_block": "ground_return_plane",
+      "signal": "GND return",
+      "to_block": "temperature_sensor_i2c"
+    }
+  ],
+  "unresolved_questions": [
+    "IF-004 / PWR-001: J1 is currently Connector:USB_B_Micro but the request specifies USB-C; architecture assumes J1 is replaced with a USB-C receptacle (CC1/CC2 5.1 kOhm pull-downs). Sign-off needed if the Micro-B part must stay.",
+    "IF-003: ADD0 logic level for address 0x48 assumed as a dedicated pull-down net separate from GND; confirm pull-down vs. direct tie preference."
+  ]
+}

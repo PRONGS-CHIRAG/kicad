@@ -1,0 +1,272 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Palette: KiCAD's canvas colours — wire teal, component red-brown, board
+ * copper — on cool drafting paper. Deliberately light-only: kicad-cli renders
+ * the schematic on white, so the UI is the paper around that render rather
+ * than a dark frame fighting it.
+ */
+:root {
+  --ink: #171c1a;
+  --paper: #edf0ee;
+  --sheet: #ffffff;
+  --rule: #cbd2ce;
+  --muted: #5a6763;
+
+  --wire: #0b7a69;
+  --wire-soft: #e1efec;
+  --brick: #a33327;
+  --brick-soft: #f9e9e6;
+  --copper: #8a5e1b;
+  --copper-line: #c08a34;
+  --copper-soft: #f9f0dc;
+
+  --background: var(--paper);
+  --foreground: var(--ink);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+    /* Backend-authored strings (paths, net names, ERC details) are arbitrarily
+       long; nothing may push the page sideways. */
+    overflow-wrap: break-word;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--wire);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  ::selection {
+    background-color: var(--wire-soft);
+  }
+
+  /* Native controls follow the palette instead of the OS blue. */
+  input,
+  textarea,
+  select,
+  button {
+    accent-color: var(--wire);
+  }
+}
+
+@layer components {
+  /* Small uppercase mono label. The utility voice: it names things, never explains. */
+  .eyebrow {
+    font-family: var(--font-plex-mono), ui-monospace, monospace;
+    font-size: 0.625rem;
+    font-weight: 500;
+    line-height: 1;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    /* Some eyebrows carry backend strings (an action type, a check name). */
+    overflow-wrap: anywhere;
+  }
+
+  .panel {
+    background-color: var(--sheet);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    border-radius: 3px;
+    border: 1px solid transparent;
+    padding: 0.5rem 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    line-height: 1.15;
+    background-color: var(--wire);
+    color: #fff;
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+  }
+
+  .btn:hover:not(:disabled) {
+    background-color: #095f52;
+  }
+
+  .btn:disabled {
+    background-color: #dfe4e1;
+    border-color: var(--rule);
+    color: #8c9995;
+    cursor: not-allowed;
+  }
+
+  /* Secondary: hairline outline, ink text. Kept as the old class name too so
+     no call site silently loses its styling. */
+  .btn-ghost,
+  .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    border-radius: 3px;
+    border: 1px solid var(--rule);
+    padding: 0.5rem 0.875rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    line-height: 1.15;
+    background-color: transparent;
+    color: var(--ink);
+    transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
+  }
+
+  .btn-ghost:hover:not(:disabled),
+  .btn-secondary:hover:not(:disabled) {
+    border-color: var(--wire);
+    color: var(--wire);
+    background-color: var(--wire-soft);
+  }
+
+  .btn-ghost:disabled,
+  .btn-secondary:disabled {
+    color: #8c9995;
+    cursor: not-allowed;
+  }
+
+  /* Segmented control: the two-state switches (schematic/pcb, words/fields). */
+  .seg {
+    font-family: var(--font-plex-mono), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 0.375rem 0.6875rem;
+    border-radius: 2px;
+    color: var(--muted);
+    transition: background-color 140ms ease, color 140ms ease;
+  }
+
+  .seg:hover:not(:disabled):not([aria-pressed="true"]) {
+    color: var(--ink);
+  }
+
+  .seg[aria-pressed="true"] {
+    background-color: var(--sheet);
+    color: var(--wire);
+    box-shadow: 0 1px 2px rgb(23 28 26 / 0.08);
+  }
+
+  .seg:disabled {
+    color: #a9b3af;
+    cursor: not-allowed;
+  }
+
+  .field {
+    width: 100%;
+    min-width: 0;
+    background-color: var(--sheet);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 0.4375rem 0.5625rem;
+    font-size: 0.8125rem;
+    color: var(--ink);
+    transition: border-color 140ms ease;
+  }
+
+  .field:hover {
+    border-color: #b3bcb7;
+  }
+
+  .field::placeholder {
+    color: #96a19d;
+  }
+
+  /* Mono data chip: designators, net names, file paths. */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    max-width: 100%;
+    min-width: 0;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    padding: 0.125rem 0.375rem;
+    font-family: var(--font-plex-mono), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    line-height: 1.4;
+    color: var(--muted);
+    overflow-wrap: anywhere;
+  }
+}
+
+@layer utilities {
+  /* For machine strings with no spaces to break on. */
+  .wrap-any {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  /* Hairline grid, 8px pitch — the snap grid a schematic is drawn on. */
+  .drafting-grid {
+    background-image: linear-gradient(to right, rgb(23 28 26 / 0.045) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(23 28 26 / 0.045) 1px, transparent 1px);
+    background-size: 8px 8px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    /* Delays matter as much as durations here: the wire animations use
+       fill-mode `both`, so a held delay would leave them invisible. */
+    animation-delay: 0s !important;
+    transition-delay: 0s !important;
+  }
+}
+
+/* The signature: proposed connections draw themselves in, once, like routing a
+   net. One orchestrated moment; everything else stays still. */
+@keyframes wire-draw {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@keyframes junction-pop {
+  0% {
+    transform: scale(0);
+  }
+  65% {
+    transform: scale(1.4);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

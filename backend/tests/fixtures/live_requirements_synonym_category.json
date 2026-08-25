@@ -1,0 +1,296 @@
+{
+  "acceptance_tests": [
+    "ERC run reports 0 errors and 0 warnings (baseline 10 errors / 8 warnings resolved)",
+    "DRC run against generic_two_layer profile reports 0 errors, 0 warnings, and 0 unrouted nets (baseline 6 errors / 14 warnings resolved)",
+    "Netlist-to-layout consistency check passes with no mismatches",
+    "Measure +3V3 rail at TMP102 VCC and ESP32 3V3 pins: 3.135-3.465 V (3.3 V +/-5%) under idle and WiFi TX load",
+    "Verify with continuity test that U2.1 is on +3V3 and U2.2 is on GND",
+    "I2C bus scan detects TMP102 at address 0x48; oscilloscope confirms SDA/SCL rise times within I2C spec at 100 kHz and 400 kHz",
+    "Read TMP102 temperature register over I2C from ESP32 firmware and confirm a plausible ambient reading",
+    "Verify board outline in layout is exactly 110 x 65 mm (35,35 to 145,100) and no courtyard extends outside it",
+    "Verify stackup is exactly 2 copper layers with continuous GND pour on the bottom layer under USB and I2C routing",
+    "Verify USB D+/D- routed as a length-matched differential pair (mismatch <= 1 mm)",
+    "Confirm BOM, Gerber/drill fabrication outputs, and assembly documentation are generated and complete"
+  ],
+  "constraints": [
+    "Two-layer PCB only (generic_two_layer manufacturer profile)",
+    "All logic operates at 3.3 V from a single regulated rail",
+    "USB is the sole power input; input current limited to 500 mA unless negotiated",
+    "Board outline fixed at 110 x 65 mm (35,35 to 145,100); all placement and routing must stay inside it",
+    "Propose changes only at this stage; no project files modified",
+    "TMP102 power connectivity gaps (U2.1 to +3V3, U2.2 to GND) must be resolved in the schematic stage",
+    "ERC baseline (10 errors, 8 warnings) and DRC baseline (6 errors, 14 warnings) must be driven to zero"
+  ],
+  "interfaces": [
+    {
+      "devices": 1,
+      "type": "I2C (TMP102 temperature sensor, address 0x48, SDA=GPIO21, SCL=GPIO22, 4.7 kOhm pull-ups)",
+      "voltage": "3.3 V"
+    },
+    {
+      "devices": 1,
+      "type": "USB 2.0 full-speed data (J1 D+/D- to U1.USB_D+/USB_D-, differential pair)",
+      "voltage": "3.3 V signaling (5 V VBUS)"
+    }
+  ],
+  "mechanical": {
+    "layers": 2,
+    "maximum_height_mm": 65.0,
+    "maximum_width_mm": 110.0
+  },
+  "power": {
+    "input": "USB 5 V VBUS via connector J1 (sole power input), regulated down to 3.3 V by an added 5 V-to-3.3 V regulator",
+    "logic_voltage": "3.3 V",
+    "maximum_current_ma": 500.0
+  },
+  "requirements": [
+    {
+      "category": "power",
+      "id": "PWR-001",
+      "source": "project request: 'USB-C powered ESP32 board'; pin table J1.VBUS",
+      "statement": "The board shall be powered from the USB connector J1 with 5 V nominal VBUS as its sole power input.",
+      "unit": "V",
+      "value": 5
+    },
+    {
+      "category": "power",
+      "id": "PWR-002",
+      "source": "project request: 'Keep the logic at 3.3 V'; workflow: schematic_engineer step",
+      "statement": "A 5 V-to-3.3 V regulator shall be added, generating the +3V3 rail from VBUS so all logic operates out of the 3.3 V rail.",
+      "unit": "V",
+      "value": 3.3
+    },
+    {
+      "category": "power",
+      "id": "PWR-003",
+      "source": "derived: standard LDO tolerance for ESP32 and TMP102 supply ranges",
+      "statement": "The +3V3 rail shall be regulated to 3.3 V +/-5% under all load conditions at that regulator output.",
+      "unit": "V",
+      "value": "3.3 +/-5%"
+    },
+    {
+      "category": "power",
+      "id": "PWR-004",
+      "source": "derived: ESP32-WROOM-32 datasheet peak ~370 mA plus margin; USB default budget",
+      "statement": "The total 3.3 V load budget (ESP32-WROOM-32 WiFi TX peaks plus TMP102) shall not exceed 500 mA under all load conditions.",
+      "unit": "mA",
+      "value": 500
+    },
+    {
+      "category": "power",
+      "id": "PWR-005",
+      "source": "derived from PWR-004 with 20% margin",
+      "statement": "The regulator shall be rated for at least 600 mA output so the 3.3 V rail supplies ESP32 peaks and I2C pull-ups with margin.",
+      "unit": "mA",
+      "value": 600
+    },
+    {
+      "category": "power",
+      "id": "PWR-006",
+      "source": "USB 2.0 specification default current limit",
+      "statement": "Input current drawn from USB shall not exceed 500 mA unless higher current is negotiated.",
+      "unit": "mA",
+      "value": 500
+    },
+    {
+      "category": "power",
+      "id": "PWR-007",
+      "source": "derived: regulator stability and ESP32 transient load practice",
+      "statement": "Bulk capacitance of at least 10 uF shall be provided on the input and output of the 3.3 V rail at the regulator.",
+      "unit": "uF",
+      "value": 10
+    },
+    {
+      "category": "power",
+      "id": "PWR-008",
+      "source": "derived: standard decoupling practice; workflow: schematic_engineer step",
+      "statement": "Each active device power pin (U1.3V3, U2.VCC) shall have a 100 nF decoupling capacitor placed within 3 mm of the pin.",
+      "unit": "nF",
+      "value": 100
+    },
+    {
+      "category": "power",
+      "id": "PWR-009",
+      "source": "design context nets: +3V3 lists only U1.1, U1.8; workflow: 'resolve missing +3V3/GND connectivity'",
+      "statement": "TMP102 U2.VCC (pin 1) shall be connected to the +3V3 net; the current unconnected state (U2.1 absent from +3V3 net) shall be resolved.",
+      "unit": "boolean",
+      "value": true
+    },
+    {
+      "category": "power",
+      "id": "PWR-010",
+      "source": "design context nets: GND lists J1.4, U1.2, U2.5 but not U2.2",
+      "statement": "TMP102 U2.GND (pin 2) shall be connected to the GND net; currently only U2.5 (ADD0) is connected to power nets.",
+      "unit": "boolean",
+      "value": true
+    },
+    {
+      "category": "power",
+      "id": "PWR-011",
+      "source": "workflow: layout_engineer 'solid GND return'; two-layer constraint",
+      "statement": "The GND net shall be implemented as a continuous copper pour on the bottom layer providing a continuous return path.",
+      "unit": "boolean",
+      "value": true
+    },
+    {
+      "category": "interface",
+      "id": "IF-001",
+      "source": "workflow: 'TMP102 on I2C via GPIO21/SDA and GPIO22/SCL'",
+      "statement": "The TMP102 I2C bus shall use SDA on U1.GPIO21 and SCL on U1.GPIO22.",
+      "unit": "pin assignment",
+      "value": "GPIO21=SDA, GPIO22=SCL"
+    },
+    {
+      "category": "interface",
+      "id": "IF-002",
+      "source": "TMP102 datasheet supported I2C modes; request: logic at 3.3 V",
+      "statement": "The I2C bus shall operate at 3.3 V logic and support 100 kHz standard mode and 400 kHz fast mode clock rates.",
+      "unit": "kHz",
+      "value": 400
+    },
+    {
+      "category": "interface",
+      "id": "IF-003",
+      "source": "workflow: 'add I2C pull-ups'; I2C-bus specification rise-time sizing",
+      "statement": "SDA and SCL shall each have a pull-up resistor to +3V3, nominally 4.7 kOhm, sized for target bus capacitance.",
+      "unit": "kOhm",
+      "value": 4.7
+    },
+    {
+      "category": "interface",
+      "id": "IF-004",
+      "source": "NXP I2C-bus specification UM10204",
+      "statement": "Total I2C bus capacitance shall remain below the 400 pF I2C specification limit.",
+      "unit": "pF",
+      "value": 400
+    },
+    {
+      "category": "interface",
+      "id": "IF-005",
+      "source": "design context nets: GND includes U2.5; TMP102 datasheet address table",
+      "statement": "TMP102 ADD0 (U2.5) shall be tied to GND, giving I2C address 0x48.",
+      "unit": "I2C address",
+      "value": "0x48"
+    },
+    {
+      "category": "interface",
+      "id": "IF-006",
+      "source": "workflow: 'keeping USB differential pair clean'; USB 2.0 specification",
+      "statement": "USB D+ (J1.3 to U1.6) and D- (J1.2 to U1.7) shall be routed as a differential pair with matched lengths.",
+      "unit": "Ohm / mm",
+      "value": "90 differential, length match <=1 mm"
+    },
+    {
+      "category": "interface",
+      "id": "IF-007",
+      "source": "workflow: 'add EN pull-up'; ESP32-WROOM-32 hardware design guidelines; nets: +3V3 includes U1.8",
+      "statement": "ESP32 EN (U1.8) shall have a pull-up to +3V3 (nominally 10 kOhm with 100 nF to GND); it shall remain on the +3V3 net as it is today.",
+      "unit": "kOhm",
+      "value": 10
+    },
+    {
+      "category": "interface",
+      "id": "IF-008",
+      "source": "pin table: U1.5 GPIO25 present with no net",
+      "statement": "Unused GPIO25 (U1.5) shall be left unconnected or assigned a defined function documented in the schematic.",
+      "unit": "n/a",
+      "value": null
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-001",
+      "source": "design context: 'Board: 110 x 65 mm (outline 35,35 to 145,100)'",
+      "statement": "All components and routing shall fit within the 110 x 65 mm board outline (35,35 to 145,100).",
+      "unit": "mm",
+      "value": "110 x 65"
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-002",
+      "source": "project request: 'stay within a two-layer board'",
+      "statement": "The PCB shall use exactly 2 copper layers, with the bottom layer prioritized as ground for return paths.",
+      "unit": "layers",
+      "value": 2
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-003",
+      "source": "derived: USB connector mating access requirement",
+      "statement": "The USB connector J1 shall be placed at a board edge so the mating cable clears the enclosure keep-out.",
+      "unit": "boolean",
+      "value": true
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-004",
+      "source": "derived: TMP102 measures ambient temperature; self-heating/board-heating error mitigation",
+      "statement": "The TMP102 (U2) shall be placed away from heat sources (regulator, ESP32) and thermally isolated with copper relief to give minimal measurement error.",
+      "unit": "boolean",
+      "value": true
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-005",
+      "source": "derived from MECH-001 and DRC courtyard rules",
+      "statement": "No component courtyard shall extend outside the board outline or overhang a board edge.",
+      "unit": "boolean",
+      "value": true
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-006",
+      "source": "manufacturer_profile: generic_two_layer; typical 2-layer capability",
+      "statement": "Minimum trace width and clearance shall be 0.2 mm per the generic_two_layer manufacturer profile trace width and clearance.",
+      "unit": "mm",
+      "value": 0.2
+    },
+    {
+      "category": "mechanical",
+      "id": "MECH-007",
+      "source": "derived: IPC-2221 current capacity for 500 mA on 1 oz copper",
+      "statement": "Power traces (VBUS, +3V3) shall be at least 0.5 mm wide for 500 mA with limited temperature rise.",
+      "unit": "mm",
+      "value": 0.5
+    },
+    {
+      "category": "quality",
+      "id": "TEST-001",
+      "source": "design context: 'ERC baseline: 10 errors, 8 warnings'; workflow: erc_reviewer step",
+      "statement": "ERC shall pass with 0 errors and 0 warnings, resolving the baseline of 10 errors and 8 warnings.",
+      "unit": "errors/warnings",
+      "value": 0
+    },
+    {
+      "category": "quality",
+      "id": "TEST-002",
+      "source": "design context: 'DRC baseline: 6 errors, 14 warnings'; workflow: drc_reviewer step",
+      "statement": "DRC against the generic_two_layer profile shall pass with 0 errors and 0 warnings and with no unrouted nets, resolving the baseline of 6 errors and 14 warnings.",
+      "unit": "errors/warnings",
+      "value": 0
+    },
+    {
+      "category": "quality",
+      "id": "TEST-003",
+      "source": "workflow: verification_engineer step",
+      "statement": "Verification shall confirm netlist-to-layout consistency (100% netlist-to-layout consistency).",
+      "unit": "%",
+      "value": 100
+    },
+    {
+      "category": "quality",
+      "id": "TEST-004",
+      "source": "workflow: documentation_engineer step",
+      "statement": "Documentation shall include BOM, fabrication outputs (Gerbers/drill), and assembly documentation for the released design.",
+      "unit": "boolean",
+      "value": true
+    },
+    {
+      "category": "quality",
+      "id": "TEST-005",
+      "source": "derived: quality-gate waiver process",
+      "statement": "Any ERC/DRC violation that cannot be resolved shall be formally waived with written justification approved by the project manager.",
+      "unit": "boolean",
+      "value": true
+    }
+  ]
+}

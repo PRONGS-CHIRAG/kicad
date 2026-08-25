@@ -1,0 +1,12 @@
+**/node_modules
+**/.next
+**/__pycache__
+**/.venv
+**/.git
+**/reports
+**/benchmark-results
+# Never bake local secrets into an image: backend/.env is git-ignored, but the
+# Docker build context is the filesystem, not git, and app/config.py loads
+# `.env` relative to the WORKDIR the image runs from.
+**/.env
+!**/.env.example
