@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.10.2",
+  "checkpoint_id": "01M117KK4TQ54JFRYAQJ9DQBRE",
+  "strategy": "manual-commit",
+  "branch": "feat/dfm-measurement-and-traceable-verification",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "DEMO.md",
+    "backend/app/team/checks.py",
+    "backend/app/team/orchestrator.py",
+    "backend/tests/test_team_checks.py",
+    "backend/tests/test_team_orchestrator.py",
+    "context.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 182,
+    "cache_creation_tokens": 992497,
+    "cache_read_tokens": 21782774,
+    "output_tokens": 58249,
+    "api_call_count": 90
+  }
+}

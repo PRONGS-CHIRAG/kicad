@@ -1,0 +1,21 @@
+do pr
+
+---
+
+merge it
+
+---
+
+continue
+
+---
+
+where is it merged to
+
+---
+
+now tell me what else is left to do
+
+---
+
+first change the docs and make it according to the code, then make zje manufacturing check for board geometry, use the kicad-cli for it. and enable external references for check_verification
