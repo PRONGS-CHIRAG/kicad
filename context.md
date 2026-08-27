@@ -271,8 +271,29 @@ worked. The differences here are structural, not tonal — each one is enforced 
 
 The team adds project management, requirements, architecture, components, schematic design, PCB
 layout, simulation, verification, manufacturing, and QA/release roles. It follows that canonical
-order, with layout and simulation overlapping when enabled. Failed gates route to the responsible
-agent and replay every downstream stage; two return trips end in human review.
+order, with layout and simulation overlapping when enabled.
+
+A failed gate is not routed straight back. An eleventh seat — the **repair engineer**
+([`repair_spec`](backend/app/team/registry.py)) — owns no stage of its own; it is typed to the stage
+it is correcting, gets that stage's output model, its prior inputs and its read-only status, and is
+handed the rejected document with the findings attached. A repaired document goes through the very
+same gate, so a repair is a proposal like any other rather than a way around one.
+
+If the gate rejects the repair too, the run **asks a person** before spending a return trip:
+`OrchestratorOptions.intervention` receives a short `InterventionRequest` — the stage, one sentence,
+one line per broken rule — and a non-empty answer buys exactly one more repair carrying that
+instruction. That attempt is deliberately not charged to `team_max_repairs_per_stage`, because the
+budget exists to stop the machine retrying *itself* and this is the one try with new information in
+it; and the repair prompt lifts its "change only what the findings require" rule for the answer,
+since a human fix is usually a thing no finding names. A person is asked once per stage, not once
+per return trip — the gate does not change its mind. Only then does the work go back to the agent
+that owns it, and two return trips still end in human review.
+
+Over the API the run parks on an event with status `awaiting_human` and publishes the question, so
+answering resumes the paused stage instead of restarting from the project manager; the wait is
+bounded by `team_human_timeout_seconds`, and a run nobody answers ends exactly where it ended
+before. With no hook installed — every offline path, including the stub runner and the tests —
+none of this is reachable and behaviour is unchanged.
 
 The Devin runner returns validated structured output from real sessions. The explicitly labelled
 `STUB` runner is deterministic and offline for keyless development. Agents never directly mutate
@@ -284,7 +305,10 @@ supports the ESP32/I²C temperature-monitoring and USB-C demonstration request.
 
 **The lane in the UI.** Three steps, derived the same way — `!runId ? "brief" : status === "running"
 ? "run" : "release"`, from the run's own status rather than from whether a report exists, because
-answering a question puts the run back to `running` with the previous report still attached.
+answering a question puts the run back to `running` with the previous report still attached. A
+parked run (`awaiting_human`) takes the third step too, and the release panel renders its question
+*ahead of* its own `if (!report) return null` guard — a parked run has no report yet, so otherwise
+the box that answers it could never appear.
 [team.ts](frontend/src/lib/team.ts) mirrors the registry roster and rebuilds a run's shape from the
 append-only evidence file. The runner and the orchestrator each append a record for the same pass, and
 adjacency cannot tell those apart from a return trip — at the parallel fork the sibling's records land
@@ -306,6 +330,35 @@ lane: an agent appends its record only once it finishes, so the stage drawn as *
 canonical successor of the last gate that passed — both branches of the fork, where that successor is
 the pair. After a failed gate nothing claims to be working, because which agent picks the work up is
 decided by the finding text inside the backend. A stage with no records yet says it is waiting.
+
+**What the last three gates check, and against what.** Verification is held to its own verdict: any
+finding whose severity is outside a small allowlist of advisory words blocks the stage, and a report
+with a failed requirement must carry a finding that blocks — anchored on what blocks rather than on
+the finding list being empty, since deleting a finding and relabelling it `info` are the same move.
+Where the requirements document is available it is also checked against that: the counters have to
+be the document's real totals, every requirement ID needs an outcome, and neither a finding nor an
+outcome may cite an ID that does not exist. Without the document those rules are skipped rather than
+run against an empty one.
+
+Manufacturing does two different things. Most of it is a transcription check — the report's profile
+name, its five rule values and its provenance have to match [profiles.py](backend/app/team/profiles.py)
+verbatim. The rest is a *measurement*: the profile's minima are written out as a KiCAD custom
+design-rule file and `kicad-cli` measures the board against them, so the DFM verdict rests on the
+board rather than on the stage's account of it. Violations are attributed by the rule name KiCAD
+puts in each one, not by diffing two DRC runs — DRC is not deterministic between passes and a diff
+would manufacture findings out of that noise — and the union of two passes is kept, because a gap
+the fab cannot etch does not become safe because the second run missed it. A constraint with nothing
+on the board to measure (a minimum drill on an all-SMD board) is reported as *not measured* and
+counted in `skipped_count`, never as passed. Each finding is named for the constraint that broke, so
+a clearance goes back to the layout stage that can move the copper rather than to the read-only
+stage that reported it.
+
+QA/release recomputes the release hash from the files on disk and compares. Its checklist must carry
+exactly the canonical keys, an unmet item is a reason to hold rather than a malformed record, and
+approval — matched on what the status means, with negations excluded, not on one spelling of
+"approved" — requires every item met. `drc_passes` is the one item with something outside the record
+to check it against, and it is checked against the DRC report this run produced; a stale baseline
+describes a different board and does not count.
 
 The MVP does not route copper or run ngspice. Simulation uses closed-form arithmetic only, and
 layout checks use footprint extents only where the parser exposes trustworthy geometry. A release

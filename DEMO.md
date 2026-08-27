@@ -76,6 +76,11 @@ Measured on two full runs in `normal` mode, both **0 ACU**:
 | 08:35 | 1112 s — 18 min 32 s | 8 of 10 | `needs_human_review` |
 | 11:1x | 1604 s — 26 min 44 s | 6 of 10 | `needs_human_review` |
 
+Both were measured before the verification gate began failing on unresolved critical findings and
+before a stuck stage could ask a question. The wall-clock figures still stand; the release column is
+what may differ now — a run that used to end at `needs_human_review` can instead **stop part-way and
+wait for you**, which is the `awaiting_human` state described under Step 03.
+
 Devin is not deterministic and the spread is 8 minutes wide on a sample of two. **Start it 40
 minutes out.** That is not padding: 40 minutes is what buys you one full restart if the five-minute
 checkpoint below comes back dead.
@@ -133,7 +138,8 @@ its own backend session; nothing you do here reaches Tab A.
 | **Change project** (bottom right of the sheet) in Tab A | Calls `closeProject`, which wipes the team run |
 | Browser refresh / reopen on Tab A | Same — the run id is React state only |
 | **Stub** in the runner toggle | The on-screen notice calls it *"a wiring test, not a demo"*, in front of the judges |
-| **Answer and re-run** in the release panel | It restarts the **whole run from the project manager** — another 19-27 minutes |
+| **Answer and re-run** in the release panel *of a finished run* | It restarts the **whole run from the project manager** — another 19-27 minutes |
+| **Send to the repair engineer** on a run that stopped mid-flight | Safe, and much cheaper: it resumes the paused stage instead of restarting. Different box, different button — read which one you are looking at |
 | A second team run in Tab A | `startTeamRun` calls `resetTeam()` first; the finished one is gone |
 
 Also: don't demo the same single-change session twice. After an accepted run the baseline moves, so
@@ -347,7 +353,16 @@ Switch to Tab A. The run you started 30 minutes ago is finished, or nearly.
      strongest "it actually ran" evidence; nothing else you show beats a live third-party session log.
      (Have that tab ready — don't log into Devin for the first time on stage.)
    - **THE GATE** — the deterministic verdict, with each error's FOUND / EXPECTED / OBJECT / SOURCE.
-4. **Scroll to Step 03, Release status.** Point at the **Needs human review** notice and the
+4. **Scroll to Step 03.** Check which of the two panels you have before you point at anything.
+
+   If the run **stopped to ask you something**, the panel is headed *"<stage> needs a decision"*
+   rather than *Release status*: a gate rejected that stage, the repair engineer tried and the same
+   gate rejected its work too, so the run is holding for an instruction. That is a better story than
+   the verdict, not a worse one — the pipeline is refusing to walk past a document it cannot
+   justify, and it says exactly which rule is unsatisfied. Answer it and the paused stage picks up;
+   don't answer it and the run finishes on its own as it always did.
+
+   Otherwise the panel is **Release status**. Point at the **Needs human review** notice and the
    six-cell grid — *Requirements met · Power tests · DFM warnings · Schematic ERC · Board DRC ·
    Critical issues*. **Don't scroll through OPEN CRITICAL FINDINGS.** Observed counts across runs
    were 1, 24 and 33 — you won't know in advance which you got, and scrolling a 33-row wall in front
@@ -445,7 +460,9 @@ it is the ten agents themselves. In both, the gate is deterministic and Devin ha
 reject.
 
 **"Did the ten-agent run ever finish clean?"**
-No. Best observed is 8 of 10 stages and `needs_human_review`. The gates are the deliverable.
+No. Best observed is 8 of 10 stages and `needs_human_review`. The gates are the deliverable. A run
+can now also stop part-way and ask you a question rather than carrying on to a verdict — same
+answer, one step earlier: the gate would not certify what it was handed.
 
 **"What if ERC can't run?"**
 Then nothing is ever accepted. Every run returns "needs your review" and the UI says so in a banner

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import re
+import shutil
+import tempfile
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,7 +19,7 @@ from ..kicad.board import (
     footprint_reference,
     load,
 )
-from ..kicad.erc import diff_violations
+from ..kicad.erc import KicadCli, diff_violations
 from ..kicad.reader import ProjectState
 from ..kicad.state import diff_states
 from ..models import ErcReport, Violation
@@ -978,7 +980,25 @@ def _is_blocking(severity: str | None) -> bool:
     return severity is not None and severity.strip().casefold() not in BENIGN_SEVERITIES
 
 
-def check_verification(report: VerificationReport, project_version: str) -> StageCheckResult:
+def check_verification(
+    report: VerificationReport,
+    project_version: str,
+    requirements: RequirementsDoc | None = None,
+) -> StageCheckResult:
+    """Judge a verification report, against the requirements doc where there is one.
+
+    Without `requirements` this checks the report against itself: its findings are
+    complete, nothing critical is open, and a failure is explained. Those rules
+    catch a document that contradicts itself, which is the escape a live repair
+    actually took - but they cannot catch one that is internally consistent and
+    simply untrue, because there is nothing to compare it to.
+
+    With the requirements document the counters stop being self-reported: the
+    totals have to be the real ones, every requirement has to be accounted for,
+    and a finding may not cite an ID that does not exist. `None` means the caller
+    could not supply it and those rules are skipped - never that they are checked
+    against an empty document, which would fail every ID lookup instead.
+    """
     findings: list[CheckFinding] = []
     blocking = [item for item in report.critical_findings if _is_blocking(item.severity)]
     if blocking:
@@ -1066,13 +1086,322 @@ def check_verification(report: VerificationReport, project_version: str) -> Stag
                     "error",
                 )
             )
+    findings.extend(_verification_against_requirements(report, requirements))
     return _check("verification", findings, project_version, "verification checker")
 
 
+def _verification_against_requirements(
+    report: VerificationReport, requirements: RequirementsDoc | None
+) -> list[CheckFinding]:
+    """The rules that need something outside the report to be checkable at all."""
+    findings: list[CheckFinding] = []
+    counted = report.requirements_passed + report.requirements_failed + report.requirements_unverified
+    if counted != report.requirements_total:
+        # True with or without the document: a report whose own parts do not add
+        # up is wrong on its own terms.
+        findings.append(
+            _finding(
+                "requirement counts add up",
+                f"{report.requirements_passed} passed + {report.requirements_failed} failed + "
+                f"{report.requirements_unverified} unverified = {counted}",
+                f"requirements_total, which is {report.requirements_total}",
+                "verification report",
+                "verification report",
+                "error",
+            )
+        )
+    if requirements is None:
+        return findings
+    identifiers = {item.id for item in requirements.requirements}
+    if report.requirements_total != len(identifiers):
+        findings.append(
+            _finding(
+                "requirements_total is the number of requirements",
+                report.requirements_total,
+                f"{len(identifiers)}, the requirements document's own count",
+                "verification report",
+                "requirements document",
+                "error",
+            )
+        )
+    outcomes = report.requirement_outcomes or []
+    covered = {outcome.requirement_id for outcome in outcomes}
+    # `requirement_outcomes` is optional on the model, so "absent" must not pass
+    # this by vacuity - that is the same hole closed twice already above.
+    uncovered = sorted(identifiers - covered)
+    if uncovered:
+        findings.append(
+            _finding(
+                "every requirement has an outcome",
+                f"{len(uncovered)} with no outcome: {', '.join(uncovered[:8])}"
+                + (" ..." if len(uncovered) > 8 else ""),
+                "one requirement_outcomes entry per requirement ID",
+                "verification report",
+                "requirements document",
+                "error",
+            )
+        )
+    invented = sorted(covered - identifiers)
+    if invented:
+        findings.append(
+            _finding(
+                "outcomes name real requirements",
+                f"no such requirement: {', '.join(invented[:8])}"
+                + (" ..." if len(invented) > 8 else ""),
+                "IDs that appear in the requirements document",
+                "verification report",
+                "requirements document",
+                "error",
+            )
+        )
+    ghosts = sorted(
+        {item.requirement_id for item in report.critical_findings if item.requirement_id} - identifiers
+    )
+    if ghosts:
+        findings.append(
+            _finding(
+                "findings name real requirements",
+                f"no such requirement: {', '.join(ghosts[:8])}" + (" ..." if len(ghosts) > 8 else ""),
+                "IDs that appear in the requirements document",
+                "verification report",
+                "requirements document",
+                "error",
+            )
+        )
+    return findings
+
+
+PROFILE_RULE_PREFIX = "mitos_profile_"
+"""Names the DRC rules this gate writes, so its violations can be told apart.
+
+A custom ruleset is added *on top of* the board's own, so a run with it reports
+both. KiCAD puts the rule that fired into each violation's description - "Track
+width (rule \'mitos_profile_track_width\' min width 0.15 mm; actual 0.10 mm)" -
+so attribution is by name rather than by diffing two DRC runs against each other.
+That matters: DRC is not deterministic between passes, and a diff would invent
+findings out of that noise.
+"""
+
+_PROFILE_CONSTRAINTS: tuple[tuple[str, str, str], ...] = (
+    ("track_width", "track_width", "minimum_trace_width_mm"),
+    ("clearance", "clearance", "minimum_spacing_mm"),
+    ("hole_size", "hole_size", "minimum_drill_mm"),
+    ("edge_clearance", "edge_clearance", "copper_to_edge_clearance_mm"),
+)
+"""(rule suffix, KiCAD constraint, profile field). Verified against kicad-cli 10:
+each one produces violations when it is not met, and `edge_clearance` reports them
+under the type `copper_edge_clearance`."""
+
+
+def profile_ruleset(profile: ManufacturerProfile) -> str:
+    """The manufacturer's minima as a KiCAD custom design-rule file.
+
+    This is what makes the DFM check a measurement rather than a transcription.
+    Everything else in the manufacturing gate compares the report against
+    `profiles.py`; these rules hand the same numbers to KiCAD and let it measure
+    the board against them.
+    """
+    rules = ["(version 1)"]
+    for suffix, constraint, field in _PROFILE_CONSTRAINTS:
+        rules.append(
+            f'(rule "{PROFILE_RULE_PREFIX}{suffix}"\n'
+            f"  (constraint {constraint} (min {getattr(profile, field)}mm))\n"
+            f"  (severity error))"
+        )
+    return "\n".join(rules) + "\n"
+
+
+def _measurable_constraints(document: list) -> set[str]:
+    """Which profile constraints this board actually has something to measure.
+
+    A board with no holes cannot fail a minimum-drill rule, and reporting that as
+    "passed" would make `minimum_drill_mm` look verified on every SMD board ever
+    built. What the gate can honestly say there is that it did not check, which
+    is what `skipped_count` is for.
+    """
+    segments = sexpr.find_all(document, "segment")
+    vias = sexpr.find_all(document, "via")
+    footprints = sexpr.find_all(document, "footprint")
+    pads = [pad for footprint in footprints for pad in sexpr.find_all(footprint, "pad")]
+    drilled = vias or [pad for pad in pads if sexpr.find(pad, "drill") is not None]
+    copper = bool(segments or pads)
+    measurable: set[str] = set()
+    if segments:
+        measurable.add("track_width")
+    if copper and (len(segments) + len(pads)) > 1:
+        measurable.add("clearance")
+    if drilled:
+        measurable.add("hole_size")
+    if copper and sexpr.find_all(document, "gr_line"):
+        measurable.add("edge_clearance")
+    return measurable
+
+
+def _copper_layer_count(document: list) -> int | None:
+    """How many copper layers the board declares, or None if it does not say."""
+    layers = sexpr.find(document, "layers")
+    if layers is None:
+        return None
+    count = 0
+    for entry in layers[1:]:
+        if isinstance(entry, list) and len(entry) >= 2 and str(entry[1]).endswith(".Cu"):
+            count += 1
+    return count or None
+
+
+_DFM_RULE_NAMES = {
+    f"{PROFILE_RULE_PREFIX}track_width": "board meets the manufacturer's minimum trace width",
+    f"{PROFILE_RULE_PREFIX}clearance": "board meets the manufacturer's minimum clearance",
+    f"{PROFILE_RULE_PREFIX}hole_size": "board meets the manufacturer's minimum drill",
+    f"{PROFILE_RULE_PREFIX}edge_clearance": "board meets the manufacturer's edge clearance",
+}
+
+
+def _dfm_rule_name(description: str) -> str:
+    """The finding's rule, taken from the DRC rule KiCAD says fired."""
+    for rule, name in _DFM_RULE_NAMES.items():
+        if rule in description:
+            return name
+    return "board meets the manufacturer's minimum"
+
+
+def check_board_against_profile(
+    board_path: Path | str,
+    profile: ManufacturerProfile,
+    cli: KicadCli,
+) -> tuple[list[CheckFinding], int]:
+    """Measure the board against the manufacturer's minima, using KiCAD's own DRC.
+
+    Returns the findings and how many profile constraints had nothing to measure.
+    The board is copied somewhere else first: the ruleset has to sit beside it as
+    `<board>.kicad_dru`, and this is a read-only stage - the project it is
+    reporting on is also the project the release hashes.
+    """
+    board = Path(board_path)
+    if not board.is_file():
+        return (
+            [
+                _finding(
+                    "board available for DFM measurement",
+                    str(board),
+                    "a board file to measure",
+                    "manufacturing",
+                    "manufacturing gate",
+                    "warning",
+                )
+            ],
+            len(_PROFILE_CONSTRAINTS),
+        )
+    if not cli.available:
+        return (
+            [
+                _finding(
+                    "board measured against the profile",
+                    f"{cli.executable} not found on PATH",
+                    "a DRC run against the profile's minima",
+                    "manufacturing",
+                    "kicad-cli DRC",
+                    "warning",
+                )
+            ],
+            len(_PROFILE_CONSTRAINTS),
+        )
+    document = load(board)
+    measurable = _measurable_constraints(document)
+    findings: list[CheckFinding] = []
+    with tempfile.TemporaryDirectory() as tmp:
+        workspace = Path(tmp)
+        # The whole project, not just the board: netclasses and design settings
+        # live in the .kicad_pro, and measuring a board without them would be
+        # measuring a different board than the one being released.
+        for pattern in ("*.kicad_pcb", "*.kicad_pro", "*.kicad_prl", "*.kicad_sch"):
+            for source in board.parent.glob(pattern):
+                shutil.copy2(source, workspace / source.name)
+        copied = workspace / board.name
+        (workspace / f"{board.stem}.kicad_dru").write_text(profile_ruleset(profile), encoding="utf-8")
+        # The union of two passes, not one run. KiCAD's DRC is not deterministic
+        # and the violations that come and go are clearance ones - exactly what a
+        # minimum-spacing rule produces. For a manufacturability verdict the
+        # conservative direction is to keep any violation either pass found: a
+        # gap the fab cannot etch does not become safe because the second run
+        # missed it.
+        report = cli.run_drc_baseline(copied)
+    if not report.ran:
+        return (
+            [
+                _finding(
+                    "board measured against the profile",
+                    "DRC did not run",
+                    "a DRC run against the profile's minima",
+                    "manufacturing",
+                    "kicad-cli DRC",
+                    "error",
+                )
+            ],
+            len(_PROFILE_CONSTRAINTS),
+        )
+    for violation in report.violations:
+        if PROFILE_RULE_PREFIX not in violation.description:
+            # The board's own rules, which the layout gate already owns. This
+            # gate reports what the *manufacturer* cannot make.
+            continue
+        # Named for the constraint that broke, not for the gate. `_route` reads
+        # rule names, so "minimum trace width" and "minimum clearance" reach the
+        # layout stage that can move the copper, while a single generic name
+        # would hand every one of them back to a read-only reporting stage.
+        findings.append(
+            _finding(
+                _dfm_rule_name(violation.description),
+                _violation_text(violation),
+                f"at least the {profile.name} minimum "
+                f"({profile.minimum_trace_width_mm:g} mm trace, "
+                f"{profile.minimum_spacing_mm:g} mm spacing, "
+                f"{profile.minimum_drill_mm:g} mm drill, "
+                f"{profile.copper_to_edge_clearance_mm:g} mm to the edge)",
+                violation.description.split("(rule")[0].strip() or "board",
+                "kicad-cli DRC",
+                "error" if violation.severity == "error" else "warning",
+            )
+        )
+    layers = _copper_layer_count(document)
+    if layers is not None and layers > profile.supported_layer_count:
+        findings.append(
+            _finding(
+                "layer count the manufacturer supports",
+                f"{layers} copper layers",
+                f"at most {profile.supported_layer_count}",
+                "board",
+                str(board),
+                "error",
+            )
+        )
+    skipped = sorted({suffix for suffix, _, _ in _PROFILE_CONSTRAINTS} - measurable)
+    for suffix in skipped:
+        findings.append(
+            _finding(
+                # Deliberately free of the words `_route` keys on. This is an
+                # advisory note on a gate that may be failing for other reasons,
+                # and it must not be what decides where the work goes back to.
+                "manufacturer minimum not measured on this board",
+                f"{suffix}: nothing on this board to measure it against",
+                "at least one object the constraint applies to",
+                "board",
+                "kicad-cli DRC",
+                "info",
+            )
+        )
+    return findings, len(skipped)
+
+
 def check_manufacturing(
-    report: ManufacturingReport, profile_name: str, project_version: str
+    report: ManufacturingReport,
+    profile_name: str,
+    project_version: str,
+    board_path: Path | str | None = None,
+    cli: KicadCli | None = None,
 ) -> StageCheckResult:
     findings: list[CheckFinding] = []
+    skipped = 0
     try:
         profile = get_profile(profile_name)
     except ValueError:
@@ -1141,7 +1470,14 @@ def check_manufacturing(
                 "error",
             )
         )
-    return _check("manufacturing", findings, project_version, "manufacturer checker")
+    # Everything above compares the report against profiles.py - a transcription
+    # check. This is the part that measures: the profile's minima are handed to
+    # KiCAD as a custom ruleset and it measures the board against them, so a DFM
+    # verdict rests on the board rather than on the stage's account of it.
+    if board_path is not None and cli is not None:
+        measured, skipped = check_board_against_profile(board_path, get_profile(profile_name), cli)
+        findings.extend(measured)
+    return _check("manufacturing", findings, project_version, "manufacturer checker", skipped)
 
 
 RELEASE_FILE_PATTERNS = ("*.kicad_sch", "*.kicad_pcb", "*.kicad_pro")

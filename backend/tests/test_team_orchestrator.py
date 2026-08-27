@@ -133,6 +133,9 @@ def _outputs(project: ProjectSpec, directory: Path) -> dict[str, object]:
         ),
         "pcb_layout": LayoutProposal(placements=[], critical_nets=[], unrouted_nets=[]),
         "simulation": SimulationReport(tests=[], models=[], assumptions=["unverified"]),
+        # One requirement in the document, so one outcome accounting for it and a
+        # total that matches. The gate reads the requirements document now, so a
+        # report that leaves a requirement unaccounted for no longer passes.
         "verification": VerificationReport(
             requirements_total=1,
             requirements_passed=1,
@@ -140,6 +143,13 @@ def _outputs(project: ProjectSpec, directory: Path) -> dict[str, object]:
             requirements_unverified=0,
             critical_findings=[],
             decision="passed",
+            requirement_outcomes=[
+                {
+                    "requirement_id": "PWR-001",
+                    "status": "passed",
+                    "evidence": {"tool": "kicad-cli ERC", "net": "+3V3"},
+                }
+            ],
         ),
         "manufacturing": ManufacturingReport(
             manufacturer_profile=profile.name,
@@ -748,3 +758,29 @@ def test_a_verification_failure_is_not_routed_back_to_the_requirements_stage() -
             ],
         )
         assert TeamOrchestrator._route("verification", gate) == "verification", rule
+
+
+def test_a_dfm_measurement_goes_back_to_the_stage_that_can_move_the_copper() -> None:
+    """A clearance the fab cannot etch is a layout problem, not a reporting one.
+
+    `_route` reads rule names, and the manufacturing stage is read-only - handing
+    it a gap between two tracks asks a stage that only writes reports to fix
+    something it cannot touch. Naming each finding for the constraint that broke
+    is what makes the routing come out right.
+    """
+    for rule, target in (
+        ("board meets the manufacturer's minimum trace width", "pcb_layout"),
+        ("board meets the manufacturer's minimum clearance", "pcb_layout"),
+        ("board meets the manufacturer's minimum drill", "pcb_layout"),
+        ("board meets the manufacturer's edge clearance", "pcb_layout"),
+        # A transcription failure is the manufacturing stage's own to fix.
+        ("profile values used", "manufacturing"),
+        # And the advisory note must not be what decides the target.
+        ("manufacturer minimum not measured on this board", "manufacturing"),
+    ):
+        gate = StageCheckResult(
+            stage="manufacturing",
+            passed=False,
+            findings=[finding(rule, "actual", "expected", "board", "kicad-cli DRC", "error")],
+        )
+        assert TeamOrchestrator._route("manufacturing", gate) == target, rule

@@ -3,13 +3,22 @@
 from __future__ import annotations
 
 import json
+import re
+import shutil
 from pathlib import Path
 
+import pytest
+
+from app.config import settings
 from app.kicad.board import copper_edge_clearance, load
+from app.kicad.erc import KicadCli
 from app.kicad.reader import ProjectState, read_project
 from app.models import ErcReport, Violation
 from app.team.checks import (
+    PROFILE_RULE_PREFIX,
     RELEASE_CHECKLIST_ITEMS,
+    check_board_against_profile,
+    profile_ruleset,
     _clearance_advice,
     release_files,
     release_hash,
@@ -27,6 +36,7 @@ from app.team.fallbacks import fallback_for, requirements_fallback
 from app.team.profiles import get_profile
 from app.team.schemas import (
     AgentTask,
+    ManufacturingReport,
     Architecture,
     ComponentSelection,
     DesignContext,
@@ -1209,3 +1219,246 @@ def test_a_record_saying_it_is_not_approved_is_not_read_as_an_approval(tmp_path:
         assert not check_qa_release(
             record.model_copy(update={"release_status": claimed}), [file], "rev-1"
         ).passed, claimed
+
+
+def _fixture_board(tmp_path: Path) -> Path:
+    project = tmp_path / "board_project"
+    shutil.copytree(FIXTURES / "esp32_i2c_board", project)
+    return project / "esp32_i2c_board.kicad_pcb"
+
+
+def test_the_profile_ruleset_names_its_rules_so_its_violations_can_be_told_apart() -> None:
+    """A custom ruleset is added on top of the board's own, so both report.
+
+    Attribution is by rule name rather than by diffing two DRC runs: DRC is not
+    deterministic between passes, and a diff would invent findings out of that.
+    """
+    profile = get_profile("generic_two_layer")
+    ruleset = profile_ruleset(profile)
+    assert ruleset.startswith("(version 1)")
+    for constraint in ("track_width", "clearance", "hole_size", "edge_clearance"):
+        assert f'"{PROFILE_RULE_PREFIX}{constraint}"' in ruleset
+        assert f"(constraint {constraint} (min " in ruleset
+    # The numbers are the profile's, not invented.
+    assert f"(min {profile.minimum_trace_width_mm}mm)" in ruleset
+    assert f"(min {profile.copper_to_edge_clearance_mm}mm)" in ruleset
+
+
+def test_the_dfm_gate_measures_the_board_rather_than_reading_the_report(tmp_path: Path) -> None:
+    """The part of the manufacturing gate that is a measurement, not a transcription.
+
+    Everything else compares the report against profiles.py. This hands those same
+    numbers to KiCAD as a design-rule file and lets it measure the board.
+    """
+    cli = KicadCli(settings.kicad_cli)
+    if not cli.available:
+        pytest.skip("kicad-cli is not installed")
+    profile = get_profile("generic_two_layer")
+    board = _fixture_board(tmp_path)
+
+    findings, skipped = check_board_against_profile(board, profile, cli)
+    rules = {item.rule for item in findings}
+    assert "board meets the manufacturer's minimum clearance" in rules
+
+    # This board really does have a 0.14 mm gap between +3V3 and GND, under the
+    # profile's 0.15 mm floor - a real defect the transcription check never saw.
+    measured = [item for item in findings if item.severity == "error"]
+    assert any("0.1400" in str(item.actual) for item in measured), [
+        str(item.actual) for item in measured
+    ]
+
+    # It is all-SMD, so there is no hole to hold to a minimum drill. That is
+    # reported as not measured rather than quietly counted as passed.
+    assert skipped == 1
+    assert any("hole_size" in str(item.actual) for item in findings if item.severity == "info")
+    assert all(item.rule != "board meets the manufacturer's minimum" for item in findings)
+
+    # A board that breaks a different minimum is caught on that minimum.
+    thin = tmp_path / "thin.kicad_pcb"
+    shutil.copytree(board.parent, tmp_path / "thin_project")
+    thin = tmp_path / "thin_project" / board.name
+    thin.write_text(re.sub(r"\(width [0-9.]+\)", "(width 0.05)", thin.read_text()), encoding="utf-8")
+    thinned, _ = check_board_against_profile(thin, profile, cli)
+    assert any("Track width" in str(item.actual) for item in thinned)
+
+
+def test_the_dfm_gate_says_so_when_it_could_not_measure(tmp_path: Path) -> None:
+    """No board and no kicad-cli are different from a board that passed."""
+    profile = get_profile("generic_two_layer")
+    missing, skipped = check_board_against_profile(
+        tmp_path / "absent.kicad_pcb", profile, KicadCli(settings.kicad_cli)
+    )
+    assert skipped == 4
+    assert [item.rule for item in missing] == ["board available for DFM measurement"]
+
+    board = _fixture_board(tmp_path)
+    no_cli, skipped = check_board_against_profile(board, profile, KicadCli("kicad-cli-that-is-not-here"))
+    assert skipped == 4
+    assert [item.rule for item in no_cli] == ["board measured against the profile"]
+    # Not being able to measure is a warning, not a pass and not a failure.
+    assert no_cli[0].severity == "warning"
+
+
+def test_the_manufacturing_gate_without_a_board_is_the_transcription_check_it_was() -> None:
+    """Supplying no board leaves every existing caller behaving exactly as before."""
+    profile = get_profile("generic_two_layer")
+    report = ManufacturingReport(
+        manufacturer_profile=profile.name,
+        dfm_status="passed",
+        findings=[],
+        fabrication_ready=True,
+        profile_rules={
+            "minimum_trace_width_mm": profile.minimum_trace_width_mm,
+            "minimum_spacing_mm": profile.minimum_spacing_mm,
+            "minimum_drill_mm": profile.minimum_drill_mm,
+            "copper_to_edge_clearance_mm": profile.copper_to_edge_clearance_mm,
+            "supported_layer_count": 2.0,
+        },
+        profile_provenance=profile.provenance,
+    )
+    assert check_manufacturing(report, "generic_two_layer", "rev-1").passed
+
+
+def _one_requirement() -> RequirementsDoc:
+    return RequirementsDoc(
+        requirements=[
+            {
+                "id": "PWR-001",
+                "category": "power",
+                "statement": "logic voltage",
+                "value": 3.3,
+                "unit": "V",
+                "source": "request",
+            },
+            {
+                "id": "IF-001",
+                "category": "interface",
+                "statement": "I2C bus",
+                "value": 400,
+                "unit": "kHz",
+                "source": "request",
+            },
+        ],
+        power={"input": "", "logic_voltage": "3.3V", "maximum_current_ma": None},
+        interfaces=[],
+        mechanical={"maximum_width_mm": None, "maximum_height_mm": None, "layers": None},
+        constraints=[],
+        acceptance_tests=[],
+    )
+
+
+def _clean_report(**overrides) -> VerificationReport:
+    base = {
+        "requirements_total": 2,
+        "requirements_passed": 2,
+        "requirements_failed": 0,
+        "requirements_unverified": 0,
+        "critical_findings": [],
+        "decision": "accept",
+        "requirement_outcomes": [
+            {"requirement_id": "PWR-001", "status": "passed", "evidence": {"tool": "erc"}},
+            {"requirement_id": "IF-001", "status": "passed", "evidence": {"tool": "erc"}},
+        ],
+    }
+    return VerificationReport(**{**base, **overrides})
+
+
+def test_verification_counts_are_checked_against_the_requirements_document() -> None:
+    """The counters stop being self-reported once there is something to count.
+
+    Without the document the gate can only check the report against itself,
+    which catches a document that contradicts itself but not one that is
+    internally consistent and simply untrue.
+    """
+    requirements = _one_requirement()
+    assert check_verification(_clean_report(), "rev-1", requirements).passed
+
+    # A total that does not match the document it is counting.
+    wrong_total = _clean_report(requirements_total=7, requirements_passed=7)
+    result = check_verification(wrong_total, "rev-1", requirements)
+    assert not result.passed
+    assert "requirements_total is the number of requirements" in [item.rule for item in result.findings]
+
+    # Parts that do not add up to the whole - true with or without the document.
+    for doc in (requirements, None):
+        adds_up = check_verification(
+            _clean_report(requirements_passed=1), "rev-1", doc
+        )
+        assert not adds_up.passed
+        assert "requirement counts add up" in [item.rule for item in adds_up.findings]
+
+
+def test_every_requirement_needs_an_outcome_and_absent_outcomes_do_not_pass_by_vacuity() -> None:
+    """Optional on the model, so "absent" must not satisfy a coverage rule."""
+    requirements = _one_requirement()
+
+    missing_one = _clean_report(
+        requirement_outcomes=[
+            {"requirement_id": "PWR-001", "status": "passed", "evidence": {"tool": "erc"}}
+        ]
+    )
+    result = check_verification(missing_one, "rev-1", requirements)
+    assert not result.passed
+    assert "every requirement has an outcome" in [item.rule for item in result.findings]
+    assert "IF-001" in str(
+        next(item for item in result.findings if item.rule == "every requirement has an outcome").actual
+    )
+
+    # None at all is the same failure, not a pass.
+    none_at_all = check_verification(_clean_report(requirement_outcomes=None), "rev-1", requirements)
+    assert not none_at_all.passed
+    assert "every requirement has an outcome" in [item.rule for item in none_at_all.findings]
+
+
+def test_a_report_may_not_account_for_requirements_that_do_not_exist() -> None:
+    """An outcome or a finding citing an invented ID is not traceability."""
+    requirements = _one_requirement()
+    invented = _clean_report(
+        requirement_outcomes=[
+            {"requirement_id": "PWR-001", "status": "passed", "evidence": {"tool": "erc"}},
+            {"requirement_id": "IF-001", "status": "passed", "evidence": {"tool": "erc"}},
+            {"requirement_id": "EMC-999", "status": "passed", "evidence": {"tool": "erc"}},
+        ]
+    )
+    result = check_verification(invented, "rev-1", requirements)
+    assert not result.passed
+    assert "outcomes name real requirements" in [item.rule for item in result.findings]
+
+    ghost_finding = _clean_report(
+        requirements_passed=1,
+        requirements_failed=1,
+        requirement_outcomes=[
+            {"requirement_id": "PWR-001", "status": "passed", "evidence": {"tool": "erc"}},
+            {"requirement_id": "IF-001", "status": "failed", "evidence": {"tool": "erc"}},
+        ],
+        critical_findings=[
+            VerificationFinding(
+                requirement_id="EMC-999",
+                finding="radiated emissions",
+                evidence={"tool": "erc"},
+                rule="emc",
+                actual="unknown",
+                expected="within limits",
+                kicad_object="board",
+                evidence_source="erc",
+                severity="critical",
+            )
+        ],
+    )
+    ghosted = check_verification(ghost_finding, "rev-1", requirements)
+    assert not ghosted.passed
+    assert "findings name real requirements" in [item.rule for item in ghosted.findings]
+
+
+def test_without_the_requirements_document_the_external_rules_are_skipped_not_failed() -> None:
+    """`None` means "could not check", never "check against an empty document".
+
+    Checking against an empty document would fail every ID lookup and reject
+    every report any caller that has no requirements doc could ever produce.
+    """
+    report = _clean_report()
+    assert check_verification(report, "rev-1").passed
+    assert check_verification(report, "rev-1", None).passed
+
+    # The rules that need no document still apply.
+    assert not check_verification(_clean_report(requirements_total=99), "rev-1").passed

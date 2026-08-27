@@ -563,10 +563,21 @@ class TeamOrchestrator:
                 project_version=project_version,
             )
         if stage == "verification" and isinstance(output, VerificationReport):
-            return checks.check_verification(output, project_version)
+            requirements = outputs.get("requirements")
+            return checks.check_verification(
+                output,
+                project_version,
+                requirements if isinstance(requirements, RequirementsDoc) else None,
+            )
         if stage == "manufacturing" and isinstance(output, ManufacturingReport):
             profile_name = str(project.manufacturer_profile.get("name", ""))
-            return checks.check_manufacturing(output, profile_name, project_version)
+            return checks.check_manufacturing(
+                output,
+                profile_name,
+                project_version,
+                board_path=self.options.board_path,
+                cli=self.options.kicad_cli,
+            )
         if stage == "qa_release" and isinstance(output, ReleaseRecord):
             # The files on disk, not the ones the record names: a release that
             # lists a subset of the project would otherwise hash that subset and
