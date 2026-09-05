@@ -1,20 +1,17 @@
-# Parametric printable car
+# Apex vertical racer
 
-`parametric_car.scad` is a single-piece assembly based on the supplied car
-design. Dimensions are in millimetres; the body and four wheels are generated
-from the same source file.
+`apex_racer.scad` is a parametric OpenSCAD approximation of the upright
+"vertical racer" concept: a tapered standing fuselage with a forward canopy,
+two large ground wheels on a common axle, and two winged wheel pods held out
+on struts near the top. Dimensions are in millimetres; the top-level
+variables control fuselage size, wheel radii and pod reach.
 
 ## Build
 
-Open the file in OpenSCAD, press **F6**, then export the rendered result as
-`parametric_car.stl`.
-
-The same build can be run headlessly:
-
 ```bash
-openscad -o parametric_car.stl parametric_car.scad
+openscad -o apex_racer.stl apex_racer.scad
 ```
 
-The model is approximately 80 mm long, 52 mm wide including wheels, and 28 mm
-high. Print it with the wheels facing sideways as modelled; supports may be
-useful under the cabin and hood depending on the slicer's overhang settings.
+or open the file in OpenSCAD, press **F6**, then export as STL. The model is
+roughly 250 mm wide, 60 mm deep and 165 mm tall; the pod fins and struts need
+supports when printed upright.
